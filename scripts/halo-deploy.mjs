@@ -17,9 +17,15 @@ function quote(value) {
   return JSON.stringify(String(value));
 }
 
+function executable(command) {
+  if (process.platform === "win32" && command === "az") return "az.cmd";
+  return command;
+}
+
 function run(command, args, { capture = false, input } = {}) {
+  const file = executable(command);
   if (capture) {
-    return execFileSync(command, args, {
+    return execFileSync(file, args, {
       cwd: projectRoot,
       encoding: "utf8",
       input,
@@ -29,7 +35,7 @@ function run(command, args, { capture = false, input } = {}) {
           : ["pipe", "pipe", "inherit"],
     }).trim();
   }
-  execFileSync(command, args, {
+  execFileSync(file, args, {
     cwd: projectRoot,
     input,
     stdio: input === undefined ? "inherit" : ["pipe", "inherit", "inherit"],
@@ -37,7 +43,7 @@ function run(command, args, { capture = false, input } = {}) {
 }
 
 function tryRun(command, args) {
-  return spawnSync(command, args, {
+  return spawnSync(executable(command), args, {
     cwd: projectRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
