@@ -143,14 +143,19 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.persistence.enabled }}
+          {{- if or .Values.persistence.enabled .Values.extraVolumeMounts }}
           volumeMounts:
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
             {{- range .Values.persistence.mounts }}
             - name: {{ include "agent-canvas.pvcClaimName" $ }}
               mountPath: {{ .mountPath }}
               {{- if .subPath }}
               subPath: {{ .subPath }}
               {{- end }}
+            {{- end }}
             {{- end }}
           {{- end }}
       {{- with .Values.nodeSelector }}
@@ -169,11 +174,16 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
+      {{- if or .Values.extraVolumes (and .Values.persistence.enabled .Values.persistence.existingClaim) }}
       volumes:
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
         - name: {{ include "agent-canvas.pvcClaimName" . }}
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim }}
+        {{- end }}
       {{- end }}
   {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
   volumeClaimTemplates:

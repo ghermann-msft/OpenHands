@@ -83,8 +83,12 @@ ServiceAccount name to use.
 Effective image reference.
 */}}
 {{- define "agent-canvas.image" -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- else -}}
 {{- $tag := default .Chart.AppVersion .Values.image.tag -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

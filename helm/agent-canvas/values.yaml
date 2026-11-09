@@ -11,6 +11,8 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/openhands/agent-canvas
+  # Immutable digest takes precedence over tag when set.
+  digest: ""
   # Image tag is pinned to the chart's appVersion. Override with
   # `--set image.tag=sha-<...>` when you need a specific build (e.g. a PR
   # image or a hotfix that doesn't match the chart's appVersion).
@@ -216,6 +218,12 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 topologySpreadConstraints: []
+
+# Additional pod volumes and container mounts. Halo uses these to mount the
+# Azure Key Vault Secrets Store CSI provider without baking cloud-specific
+# resources into the reusable chart.
+extraVolumes: []
+extraVolumeMounts: []
 
 # Probes hit the unified entry point.
 probes:

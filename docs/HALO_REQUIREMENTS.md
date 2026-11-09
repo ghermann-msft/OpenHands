@@ -121,16 +121,16 @@ Service (AKS).
 
 ## Authentication
 
-- Reuse the existing single-tenant Entra app registration named
-  `UnrealHands development console` with application ID
-  `0fa13721-c53d-4d1b-9f27-a19c8a08a77d`.
-- Reusing the Entra registration does not authorize reuse of UnrealHands code,
+- Use separate single-tenant confidential Entra app registrations for
+  `OpenHands Halo PPE` and `OpenHands Halo`. Each environment has its own client
+  ID, redirect URI, credential, enterprise-application assignments,
+  Conditional Access surface, and rotation boundary.
+- Do not reuse the `UnrealHands development console` registration, code,
   authentication middleware, authorization behavior, deployment manifests, or
-  architecture. OpenHands Halo authentication and authorization must be
-  designed and implemented from the OpenHands contracts and these requirements.
-- Add Halo-specific redirect URIs, app roles, and token configuration to the
-  existing registration without retaining obsolete UnrealHands redirect URIs
-  after their callers are retired.
+  architecture for Halo.
+- The first authentication phase needs one BFF app registration per
+  environment. Do not add a separate SPA or API registration until a later
+  bearer-token/API contract requires it.
 - OpenHands must implement native Microsoft Entra authentication.
 - Use a single-tenant Entra application and the authorization-code flow with
   PKCE.

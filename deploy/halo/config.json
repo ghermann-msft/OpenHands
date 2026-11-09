@@ -1,0 +1,76 @@
+{
+  "azure": {
+    "subscriptionId": "3956877a-1e3c-4990-aba7-7481b5d99a60",
+    "tenantId": "49391958-917a-40c8-956f-ec1ce0196aa9",
+    "resourceGroup": "rg-unrealhands-dev",
+    "aksCluster": "aks-unrealhands-dev",
+    "acrName": "uhunrealhaacukmdbkacr",
+    "acrLoginServer": "uhunrealhaacukmdbkacr.azurecr.io",
+    "keyVaultName": "uh-unrealhand-acukmdbk",
+    "frontDoorProfile": "uh-unrealhands-dev-fd",
+    "applicationGatewayOriginHost": "unrealhands-dev-origin-acukmdbk.westus3.cloudapp.azure.com"
+  },
+  "source": {
+    "repository": "https://github.com/ghermann-msft/OpenHands.git",
+    "branch": "openhands-halo"
+  },
+  "identities": {
+    "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
+    "runtime": "uh-unrealhands-dev-acukmd-credentials-broker-mi"
+  },
+  "build": {
+    "namespace": "openhands-halo-build",
+    "serviceAccount": "halo-image-builder",
+    "federatedCredential": "halo-image-builder",
+    "repository": "openhands-halo",
+    "cacheTag": "buildcache-amd64",
+    "gitImage": "alpine/git:2.49.1",
+    "azureCliImage": "mcr.microsoft.com/azure-cli:2.92.0",
+    "buildkitImage": "moby/buildkit:v0.34.1-rootless",
+    "nodePool": "linworkers",
+    "nodeTaintKey": "unrealhands.io/pool",
+    "nodeTaintValue": "linux-worker"
+  },
+  "environments": {
+    "candidate": {
+      "namespace": "openhands-halo-ppe",
+      "release": "openhands-halo",
+      "serviceAccount": "openhands-halo",
+      "federatedCredential": "halo-ppe-runtime",
+      "frontDoorEndpoint": "openhands-ppe",
+      "frontDoorHost": "openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
+      "frontDoorOriginGroup": "openhands-halo-ppe",
+      "frontDoorOrigin": "openhands-halo-ppe",
+      "entraDisplayName": "OpenHands Halo PPE",
+      "entraClientId": "9071e6b8-c981-4a11-b975-256cc4b7b841",
+      "entraScopeId": "0f36915e-4e16-46ac-b602-50058fd6559b",
+      "secrets": {
+        "clientSecret": "halo-ppe-entra-client-secret",
+        "cookieSecret": "halo-ppe-cookie-secret",
+        "sessionApiKey": "halo-ppe-session-api-key",
+        "ohSecretKey": "halo-ppe-oh-secret-key",
+        "automationKvSecret": "halo-ppe-automation-kv-secret"
+      }
+    },
+    "primary": {
+      "namespace": "openhands-halo-primary",
+      "release": "openhands-halo",
+      "serviceAccount": "openhands-halo",
+      "federatedCredential": "halo-primary-runtime",
+      "frontDoorEndpoint": "openhands",
+      "frontDoorHost": "openhands-h0e3cucrh3gfg3gr.b01.azurefd.net",
+      "frontDoorOriginGroup": "openhands-halo-primary",
+      "frontDoorOrigin": "openhands-halo-primary",
+      "entraDisplayName": "OpenHands Halo",
+      "entraClientId": "a43e0aee-2f24-4b80-91e5-b6eb3db972c0",
+      "entraScopeId": "bc5dd6b6-9ba7-4e36-98c5-ec9f11e2adcd",
+      "secrets": {
+        "clientSecret": "halo-primary-entra-client-secret",
+        "cookieSecret": "halo-primary-cookie-secret",
+        "sessionApiKey": "halo-primary-session-api-key",
+        "ohSecretKey": "halo-primary-oh-secret-key",
+        "automationKvSecret": "halo-primary-automation-kv-secret"
+      }
+    }
+  }
+}
