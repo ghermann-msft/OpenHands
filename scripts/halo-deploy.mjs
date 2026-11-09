@@ -411,7 +411,10 @@ spec:
             runAsUser: 1000
             runAsGroup: 1000
             runAsNonRoot: true
-            allowPrivilegeEscalation: false
+            # RootlessKit uses the image's setuid newuidmap/newgidmap helpers
+            # to create a subordinate user namespace. The container remains
+            # non-root and unprivileged, but Kubernetes must not strip setuid.
+            allowPrivilegeEscalation: true
             capabilities:
               drop: ["ALL"]
             seccompProfile:

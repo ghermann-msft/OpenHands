@@ -33,6 +33,9 @@ describe("Halo deployment automation", () => {
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
     expect(job).toContain("azure.workload.identity/use: \"true\"");
+    expect(job).toContain("runAsNonRoot: true");
+    expect(job).toContain("allowPrivilegeEscalation: true");
+    expect(job).not.toContain("privileged: true");
   });
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {
