@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -17,15 +17,34 @@ function quote(value) {
   return JSON.stringify(String(value));
 }
 
-function executable(command) {
-  if (process.platform === "win32" && command === "az") return "az.cmd";
-  return command;
+let azureCliPython;
+
+function invocation(command, args) {
+  if (process.platform !== "win32" || command !== "az") {
+    return { file: command, args };
+  }
+  azureCliPython ??= resolve(
+    dirname(
+      execFileSync("where.exe", ["az.cmd"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "inherit"],
+      })
+        .trim()
+        .split(/\r?\n/)[0],
+    ),
+    "..",
+    "python.exe",
+  );
+  return {
+    file: azureCliPython,
+    args: ["-IBm", "azure.cli", ...args],
+  };
 }
 
 function run(command, args, { capture = false, input } = {}) {
-  const file = executable(command);
+  const resolved = invocation(command, args);
   if (capture) {
-    return execFileSync(file, args, {
+    return execFileSync(resolved.file, resolved.args, {
       cwd: projectRoot,
       encoding: "utf8",
       input,
@@ -35,7 +54,7 @@ function run(command, args, { capture = false, input } = {}) {
           : ["pipe", "pipe", "inherit"],
     }).trim();
   }
-  execFileSync(file, args, {
+  execFileSync(resolved.file, resolved.args, {
     cwd: projectRoot,
     input,
     stdio: input === undefined ? "inherit" : ["pipe", "inherit", "inherit"],
@@ -43,7 +62,8 @@ function run(command, args, { capture = false, input } = {}) {
 }
 
 function tryRun(command, args) {
-  return spawnSync(executable(command), args, {
+  const resolved = invocation(command, args);
+  return spawnSync(resolved.file, resolved.args, {
     cwd: projectRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
