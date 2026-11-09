@@ -26,7 +26,7 @@
     "cacheTag": "buildcache-amd64",
     "gitImage": "alpine/git:2.49.1",
     "azureCliImage": "mcr.microsoft.com/azure-cli:2.92.0",
-    "buildkitImage": "moby/buildkit:v0.34.1-rootless",
+    "buildkitImage": "moby/buildkit:v0.34.1",
     "nodePool": "linworkers",
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "linux-worker"

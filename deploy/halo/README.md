@@ -11,10 +11,13 @@ npm run halo -- promote
 npm run halo -- status
 ```
 
-`build` creates an ephemeral rootless BuildKit Job in the dedicated
-`openhands-halo-build` namespace. The Job clones the exact pushed commit,
-imports and exports its cache through ACR, pushes a commit-tagged image, and
-prints the immutable digest.
+`build` creates an ephemeral BuildKit Job in the dedicated
+`openhands-halo-build` namespace. The pod uses Kubernetes native user
+namespaces (`hostUsers: false`) and BuildKit's native snapshotter, so BuildKit
+runs as root only inside an unprivileged pod user namespace without a
+privileged container. The Job clones the exact pushed commit, imports and
+exports its cache through ACR, pushes a commit-tagged image, and prints the
+immutable digest.
 
 `deploy-candidate` installs that digest into the isolated PPE namespace,
 mounting Key Vault secrets through the Azure Secrets Store CSI driver. It

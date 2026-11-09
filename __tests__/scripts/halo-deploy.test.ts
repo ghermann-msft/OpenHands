@@ -29,12 +29,13 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
+    expect(job).toContain("hostUsers: false");
+    expect(job).toContain("--oci-worker-snapshotter=native");
     expect(job).toContain("--oci-worker-no-process-sandbox");
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
     expect(job).toContain("azure.workload.identity/use: \"true\"");
-    expect(job).toContain("runAsNonRoot: true");
-    expect(job).toContain("allowPrivilegeEscalation: true");
+    expect(job).toContain("allowPrivilegeEscalation: false");
     expect(job).not.toContain("privileged: true");
   });
 

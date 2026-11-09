@@ -361,6 +361,7 @@ spec:
         app.kubernetes.io/name: openhands-halo-builder
         azure.workload.identity/use: "true"
     spec:
+      hostUsers: false
       restartPolicy: Never
       serviceAccountName: ${build.serviceAccount}
       nodeSelector:
@@ -412,7 +413,23 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              buildctl-daemonless.sh build \\
+              buildkitd \\
+                --addr unix:///run/buildkit/buildkitd.sock \\
+                --oci-worker-snapshotter=native \\
+                --oci-worker-no-process-sandbox &
+              buildkitd_pid="$!"
+              trap 'kill "$buildkitd_pid" 2>/dev/null || true' EXIT
+              for attempt in $(seq 1 30); do
+                if buildctl --addr unix:///run/buildkit/buildkitd.sock debug workers >/dev/null 2>&1; then
+                  break
+                fi
+                if [ "$attempt" = 30 ]; then
+                  echo "BuildKit daemon did not become ready" >&2
+                  exit 1
+                fi
+                sleep 1
+              done
+              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
                 --frontend dockerfile.v0 \\
                 --local context=/workspace \\
                 --local dockerfile=/workspace \\
@@ -429,20 +446,12 @@ spec:
                 --export-cache type=registry,ref=${cache},mode=max,compression=zstd,ignore-error=true \\
                 --output type=image,name=${image},push=true
           env:
-            - name: BUILDKITD_FLAGS
-              value: --oci-worker-no-process-sandbox
             - name: DOCKER_CONFIG
               value: /docker
           securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-            runAsNonRoot: true
-            # RootlessKit uses the image's setuid newuidmap/newgidmap helpers
-            # to create a subordinate user namespace. The container remains
-            # non-root and unprivileged, but Kubernetes must not strip setuid.
-            allowPrivilegeEscalation: true
-            capabilities:
-              drop: ["ALL"]
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
             seccompProfile:
               type: Unconfined
             appArmorProfile:
