@@ -3,6 +3,8 @@
 This directory contains the project documentation.
 
 - [Architecture](./architecture.md): system boundaries, runtime modes, and quality gates.
+- [OpenHands Halo requirements](./HALO_REQUIREMENTS.md): AKS deployment, Entra authentication, multi-tenancy, and project-aware authorization requirements.
+- [OpenHands Halo deprecation candidates](./HALO_DEPRECATION_CANDIDATES.md): existing Azure and Kubernetes resources to retain, retire, or review during migration.
 - [Using ACP agents](./ACP_AGENTS.md): onboard and configure external agents (Claude Code, Codex, Gemini CLI, Pi, OpenCode).
 - [Development guide](./DEVELOPMENT.md)
 - [Canvas Extensions manual testing](./CANVAS_EXTENSIONS_TESTING.md)
