@@ -148,6 +148,16 @@ Local (`npx` / `npm run dev`) listeners bind **loopback only** (`127.0.0.1`) so 
 
 Docker listens on all container interfaces so port publishing works, but does not inject its session key into HTML by default. The quickstart above explicitly enables injection while publishing the host port on `127.0.0.1` only. If you publish Docker on a LAN or public interface, omit `AGENT_CANVAS_ALLOW_LAN_SESSION_KEY` and enter the API key in the UI. Set `LOCAL_BACKEND_API_KEY` to a strong value, or retrieve the generated value with `docker exec <container> sh -c 'cat "$STATE_DIR/api-key.txt"'`. For internet-facing installs, follow [self-hosting](./docs/SELF_HOSTING.md).
 
+The all-in-one/static deployment also supports optional native Microsoft Entra
+BFF authentication. Configure it through
+`AGENT_CANVAS_ENTRA_TENANT_ID`, `AGENT_CANVAS_ENTRA_CLIENT_ID`,
+`AGENT_CANVAS_ENTRA_CLIENT_SECRET`, `AGENT_CANVAS_ENTRA_REDIRECT_URI`, and
+`AGENT_CANVAS_ENTRA_COOKIE_SECRET` (at least 32 bytes). When enabled, the
+server performs the authorization-code flow with PKCE and keeps both Entra
+tokens and the internal Agent Server session key out of browser JavaScript and
+localStorage. See [`helm/agent-canvas/README.md`](helm/agent-canvas/README.md)
+for Kubernetes candidate/primary configuration using existing Secrets.
+
 # Architecture
 
 Agent Canvas is powered by the [OpenHands Agent Server](https://github.com/OpenHands/software-agent-sdk/tree/main/openhands-agent-server/openhands/agent_server), a REST API for running multiple agents on a single machine. Each Agent Server runs on a single host/port; the Agent Canvas can connect to multiple Agent Servers and easily flip between them.

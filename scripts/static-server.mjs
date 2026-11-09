@@ -35,6 +35,7 @@ import { pathToFileURL } from "node:url";
 import sirv from "sirv";
 
 import { applySessionKeyPolicy, DEFAULT_BIND_HOST } from "./bind-host.mjs";
+import { createEntraBff, loadEntraBffConfig } from "./entra-bff.mjs";
 import { mountMarsWebBridge } from "./mars-web-bridge.mjs";
 import {
   createProxyHandlers,
@@ -100,6 +101,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     lockToCloud: null,
     basePath: "/",
     vscodeBasePath: null,
+    entraBff: loadEntraBffConfig(env),
     // Also settable via the --disable-telemetry flag below.
     disableTelemetry: isEnvFlagEnabled(env.AGENT_CANVAS_DISABLE_TELEMETRY),
   };
@@ -214,6 +216,16 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
         "  Use --auth-required for public mode (user pastes key).",
     );
     process.exit(1);
+  }
+  if (config.entraBff && config.authRequired) {
+    throw new Error(
+      "Microsoft Entra BFF mode cannot be combined with --auth-required",
+    );
+  }
+  if (config.entraBff && !config.sessionApiKey) {
+    throw new Error(
+      "Microsoft Entra BFF mode requires SESSION_API_KEY or --session-api-key",
+    );
   }
 
   // Guard: advertising the editor and routing it are the same decision, so
@@ -383,6 +395,7 @@ function makeConfigInjectionScript(
   basePath,
   vscodeBasePath,
   disableTelemetry,
+  entraBff,
 ) {
   const parts = [];
 
@@ -441,6 +454,9 @@ function makeConfigInjectionScript(
   if (disableTelemetry) {
     parts.push(`window.__AGENT_CANVAS_DO_NOT_TRACK__=true;`);
   }
+  if (entraBff) {
+    parts.push(`window.__AGENT_CANVAS_ENTRA_BFF__=true;`);
+  }
 
   if (parts.length === 0) return "";
 
@@ -463,6 +479,7 @@ async function serveInjectedIndexHtml(
     basePath,
     vscodeBasePath,
     disableTelemetry,
+    entraBff,
   } = {},
 ) {
   let content;
@@ -480,6 +497,7 @@ async function serveInjectedIndexHtml(
     basePath,
     vscodeBasePath,
     disableTelemetry,
+    entraBff,
   );
   // Inject right before </head> so the key is available before any app code runs.
   // replace() targets the first (and only) </head> in well-formed HTML.
@@ -530,6 +548,7 @@ function needsRuntimeInjection(injectionOpts) {
     injectionOpts.lockToCloud ||
     injectionOpts.vscodeBasePath ||
     injectionOpts.disableTelemetry ||
+    injectionOpts.entraBff ||
     (injectionOpts.basePath && injectionOpts.basePath !== "/"),
   );
 }
@@ -677,18 +696,23 @@ export function startStaticServer(config) {
     allowLanSessionKey: config.allowLanSessionKey || false,
   });
   const injectionOpts = {
-    sessionApiKey: policy.sessionApiKey,
-    authRequired: policy.authRequired,
+    sessionApiKey: config.entraBff ? null : policy.sessionApiKey,
+    authRequired: config.entraBff ? false : policy.authRequired,
     runtimeServicesInfo: config.runtimeServicesInfo || null,
     lockToCloud: config.lockToCloud || null,
     basePath: normalizeBasePath(config.basePath),
     vscodeBasePath: config.vscodeBasePath || null,
     disableTelemetry: config.disableTelemetry || false,
+    entraBff: Boolean(config.entraBff),
   };
   const basePath = injectionOpts.basePath;
   const rejectPrefixes = config.rejectPrefixes ?? [];
   const noReferrerPrefixes = config.noReferrerPrefixes ?? [];
   const staticMiddleware = createStaticMiddleware(dirAbs);
+  const entraBff = createEntraBff(config.entraBff, config.entraBffOptions);
+  const internalAuthHeaders = config.entraBff
+    ? { "X-Session-API-Key": config.sessionApiKey }
+    : undefined;
 
   const uninstallDiagnostics = proxy.installDiagnostics();
   // DigitalOcean Managed Agents for the browser: with MARS_WEB=1, host the MARS
@@ -704,7 +728,23 @@ export function startStaticServer(config) {
   });
 
   const server = createServer((req, res) => {
+    void handleRequest(req, res).catch((err) => {
+      console.error(`Request handler error for ${req.url}:`, err);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end("Internal Server Error");
+      } else {
+        res.destroy();
+      }
+    });
+  });
+
+  async function handleRequest(req, res) {
     const url = req.url ?? "/";
+    if (entraBff) {
+      if (await entraBff.handleHttp(req, res)) return;
+      req.headers["x-session-api-key"] = config.sessionApiKey;
+    }
     if (marsWeb?.handleHttp(req, res)) return;
     const backend = route(url);
     if (backend) {
@@ -720,10 +760,16 @@ export function startStaticServer(config) {
         isServerInfoRequest(req) &&
         (req.method === "GET" || req.method === "HEAD")
       ) {
-        proxyServerInfoRequest(req, res, backend, config.runtimeServicesInfo);
+        proxyServerInfoRequest(
+          req,
+          res,
+          backend,
+          config.runtimeServicesInfo,
+          internalAuthHeaders,
+        );
         return;
       }
-      proxy.proxyHttp(req, res, backend);
+      proxy.proxyHttp(req, res, backend, { headers: internalAuthHeaders });
       return;
     }
     handleStatic(
@@ -741,17 +787,30 @@ export function startStaticServer(config) {
         res.end("Internal Server Error");
       }
     });
-  });
+  }
 
   server.on("upgrade", (req, socket, head) => {
+    void handleUpgrade(req, socket, head).catch((err) => {
+      console.error(`WebSocket handler error for ${req.url}:`, err);
+      socket.destroy();
+    });
+  });
+
+  async function handleUpgrade(req, socket, head) {
+    if (entraBff) {
+      if (!(await entraBff.authorizeWebSocket(req, socket))) return;
+      req.headers["x-session-api-key"] = config.sessionApiKey;
+    }
     if (marsWeb?.handleUpgrade(req, socket, head)) return;
     const backend = route(req.url ?? "/");
     if (backend) {
-      proxy.proxyWebSocket(req, socket, head, backend);
+      proxy.proxyWebSocket(req, socket, head, backend, {
+        headers: internalAuthHeaders,
+      });
       return;
     }
     socket.destroy();
-  });
+  }
   server.on("close", uninstallDiagnostics);
   server.on("close", () => {
     void marsWeb?.dispose().catch(() => {});

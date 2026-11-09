@@ -193,6 +193,15 @@ export function getAgentServerSessionApiKey(): string | null {
   return getBakedSessionApiKey();
 }
 
+/** Whether the same-origin static server authenticates and signs proxy traffic. */
+export function isEntraBffEnabled(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (window as unknown as Record<string, unknown>)
+      .__AGENT_CANVAS_ENTRA_BFF__ === true
+  );
+}
+
 export function getAgentServerWorkingDir(): string {
   const envDir = import.meta.env.VITE_WORKING_DIR?.trim();
   if (envDir) return envDir;

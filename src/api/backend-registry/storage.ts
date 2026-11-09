@@ -118,7 +118,7 @@ export function readStoredBackends(): Backend[] {
     const raw = window.localStorage.getItem(BACKENDS_STORAGE_KEY);
 
     // First install: seed only when the launcher supplied enough information
-    // for a usable local backend.
+    // for a usable local backend (API key or same-origin Entra BFF).
     if (raw === null) {
       const defaultBackend = makeDefaultLocalBackend();
       if (!defaultBackend) return [];
@@ -132,7 +132,7 @@ export function readStoredBackends(): Backend[] {
     const valid = parsed.filter(isValidBackend);
 
     // If the stored array is empty (or everything in it failed validation),
-    // only re-seed when the launcher supplied both a host and API key.
+    // only re-seed when the launcher supplied a usable local backend.
     if (valid.length === 0) {
       const defaultBackend = makeDefaultLocalBackend();
       if (!defaultBackend) return [];

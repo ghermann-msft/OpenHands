@@ -149,6 +149,27 @@ config:
     #       name: my-llm-secret
     #       key: api-key
 
+# ── Microsoft Entra BFF authentication ──────────────────────────────────────
+# Optional single-tenant Microsoft Entra authentication for the all-in-one
+# static deployment. The browser receives only an encrypted HttpOnly session
+# cookie; Entra tokens and the internal Agent Server session key stay server-side.
+entra:
+  enabled: false
+  tenantId: ""
+  clientId: ""
+  # Must exactly match the redirect URI configured on the Entra app registration.
+  # Example: https://candidate.example.com/auth/callback
+  redirectUri: ""
+  authority: "https://login.microsoftonline.com"
+  scopes: "openid profile email"
+  sessionMaxAgeSeconds: 28800
+  clientSecret:
+    existingSecret: ""
+    key: "clientSecret"
+  cookieSecret:
+    existingSecret: ""
+    key: "cookieSecret"
+
 secrets:
   # If provided, seed OH_SECRET_KEY (settings encryption) and the
   # session API key from Kubernetes Secrets instead of letting the

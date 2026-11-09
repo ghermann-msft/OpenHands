@@ -3,6 +3,7 @@ import {
   getAgentServerSessionApiKey,
   getCookieAuthCloudHost,
   getLockedCloudHost,
+  isEntraBffEnabled,
 } from "../agent-server-config";
 import type { Backend } from "./types";
 
@@ -37,7 +38,8 @@ export function makeLockedCloudBackend(): Backend | null {
 
 /**
  * Construct the default local backend from environment/runtime config.
- * Returns null unless both a backend location and API key are available.
+ * Returns null unless a backend location and either an API key or the
+ * same-origin Entra BFF runtime flag are available.
  *
  * Used as the seed entry written to `openhands-backends` on first load;
  * if it returns null, onboarding is responsible for collecting backend
@@ -58,13 +60,13 @@ export function makeDefaultLocalBackend(): Backend | null {
   const host = getAgentServerBaseUrl();
   const apiKey = getAgentServerSessionApiKey();
 
-  if (!host || !apiKey) return null;
+  if (!host || (!apiKey && !isEntraBffEnabled())) return null;
 
   return {
     id: SEEDED_DEFAULT_BACKEND_ID,
     name: DEFAULT_LOCAL_BACKEND_NAME,
     host,
-    apiKey,
+    apiKey: apiKey ?? "",
     kind: "local",
   };
 }

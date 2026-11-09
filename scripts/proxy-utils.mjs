@@ -72,6 +72,7 @@ export function proxyServerInfoRequest(
   res,
   backendUrl,
   runtimeServicesInfo,
+  requestHeaders = {},
 ) {
   let backend;
   try {
@@ -90,6 +91,7 @@ export function proxyServerInfoRequest(
       method: req.method,
       headers: {
         ...req.headers,
+        ...requestHeaders,
         host: `${backend.hostname}:${backend.port}`,
       },
     },
@@ -374,7 +376,7 @@ export function createProxyHandlers({
     }
   }
 
-  function proxyWebSocket(req, socket, head, target) {
+  function proxyWebSocket(req, socket, head, target, { headers } = {}) {
     metrics.activeWebSockets += 1;
     metrics.totalWebSockets += 1;
     const finish = once(() => {
@@ -384,7 +386,7 @@ export function createProxyHandlers({
     socket.on("error", finish);
 
     try {
-      proxy.ws(req, socket, { target }, head).catch((err) => {
+      proxy.ws(req, socket, { target, headers }, head).catch((err) => {
         metrics.totalErrors += 1;
         if (!isBenignSocketError(err)) {
           console.error(

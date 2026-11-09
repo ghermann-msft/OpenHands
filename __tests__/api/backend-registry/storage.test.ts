@@ -23,6 +23,8 @@ afterEach(() => {
   window.sessionStorage.clear();
   delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_LOCK_TO_CLOUD__;
+  delete (window as unknown as Record<string, unknown>)
+    .__AGENT_CANVAS_ENTRA_BFF__;
   Object.defineProperty(window, "location", {
     configurable: true,
     value: ORIGINAL_LOCATION,
@@ -81,8 +83,45 @@ describe("backend-registry storage", () => {
       apiKey: "fresh-session-key",
       kind: "local",
     });
+
     expect(window.localStorage.getItem(BACKENDS_STORAGE_KEY)).not.toBeNull();
     expect(readStoredBackends()).toEqual(result);
+  });
+
+  it("seeds a same-origin Local backend without exposing an API key in Entra BFF mode", () => {
+    vi.stubEnv("VITE_SESSION_API_KEY", "");
+    (window as unknown as Record<string, unknown>).__AGENT_CANVAS_ENTRA_BFF__ =
+      true;
+
+    expect(readStoredBackends()).toEqual([
+      {
+        id: "default-local",
+        name: "Local",
+        host: window.location.origin,
+        apiKey: "",
+        kind: "local",
+      },
+    ]);
+  });
+
+  it("removes a previously stored Local API key when Entra BFF mode becomes authoritative", () => {
+    vi.stubEnv("VITE_SESSION_API_KEY", "");
+    (window as unknown as Record<string, unknown>).__AGENT_CANVAS_ENTRA_BFF__ =
+      true;
+    window.localStorage.setItem(
+      BACKENDS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "default-local",
+          name: "Local",
+          host: window.location.origin,
+          apiKey: "previous-browser-visible-key",
+          kind: "local",
+        },
+      ]),
+    );
+
+    expect(readStoredBackends()[0]?.apiKey).toBe("");
   });
 
   it("seeds a cookie-auth Cloud backend when locked to the current origin", () => {

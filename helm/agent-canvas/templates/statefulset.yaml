@@ -1,4 +1,7 @@
 {{- $fullName := include "agent-canvas.fullname" . -}}
+{{- if .Values.entra.enabled -}}
+{{- $_ := required "secrets.sessionApiKey.existingSecret is required when entra.enabled=true" .Values.secrets.sessionApiKey.existingSecret -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -79,6 +82,30 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.sessionApiKey.existingSecret }}
                   key: {{ .Values.secrets.sessionApiKey.key }}
+            {{- end }}
+            {{- if .Values.entra.enabled }}
+            - name: AGENT_CANVAS_ENTRA_TENANT_ID
+              value: {{ required "entra.tenantId is required when entra.enabled=true" .Values.entra.tenantId | quote }}
+            - name: AGENT_CANVAS_ENTRA_CLIENT_ID
+              value: {{ required "entra.clientId is required when entra.enabled=true" .Values.entra.clientId | quote }}
+            - name: AGENT_CANVAS_ENTRA_REDIRECT_URI
+              value: {{ required "entra.redirectUri is required when entra.enabled=true" .Values.entra.redirectUri | quote }}
+            - name: AGENT_CANVAS_ENTRA_AUTHORITY
+              value: {{ .Values.entra.authority | quote }}
+            - name: AGENT_CANVAS_ENTRA_SCOPES
+              value: {{ .Values.entra.scopes | quote }}
+            - name: AGENT_CANVAS_ENTRA_SESSION_MAX_AGE_SECONDS
+              value: {{ .Values.entra.sessionMaxAgeSeconds | quote }}
+            - name: AGENT_CANVAS_ENTRA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "entra.clientSecret.existingSecret is required when entra.enabled=true" .Values.entra.clientSecret.existingSecret }}
+                  key: {{ required "entra.clientSecret.key is required when entra.enabled=true" .Values.entra.clientSecret.key }}
+            - name: AGENT_CANVAS_ENTRA_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "entra.cookieSecret.existingSecret is required when entra.enabled=true" .Values.entra.cookieSecret.existingSecret }}
+                  key: {{ required "entra.cookieSecret.key is required when entra.enabled=true" .Values.entra.cookieSecret.key }}
             {{- end }}
             {{- with .Values.config.extraEnv }}
             {{- toYaml . | nindent 12 }}

@@ -144,6 +144,7 @@ COPY --from=frontend-build /build/build /opt/agent-canvas/frontend
 COPY scripts/static-server.mjs /opt/agent-canvas/static-server.mjs
 COPY scripts/bind-host.mjs /opt/agent-canvas/bind-host.mjs
 COPY scripts/proxy-utils.mjs /opt/agent-canvas/proxy-utils.mjs
+COPY scripts/entra-bff.mjs /opt/agent-canvas/entra-bff.mjs
 # static-server.mjs mounts the MARS web bridge, which pulls in these modules.
 COPY scripts/http-body.mjs /opt/agent-canvas/http-body.mjs
 COPY scripts/mars-web-bridge.mjs /opt/agent-canvas/mars-web-bridge.mjs
@@ -161,6 +162,7 @@ COPY --from=frontend-build /build/node_modules/sirv /opt/agent-canvas/node_modul
 COPY --from=frontend-build /build/node_modules/@polka /opt/agent-canvas/node_modules/@polka
 COPY --from=frontend-build /build/node_modules/mrmime /opt/agent-canvas/node_modules/mrmime
 COPY --from=frontend-build /build/node_modules/totalist /opt/agent-canvas/node_modules/totalist
+COPY --from=frontend-build /build/node_modules/jose /opt/agent-canvas/node_modules/jose
 # The agent-server reads public skills from the package the frontend bundles
 # (EXTENSIONS_PATH in entrypoint.sh) instead of cloning the extensions repo.
 COPY --from=frontend-build /build/node_modules/@openhands/extensions /opt/agent-canvas/node_modules/@openhands/extensions

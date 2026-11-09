@@ -6,7 +6,10 @@ all-in-one image (frontend + agent-server + automation) on Kubernetes as a
 RBAC.
 
 > [!WARNING]
-> This Helm chart is experimental. Agent Canvas is an unauthenticated, single-tenant application. This helm chart doesn't address scale or zero-downtime deployments.
+> This Helm chart is experimental and single-tenant. Optional Microsoft Entra
+> authentication protects access to the shared instance, but does not add
+> project-aware authorization, tenant isolation, scale, or zero-downtime
+> deployment support.
 
 ## When to use this
 
@@ -30,11 +33,10 @@ the [Security](#security) notes).
 
 ## Relationship to OpenHands Enterprise
 
-Agent Canvas is an **unauthenticated, single-tenant** application. This chart
-runs exactly that: **one** shared instance where all agents are comingled on
-the same pod and PVC, with no built-in auth, RBAC for users, or tenant
-isolation. It's well suited to a single team or individual running their own
-backend.
+Agent Canvas is a **single-tenant** application. This chart runs one shared
+instance where all authenticated users share the same agents, pod, and PVC.
+The optional native Microsoft Entra BFF authenticates users, but this milestone
+does not add project-aware RBAC, per-user authorization, or tenant isolation.
 
 [OpenHands Enterprise (OHE)](https://www.all-hands.ai/enterprise) is the
 productized upgrade path when you need a hardened, multi-user deployment. OHE
@@ -58,16 +60,16 @@ helm install agent-canvas ./helm/agent-canvas
 
 ## What gets deployed
 
-| Resource                            | Purpose                                                                            |
-| ----------------------------------- | ---------------------------------------------------------------------------------- |
-| `StatefulSet`                       | Single-replica pod running the all-in-one image (frontend + agent-server + automation). |
-| `PersistentVolumeClaim` (per pod)   | Backs `~/.openhands` and `~/workspace` (both mounted from the same PVC via `subPath`): settings, encrypted secrets, conversation history, automation SQLite DB, cloned repos, generated files. |
-| `Service` (`ClusterIP` by default)  | Cluster-internal endpoint on port 8000.                                            |
-| `Service` (headless)                | Required by the `StatefulSet` for stable pod DNS.                                  |
-| `ServiceAccount`                    | Stable identity the pod runs under. Bindings depend on `rbac.*`.                   |
-| `Ingress` (optional)                | External HTTP(S) entry point with the usual class/annotations/TLS knobs.           |
-| `RoleBinding` (per namespace)       | When `rbac.enabled=true`, one per entry in `rbac.namespaces`, bound to the built-in `admin` ClusterRole. |
-| `ClusterRoleBinding` (optional)     | When `rbac.clusterAdmin=true`, binds the SA to `cluster-admin` cluster-wide.       |
+| Resource                           | Purpose                                                                                                                                                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StatefulSet`                      | Single-replica pod running the all-in-one image (frontend + agent-server + automation).                                                                                                        |
+| `PersistentVolumeClaim` (per pod)  | Backs `~/.openhands` and `~/workspace` (both mounted from the same PVC via `subPath`): settings, encrypted secrets, conversation history, automation SQLite DB, cloned repos, generated files. |
+| `Service` (`ClusterIP` by default) | Cluster-internal endpoint on port 8000.                                                                                                                                                        |
+| `Service` (headless)               | Required by the `StatefulSet` for stable pod DNS.                                                                                                                                              |
+| `ServiceAccount`                   | Stable identity the pod runs under. Bindings depend on `rbac.*`.                                                                                                                               |
+| `Ingress` (optional)               | External HTTP(S) entry point with the usual class/annotations/TLS knobs.                                                                                                                       |
+| `RoleBinding` (per namespace)      | When `rbac.enabled=true`, one per entry in `rbac.namespaces`, bound to the built-in `admin` ClusterRole.                                                                                       |
+| `ClusterRoleBinding` (optional)    | When `rbac.clusterAdmin=true`, binds the SA to `cluster-admin` cluster-wide.                                                                                                                   |
 
 ## Persistence
 
@@ -151,6 +153,54 @@ The agent-server uses WebSockets on `/sockets`, so long
 `proxy-read-timeout` / `proxy-send-timeout` values are recommended when
 using `ingress-nginx`. File uploads honor `proxy-body-size`.
 
+## Microsoft Entra authentication
+
+The optional BFF mode uses the server-side authorization-code flow with PKCE.
+The browser receives only secure HttpOnly cookies; Entra tokens and the
+internal Agent Server session key are never written to browser JavaScript or
+localStorage. `/alive`, `/health`, and `/ready` remain unauthenticated for
+Kubernetes probes.
+
+Use the existing single-tenant app registration for each candidate/primary
+hostname by registering the exact callback URI
+`https://<host>/auth/callback`. Store credentials in Kubernetes Secrets:
+
+```bash
+kubectl -n openhands create secret generic agent-canvas-entra \
+  --from-literal=clientSecret='<entra-client-secret>' \
+  --from-literal=cookieSecret='<at-least-32-random-bytes>'
+
+kubectl -n openhands create secret generic agent-canvas-internal \
+  --from-literal=sessionApiKey='<strong-random-internal-key>'
+```
+
+Then configure the release without putting secret material in values:
+
+```yaml
+entra:
+  enabled: true
+  tenantId: 00000000-0000-0000-0000-000000000000
+  clientId: 11111111-1111-1111-1111-111111111111
+  redirectUri: https://candidate.example.com/auth/callback
+  clientSecret:
+    existingSecret: agent-canvas-entra
+    key: clientSecret
+  cookieSecret:
+    existingSecret: agent-canvas-entra
+    key: cookieSecret
+
+secrets:
+  sessionApiKey:
+    existingSecret: agent-canvas-internal
+    key: sessionApiKey
+```
+
+Use the primary hostname in `entra.redirectUri` for the primary release.
+Configuration is fail-fast: enabling Entra without tenant, client, redirect,
+client-secret Secret reference, cookie-secret Secret reference, or internal
+session-key Secret reference prevents the chart from rendering or the container
+from starting.
+
 ## Common overrides
 
 Provide an LLM key via secret:
@@ -188,19 +238,18 @@ config:
 
 The agent server can read and write the pod filesystem, execute shell
 commands, and — when RBAC is enabled — mutate the Kubernetes cluster it runs
-in. There is no built-in authentication in Agent Canvas, so treat the release
-namespace as trusted infrastructure:
+in. Treat the release namespace as trusted infrastructure:
 
-- Put it behind an **authenticated** ingress (oauth2-proxy, Cloudflare Access,
-  tailscale-serve, etc.) before exposing it to the internet.
+- Enable the native Entra BFF or put it behind an authenticated ingress before
+  exposing it to the internet.
 - Avoid a bare `LoadBalancer` — the agent server accepts any request with the
   right `LOCAL_BACKEND_API_KEY`, so exposing it directly means anyone who can
   guess the key can drive the agent.
 - Only turn on `rbac.clusterAdmin` when you truly need cluster-wide access;
   prefer scoping to specific namespaces via `rbac.namespaces`.
 
-For authentication, role-based access control, multi-tenancy, and isolated
-agent sandboxes, see [OpenHands Enterprise](#relationship-to-openhands-enterprise).
+For role-based access control, multi-tenancy, and isolated agent sandboxes, see
+[OpenHands Enterprise](#relationship-to-openhands-enterprise).
 
 ## Uninstall
 
