@@ -170,7 +170,7 @@ describe("AgentServerUIProviders", () => {
     expect(getI18n()).toBe(getDefaultI18n());
   });
 
-  it("passes disabled and runtime analytics configuration to TelemetryProvider", () => {
+  it("keeps telemetry disabled when runtime analytics configuration is provided", () => {
     telemetryProviderMock.mockClear();
 
     const noAnalyticsView = render(
@@ -201,13 +201,7 @@ describe("AgentServerUIProviders", () => {
     );
 
     expect(telemetryProviderMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        config: {
-          apiKey: analytics.apiKey,
-          apiHost: analytics.apiHost,
-          uiHost: analytics.uiHost,
-        },
-      }),
+      expect.objectContaining({ config: false }),
     );
   });
 

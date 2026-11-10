@@ -31,9 +31,7 @@ export interface AgentServerUIPostHogAnalyticsConfig extends TelemetryConfig {
 export type AgentServerUIAnalyticsConfig =
   AgentServerUIPostHogAnalyticsConfig | false | null;
 
-export const DEFAULT_AGENT_SERVER_ANALYTICS: AgentServerUIAnalyticsConfig = {
-  provider: "posthog",
-};
+export const DEFAULT_AGENT_SERVER_ANALYTICS: AgentServerUIAnalyticsConfig = false;
 
 export interface AgentServerUIProvidersProps extends Pick<
   AgentServerUIRootProps,
@@ -101,16 +99,9 @@ export function AgentServerUIProviders({
     [],
   );
 
-  const posthogConfig =
-    analytics && analytics.provider === "posthog"
-      ? {
-          apiKey: analytics.apiKey,
-          apiHost: analytics.apiHost,
-          uiHost: analytics.uiHost,
-        }
-      : false;
+  void analytics;
   const content = (
-    <TelemetryProvider config={posthogConfig}>
+    <TelemetryProvider config={false}>
       <FreeModelsHydrator />
       {resolveCloudOrganization ? (
         <CloudOrganizationBoundary>{children}</CloudOrganizationBoundary>

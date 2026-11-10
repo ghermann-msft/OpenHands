@@ -85,9 +85,6 @@ jobs:
       - name: Build macOS DMG (${{ matrix.arch }})
         env:
           # PR/manual runs get the staging key (same split as docker.yml).
-          # Both are public client-side keys stored as repo vars — empty on
-          # fork PRs, which simply disables analytics in the built app.
-          VITE_POSTHOG_API_KEY: ${{ vars.POSTHOG_STAGING_KEY }}
           # Authenticates download-uv.mjs's GitHub API version lookup so it
           # doesn't hit the unauthenticated per-IP rate limit on shared runners.
           GITHUB_TOKEN: ${{ github.token }}
@@ -167,9 +164,6 @@ jobs:
       - name: Build universal macOS DMG
         env:
           # Production analytics key only for release builds (same split as
-          # docker.yml); workflow_dispatch runs get the staging key. Both are
-          # public client-side keys stored as repo vars.
-          VITE_POSTHOG_API_KEY: ${{ github.event_name == 'release' && vars.POSTHOG_PROD_KEY || vars.POSTHOG_STAGING_KEY }}
           # Authenticates download-uv.mjs's GitHub API version lookup so it
           # doesn't hit the unauthenticated per-IP rate limit on shared runners.
           GITHUB_TOKEN: ${{ github.token }}

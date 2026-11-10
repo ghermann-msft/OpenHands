@@ -179,6 +179,11 @@ describe("Halo deployment automation", () => {
       "api://9071e6b8-c981-4a11-b975-256cc4b7b841/access_as_user",
     );
     expect(values).toContain("secretProviderClass: openhands-halo-secrets");
+    expect(values).toContain('name: DO_NOT_TRACK\n      value: "1"');
+    expect(values).toContain('name: VITE_DO_NOT_TRACK\n      value: "1"');
+    expect(values).toContain(
+      'name: AGENT_CANVAS_DISABLE_TELEMETRY\n      value: "1"',
+    );
     expect(values).not.toContain("halo-primary-entra-client-secret");
   });
 });

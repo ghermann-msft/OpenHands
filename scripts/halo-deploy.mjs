@@ -782,6 +782,12 @@ secrets:
     key: ohSecretKey
 config:
   extraEnv:
+    - name: DO_NOT_TRACK
+      value: "1"
+    - name: VITE_DO_NOT_TRACK
+      value: "1"
+    - name: AGENT_CANVAS_DISABLE_TELEMETRY
+      value: "1"
     - name: AUTOMATION_KV_SECRET
       valueFrom:
         secretKeyRef:

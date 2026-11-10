@@ -20,7 +20,15 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { server as mswServer } from "#/mocks/node";
 import {
   buildAgentServerAutomationEnv,
@@ -284,15 +292,7 @@ describe("buildAgentServerAutomationEnv", () => {
 });
 
 describe("buildAutomationTelemetryEnv", () => {
-  it("provides the shared frontend PostHog key to automation by default", () => {
-    expect(buildAutomationTelemetryEnv({})).toEqual({
-      AUTOMATION_POSTHOG_API_KEY:
-        "phc_kBtz5nKmxVRRQ7HtPwr2QX9eMC5j65zE86QKocVNwb4U",
-      AUTOMATION_POSTHOG_HOST: "https://us.i.posthog.com",
-    });
-  });
-
-  it("prefers explicit automation telemetry settings", () => {
+  it("forces automation telemetry off and ignores attempted overrides", () => {
     expect(
       buildAutomationTelemetryEnv({
         AUTOMATION_POSTHOG_API_KEY: "phc_auto",
@@ -301,25 +301,10 @@ describe("buildAutomationTelemetryEnv", () => {
         VITE_POSTHOG_HOST: "https://frontend.example",
       }),
     ).toEqual({
-      AUTOMATION_POSTHOG_API_KEY: "phc_auto",
-      AUTOMATION_POSTHOG_HOST: "https://auto.example",
+      DO_NOT_TRACK: "1",
+      AUTOMATION_POSTHOG_API_KEY: "",
+      AUTOMATION_POSTHOG_HOST: "",
     });
-  });
-
-  it("uses explicit frontend telemetry settings when automation settings are absent", () => {
-    expect(
-      buildAutomationTelemetryEnv({
-        VITE_POSTHOG_API_KEY: "phc_frontend",
-        VITE_POSTHOG_HOST: "https://frontend.example",
-      }),
-    ).toEqual({
-      AUTOMATION_POSTHOG_API_KEY: "phc_frontend",
-      AUTOMATION_POSTHOG_HOST: "https://frontend.example",
-    });
-  });
-
-  it("does not default automation telemetry when do-not-track is enabled", () => {
-    expect(buildAutomationTelemetryEnv({ VITE_DO_NOT_TRACK: "1" })).toEqual({});
   });
 });
 

@@ -489,57 +489,29 @@ describe("buildAgentServerTelemetryEnv", () => {
     extensionsDir: "/tmp/node_modules/@openhands/extensions",
   };
 
-  it("configures PostHog telemetry by default without seeding consent", () => {
-    expect(buildAgentServerTelemetryEnv({})).toEqual({
-      OH_TELEMETRY_EXPORTER: "posthog",
-      OH_TELEMETRY_POSTHOG_API_KEY:
-        "phc_kBtz5nKmxVRRQ7HtPwr2QX9eMC5j65zE86QKocVNwb4U",
-      OH_TELEMETRY_POSTHOG_HOST: "https://us.i.posthog.com",
-    });
-  });
-
-  it("prefers explicit agent-server telemetry settings", () => {
+  it("forces agent-server telemetry off and ignores attempted overrides", () => {
     expect(
       buildAgentServerTelemetryEnv({
-        OH_TELEMETRY_EXPORTER: "http",
-        OH_TELEMETRY_CONSENT: "denied",
-        OH_TELEMETRY_POSTHOG_API_KEY: "phc_agent",
-        OH_TELEMETRY_POSTHOG_HOST: "https://agent.example",
-        VITE_POSTHOG_API_KEY: "phc_frontend",
-        VITE_POSTHOG_HOST: "https://frontend.example",
+        OH_TELEMETRY_EXPORTER: "posthog",
+        OH_TELEMETRY_POSTHOG_API_KEY: "ignored",
+        VITE_POSTHOG_API_KEY: "ignored",
       }),
     ).toEqual({
-      OH_TELEMETRY_EXPORTER: "http",
-      OH_TELEMETRY_CONSENT: "denied",
-      OH_TELEMETRY_POSTHOG_API_KEY: "phc_agent",
-      OH_TELEMETRY_POSTHOG_HOST: "https://agent.example",
-    });
-  });
-
-  it("uses frontend telemetry settings when agent-server settings are absent", () => {
-    expect(
-      buildAgentServerTelemetryEnv({
-        VITE_POSTHOG_API_KEY: "phc_frontend",
-        VITE_POSTHOG_HOST: "https://frontend.example",
-      }),
-    ).toEqual({
-      OH_TELEMETRY_EXPORTER: "posthog",
-      OH_TELEMETRY_POSTHOG_API_KEY: "phc_frontend",
-      OH_TELEMETRY_POSTHOG_HOST: "https://frontend.example",
-    });
-  });
-
-  it("maps frontend do-not-track to the agent-server kill switch", () => {
-    expect(buildAgentServerTelemetryEnv({ VITE_DO_NOT_TRACK: "1" })).toEqual({
       DO_NOT_TRACK: "1",
+      OH_TELEMETRY_EXPORTER: "",
+      OH_TELEMETRY_POSTHOG_API_KEY: "",
+      OH_TELEMETRY_POSTHOG_HOST: "",
+      OH_TELEMETRY_HTTP_ENDPOINT: "",
+      OH_TELEMETRY_HTTP_TOKEN: "",
     });
   });
 
-  it("includes telemetry defaults in the full agent-server environment", () => {
+  it("includes the telemetry kill switch in the full agent-server environment", () => {
     const env = buildAgentServerEnv(agentServerConfig, { env: {} });
 
     expect(env).toMatchObject({
-      OH_TELEMETRY_EXPORTER: "posthog",
+      DO_NOT_TRACK: "1",
+      OH_TELEMETRY_EXPORTER: "",
       OH_SESSION_API_KEYS_0: "session",
     });
   });
@@ -632,8 +604,6 @@ describe("buildAgentServerCommand", () => {
       "openhands-tools==1.60.1",
       "--with",
       "openhands-workspace==1.60.1",
-      "--with",
-      "posthog>=6,<7",
       "agent-server",
       "--import-modules",
       "canvas_ui_tool",
@@ -658,8 +628,6 @@ describe("buildAgentServerCommand", () => {
       "openhands-tools==1.18.0",
       "--with",
       "openhands-workspace==1.18.0",
-      "--with",
-      "posthog>=6,<7",
       "agent-server",
       "--import-modules",
       "canvas_ui_tool",
@@ -685,8 +653,6 @@ describe("buildAgentServerCommand", () => {
       "git+https://github.com/OpenHands/software-agent-sdk@feature-branch#subdirectory=openhands-tools",
       "--with",
       "git+https://github.com/OpenHands/software-agent-sdk@feature-branch#subdirectory=openhands-workspace",
-      "--with",
-      "posthog>=6,<7",
       "agent-server",
       "--import-modules",
       "canvas_ui_tool",
@@ -710,8 +676,6 @@ describe("buildAgentServerCommand", () => {
       "git+https://github.com/OpenHands/software-agent-sdk@abc1234#subdirectory=openhands-tools",
       "--with",
       "git+https://github.com/OpenHands/software-agent-sdk@abc1234#subdirectory=openhands-workspace",
-      "--with",
-      "posthog>=6,<7",
       "agent-server",
       "--import-modules",
       "canvas_ui_tool",
@@ -750,8 +714,6 @@ describe("buildAgentServerCommand", () => {
       path.join(sdk, "openhands-tools"),
       "--with-editable",
       path.join(sdk, "openhands-workspace"),
-      "--with",
-      "posthog>=6,<7",
       "agent-server",
       "--import-modules",
       "canvas_ui_tool",

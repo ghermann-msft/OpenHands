@@ -159,11 +159,10 @@ describe("AppSettingsScreen", () => {
 
     renderAppSettingsScreen();
 
-    const analyticsSwitch = await screen.findByTestId(
-      "enable-analytics-switch",
-    );
-
-    expect(analyticsSwitch).toBeInTheDocument();
+    await screen.findByTestId("enable-sound-notifications-switch");
+    expect(
+      screen.queryByTestId("enable-analytics-switch"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("git-user-name-input")).toHaveValue("octocat");
     expect(screen.getByTestId("git-user-email-input")).toHaveValue(
       "octocat@example.com",
@@ -178,7 +177,7 @@ describe("AppSettingsScreen", () => {
     ).toHaveValue("SETTINGS$TITLE_GENERATION_AUTOMATIC");
   });
 
-  it("renders the analytics toggle as checked and disabled for cloud backends", async () => {
+  it("does not render analytics controls for cloud backends", async () => {
     activeBackendState.kind = "cloud";
     vi.spyOn(SettingsService, "getSettings").mockResolvedValue(
       buildSettings({ user_consents_to_analytics: false }),
@@ -186,16 +185,10 @@ describe("AppSettingsScreen", () => {
 
     renderAppSettingsScreen();
 
-    const analyticsSwitch = await screen.findByTestId(
-      "enable-analytics-switch",
-    );
-    const submitButton = screen.getByTestId("submit-button");
-
-    expect(analyticsSwitch).toBeChecked();
-    expect(analyticsSwitch).toBeDisabled();
-
-    await userEvent.click(analyticsSwitch);
-    expect(submitButton).toBeDisabled();
+    await screen.findByTestId("enable-sound-notifications-switch");
+    expect(
+      screen.queryByTestId("enable-analytics-switch"),
+    ).not.toBeInTheDocument();
   });
 
   it("hides the Getting Started checklist switch on a canvas locked to its Cloud host", async () => {

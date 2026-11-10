@@ -14,7 +14,6 @@ import {
 import { CONVERSATION_HANDLERS } from "./conversation-handlers";
 import { AUTH_HANDLERS } from "./auth-handlers";
 import { FEEDBACK_HANDLERS } from "./feedback-handlers";
-import { ANALYTICS_HANDLERS } from "./analytics-handlers";
 import {
   AUTOMATION_HANDLERS,
   resetAutomationMockData,
@@ -38,7 +37,6 @@ export const handlers = [
   ...CONVERSATION_HANDLERS,
   ...AUTH_HANDLERS,
   ...FEEDBACK_HANDLERS,
-  ...ANALYTICS_HANDLERS,
   ...AUTOMATION_HANDLERS,
   ...MCP_HANDLERS,
   ...WORKSPACES_HANDLERS,

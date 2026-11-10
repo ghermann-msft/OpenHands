@@ -113,8 +113,6 @@ const DEFAULT_AUTOMATION_VERSION = SHARED_DEFAULTS.versions.automation;
 const DEFAULT_AUTOMATION_SDK_VERSION = SHARED_DEFAULTS.versions.agentServer;
 const DEFAULT_BACKEND_PORT = SHARED_DEFAULTS.ports.agentServer;
 const DEFAULT_AUTOMATION_PORT = SHARED_DEFAULTS.ports.automation;
-const DEFAULT_POSTHOG_API_KEY = SHARED_DEFAULTS.telemetry.posthogApiKey;
-const DEFAULT_POSTHOG_HOST = SHARED_DEFAULTS.telemetry.posthogHost;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Terminal Styling
@@ -985,20 +983,11 @@ function buildAgentServerAutomationEnv(config) {
 }
 
 function buildAutomationTelemetryEnv(env = process.env) {
-  const telemetryDisabled = env.VITE_DO_NOT_TRACK === "1";
-  const apiKey =
-    env.AUTOMATION_POSTHOG_API_KEY ||
-    env.VITE_POSTHOG_API_KEY ||
-    (telemetryDisabled ? "" : DEFAULT_POSTHOG_API_KEY);
-
-  if (!apiKey) return {};
-
+  void env;
   return {
-    AUTOMATION_POSTHOG_API_KEY: apiKey,
-    AUTOMATION_POSTHOG_HOST:
-      env.AUTOMATION_POSTHOG_HOST ||
-      env.VITE_POSTHOG_HOST ||
-      DEFAULT_POSTHOG_HOST,
+    DO_NOT_TRACK: "1",
+    AUTOMATION_POSTHOG_API_KEY: "",
+    AUTOMATION_POSTHOG_HOST: "",
   };
 }
 

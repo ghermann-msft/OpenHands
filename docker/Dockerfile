@@ -37,13 +37,9 @@ RUN npm ci
 COPY . .
 
 # Build the static frontend.
-# VITE_POSTHOG_API_KEY is a public client key baked into the bundle. CI passes
-# production for tagged releases and staging for PR/main images.
 # VITE_BASE_PATH is baked into React Router/Vite so the Docker image serves
 # Canvas under the Cloud subpath instead of a dedicated hostname.
-ARG VITE_POSTHOG_API_KEY=""
 ARG VITE_BASE_PATH="/canvas"
-ENV VITE_POSTHOG_API_KEY=${VITE_POSTHOG_API_KEY}
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
@@ -64,8 +60,6 @@ RUN node -e " \
     'CONFIG_AUTOMATION_DB=' + c.paths.automationDb, \
     'CONFIG_CANVAS_BASE_PATH=' + c.paths.canvasBasePath, \
     'CONFIG_VSCODE_BASE_PATH=' + c.paths.vscodeBasePath, \
-    'CONFIG_POSTHOG_API_KEY=' + c.telemetry.posthogApiKey, \
-    'CONFIG_POSTHOG_HOST=' + c.telemetry.posthogHost, \
   ]; \
   require('fs').writeFileSync('/tmp/defaults.env', lines.join('\n') + '\n'); \
 "
@@ -79,7 +73,6 @@ ARG AGENT_SERVER_SDK_GIT_REF=""
 ARG OPENHANDS_BUILD_GIT_SHA=unknown
 ARG OPENHANDS_BUILD_GIT_REF=unknown
 ARG VITE_BASE_PATH="/canvas"
-ARG VITE_POSTHOG_API_KEY=""
 
 ARG AGENT_CANVAS_VERSION=dev
 LABEL org.opencontainers.image.title="agent-canvas"
@@ -91,7 +84,6 @@ LABEL org.opencontainers.image.revision="${OPENHANDS_BUILD_GIT_SHA}"
 ENV AGENT_CANVAS_BUILD_GIT_SHA=${OPENHANDS_BUILD_GIT_SHA}
 ENV AGENT_CANVAS_BUILD_GIT_REF=${OPENHANDS_BUILD_GIT_REF}
 ENV AGENT_CANVAS_BASE_PATH=${VITE_BASE_PATH}
-ENV VITE_POSTHOG_API_KEY=${VITE_POSTHOG_API_KEY}
 
 USER root
 

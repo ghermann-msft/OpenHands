@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import {
   getTelemetryConsent,
   setTelemetryConsent,
-  trackInstall,
-  trackSessionStart,
   trackEvent,
   clearTelemetryData,
   subscribeTelemetryConsent,
@@ -30,64 +28,15 @@ export interface UseTelemetryReturn {
 /**
  * Hook for managing telemetry consent and tracking.
  *
- * TRACKING BEHAVIOR:
- * - Install event: Sent immediately on first mount, regardless of consent status.
- *   This is anonymous and allows us to track library adoption.
- * - Session/custom events: Only sent after user grants consent.
- *
- * This hook handles:
- * - Sending install event immediately on first use
- * - Showing consent prompt for ongoing tracking
- * - Tracking session start when consent is granted
- * - Providing a simple API for tracking custom events
- *
- * @example
- * ```tsx
- * function MyComponent() {
- *   const { consent, showConsentPrompt, grantConsent, denyConsent, track } = useTelemetry();
- *
- *   useEffect(() => {
- *     track('component_mounted', { component: 'MyComponent' });
- *   }, [track]);
- *
- *   if (showConsentPrompt) {
- *     return <ConsentBanner onAccept={grantConsent} onDecline={denyConsent} />;
- *   }
- *
- *   return <div>...</div>;
- * }
- * ```
+ * Telemetry is permanently disabled in this distribution. The hook remains as
+ * a compatibility API for consumers that still call tracking helpers.
  */
 export function useTelemetry(): UseTelemetryReturn {
   const consent = useSyncExternalStore<TelemetryConsent>(
     subscribeTelemetryConsent,
     getTelemetryConsent,
-    () => "pending",
+    () => "denied",
   );
-
-  // Track install immediately on first mount (regardless of consent)
-  // This only fires once per installation due to localStorage deduplication
-  //
-  // PRIVACY NOTE: This sends an anonymous install event before the user grants consent.
-  // Data collected: browser platform, user agent, referrer, origin URL, embedded status.
-  // A random PostHog distinct_id is generated (not tied to user identity).
-  // Users can prevent this by setting VITE_DO_NOT_TRACK=1 or browser's DNT setting.
-  // This approach uses "legitimate interest" under GDPR Article 6(1)(f) for basic
-  // aggregate analytics. No cross-site tracking, no advertising, no user profiles.
-  const hasTrackedInstall = useRef(false);
-  useEffect(() => {
-    if (!hasTrackedInstall.current) {
-      hasTrackedInstall.current = true;
-      void trackInstall();
-    }
-  }, []);
-
-  // Track session start when consent is granted
-  useEffect(() => {
-    if (consent === "granted") {
-      void trackSessionStart();
-    }
-  }, [consent]);
 
   const grantConsent = useCallback(() => setTelemetryConsent("granted"), []);
 
@@ -104,8 +53,8 @@ export function useTelemetry(): UseTelemetryReturn {
 
   return {
     consent,
-    isEnabled: consent === "granted",
-    showConsentPrompt: consent === "pending",
+    isEnabled: false,
+    showConsentPrompt: false,
     grantConsent,
     denyConsent,
     track,

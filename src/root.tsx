@@ -44,7 +44,6 @@ import { useConfig } from "#/hooks/query/use-config";
 import { useRestoreMarsTunnels } from "#/hooks/use-mars-tunnel-backend";
 import { QUERY_KEYS } from "#/hooks/query/query-keys";
 import { AgentServerUIRoot } from "#/components/providers";
-import { TelemetryConsentBanner } from "#/components/features/analytics/telemetry-consent-banner";
 import { buildAgentCanvasPath } from "#/utils/base-path";
 import { useOnboardingCompletion } from "#/components/features/onboarding/use-onboarding-completion";
 import { NavigationProvider } from "#/context/navigation-context";
@@ -373,12 +372,7 @@ export default function App() {
     isCloudBackendApiKeyOrNetworkHealthError(activeCloudHealth.lastError);
 
   if (showFirstRunOnboarding) {
-    return (
-      <>
-        <FirstRunOnboardingScreen onClose={markCompleted} />
-        <TelemetryConsentBanner />
-      </>
-    );
+    return <FirstRunOnboardingScreen onClose={markCompleted} />;
   }
 
   if (
@@ -412,10 +406,5 @@ export default function App() {
     return <MissingAgentServerScreen />;
   }
 
-  return (
-    <>
-      <Outlet />
-      <TelemetryConsentBanner />
-    </>
-  );
+  return <Outlet />;
 }

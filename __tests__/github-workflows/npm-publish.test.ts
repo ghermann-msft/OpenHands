@@ -45,39 +45,26 @@ describe("npm publish workflow", () => {
     );
   });
 
-  it("builds both package surfaces with the production PostHog key", () => {
+  it("builds both package surfaces without telemetry configuration", () => {
     const workflow = read(".github/workflows/npm-publish.yml");
     const buildAppStep = workflow.match(
       /- name: Build app[\s\S]*?(?=\n\s*- name: Build library)/,
     )?.[0];
     const buildLibraryStep = workflow.match(
-      /- name: Build library[\s\S]*?(?=\n\s*- name: Bake package telemetry defaults)/,
+      /- name: Build library[\s\S]*?(?=\n\s*- name: Verify package contents)/,
     )?.[0];
 
     expect(buildAppStep).toBeTruthy();
-    expect(buildAppStep).toContain(
-      "VITE_POSTHOG_API_KEY: ${{ vars.POSTHOG_PROD_KEY }}",
-    );
     expect(buildAppStep).toContain("npm run build");
-    expect(buildLibraryStep).toContain(
-      "VITE_POSTHOG_API_KEY: ${{ vars.POSTHOG_PROD_KEY }}",
-    );
     expect(buildLibraryStep).toContain("npm run build:lib");
+    expect(workflow).not.toContain("POSTHOG");
   });
 
-  it("passes the selected PostHog key through Docker's supported build arg", () => {
+  it("does not expose telemetry build arguments", () => {
     const workflow = read(".github/workflows/docker.yml");
     const dockerfile = read("docker/Dockerfile");
 
-    expect(workflow).toContain(
-      "VITE_POSTHOG_API_KEY=${{ steps.prep.outputs.posthog_api_key }}",
-    );
-    expect(workflow).not.toContain("VITE_POSTHOG_CLIENT_KEY");
-    expect(workflow).not.toContain("vite_app_env");
-    expect(dockerfile).toContain('ARG VITE_POSTHOG_API_KEY=""');
-    expect(dockerfile).toContain(
-      "ENV VITE_POSTHOG_API_KEY=${VITE_POSTHOG_API_KEY}",
-    );
-    expect(dockerfile).not.toContain("VITE_APP_ENV");
+    expect(workflow).not.toContain("POSTHOG");
+    expect(dockerfile).not.toContain("POSTHOG");
   });
 });

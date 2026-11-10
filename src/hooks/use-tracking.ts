@@ -41,9 +41,8 @@ export type OnboardingLinkSurface = "landing_checklist" | "onboarding_modal";
  * Hook that provides tracking functions with automatic data collection
  * from available hooks (settings, etc.)
  *
- * All events require explicit user consent. The shared PostHog client enforces
- * the canonical consent configured by telemetry.ts; this hook must not gate on
- * backend settings because they can be stale while a backend changes.
+ * The compatibility tracking API is disabled by telemetry.ts. Backend settings
+ * remain irrelevant because they can be stale while a backend changes.
  */
 export const useTracking = () => {
   const { backend } = useActiveBackend();
@@ -71,9 +70,8 @@ export const useTracking = () => {
   };
 
   /**
-   * PostHog enforces the canonical consent state configured by telemetry.ts.
-   * Backend settings are not a capture gate because they can be stale while a
-   * backend is being added or switched.
+   * telemetry.ts is the canonical capture gate and permanently disables these
+   * calls in this distribution.
    */
   const track = (event: string, properties: Record<string, unknown> = {}) => {
     setTelemetryBackendContext(getBackendTelemetryContext());
