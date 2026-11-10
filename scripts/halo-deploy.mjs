@@ -665,7 +665,7 @@ image:
   digest: ${digest}
   pullPolicy: IfNotPresent
 serviceAccount:
-  create: true
+  create: false
   name: ${env.serviceAccount}
   automountServiceAccountToken: false
   annotations:
