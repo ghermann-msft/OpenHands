@@ -105,6 +105,9 @@ describe("Halo deployment automation", () => {
     expect(originGroupArgs).toContain("--successful-samples-required");
     expect(nsgArgs).toContain("AzureFrontDoor.Backend");
     expect(nsgArgs).toContain("80");
+    expect(nsgArgs).toContain(
+      "uh-unrealhands-dev-acukmd-application-gateway-nsg",
+    );
     expect(waf.properties.customRules.rules[0]).toMatchObject({
       action: "Block",
       matchConditions: [

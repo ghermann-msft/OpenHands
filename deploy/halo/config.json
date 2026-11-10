@@ -14,7 +14,7 @@
       "207.68.149.128/28"
     ],
     "applicationGatewayOriginHost": "unrealhands-dev-origin-acukmdbk.westus3.cloudapp.azure.com",
-    "applicationGatewayNsg": "uh-unrealhands-dev-acukmdbk-application-gateway-nsg"
+    "applicationGatewayNsg": "uh-unrealhands-dev-acukmd-application-gateway-nsg"
   },
   "source": {
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
