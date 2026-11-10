@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   appGatewayNsgRuleArgs,
   buildNodePoolCreateArgs,
+  frontDoorOriginCreateArgs,
   frontDoorOriginGroupCreateArgs,
   imageReference,
   normalizeDigest,
@@ -94,6 +95,7 @@ describe("Halo deployment automation", () => {
 
   it("restricts Front Door clients and its Application Gateway origin", () => {
     const originGroupArgs = frontDoorOriginGroupCreateArgs("candidate");
+    const originArgs = frontDoorOriginCreateArgs("candidate");
     const nsgArgs = appGatewayNsgRuleArgs();
     const waf = renderFrontDoorWafPolicy();
     const securityPolicy = renderFrontDoorSecurityPolicy([
@@ -103,6 +105,8 @@ describe("Halo deployment automation", () => {
 
     expect(originGroupArgs).toContain("--sample-size");
     expect(originGroupArgs).toContain("--successful-samples-required");
+    expect(originArgs).toContain("--origin-host-header");
+    expect(originArgs).not.toContain("--certificate-name-check-enabled");
     expect(nsgArgs).toContain("AzureFrontDoor.Backend");
     expect(nsgArgs).toContain("80");
     expect(nsgArgs).toContain(

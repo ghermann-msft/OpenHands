@@ -763,6 +763,36 @@ export function frontDoorOriginGroupCreateArgs(environment) {
   ];
 }
 
+export function frontDoorOriginCreateArgs(environment) {
+  const env = config.environments[environment];
+  return [
+    "afd",
+    "origin",
+    "create",
+    ...frontDoorCommonArgs(),
+    "--origin-group-name",
+    env.frontDoorOriginGroup,
+    "--origin-name",
+    env.frontDoorOrigin,
+    "--host-name",
+    config.azure.applicationGatewayOriginHost,
+    "--origin-host-header",
+    env.frontDoorHost,
+    "--http-port",
+    "80",
+    "--https-port",
+    "443",
+    "--enabled-state",
+    "Enabled",
+    "--priority",
+    "1",
+    "--weight",
+    "1000",
+    "--output",
+    "none",
+  ];
+}
+
 export function appGatewayNsgRuleArgs() {
   return [
     "network",
@@ -950,34 +980,7 @@ function ensureFrontDoor(environment) {
     "none",
   ]);
   if (origin.status !== 0) {
-    az([
-      "afd",
-      "origin",
-      "create",
-      ...common,
-      "--origin-group-name",
-      env.frontDoorOriginGroup,
-      "--origin-name",
-      env.frontDoorOrigin,
-      "--host-name",
-      config.azure.applicationGatewayOriginHost,
-      "--origin-host-header",
-      env.frontDoorHost,
-      "--http-port",
-      "80",
-      "--https-port",
-      "443",
-      "--enabled-state",
-      "Enabled",
-      "--priority",
-      "1",
-      "--weight",
-      "1000",
-      "--certificate-name-check-enabled",
-      "false",
-      "--output",
-      "none",
-    ]);
+    az(frontDoorOriginCreateArgs(environment));
   }
   const route = tryRun("az", [
     "afd",
