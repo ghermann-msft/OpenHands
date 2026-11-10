@@ -672,6 +672,15 @@ serviceAccount:
     azure.workload.identity/client-id: ${quote(runtimeClientId)}
 podLabels:
   azure.workload.identity/use: "true"
+nodeSelector:
+  kubernetes.io/os: linux
+  kubernetes.io/arch: amd64
+  agentpool: ${config.runtime.nodePool}
+tolerations:
+  - key: ${config.runtime.nodeTaintKey}
+    operator: Equal
+    value: ${config.runtime.nodeTaintValue}
+    effect: NoSchedule
 rbac:
   enabled: false
 ingress:

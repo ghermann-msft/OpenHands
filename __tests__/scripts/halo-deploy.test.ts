@@ -143,6 +143,8 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-session-api-key");
     expect(values).toContain(`digest: ${digest}`);
     expect(values).toContain("serviceAccount:\n  create: false");
+    expect(values).toContain("agentpool: services");
+    expect(values).toContain("value: services");
     expect(values).toContain(
       "host: openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
     );

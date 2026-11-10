@@ -40,6 +40,11 @@
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "halo-build"
   },
+  "runtime": {
+    "nodePool": "services",
+    "nodeTaintKey": "unrealhands.io/pool",
+    "nodeTaintValue": "services"
+  },
   "environments": {
     "candidate": {
       "namespace": "openhands-halo-ppe",
