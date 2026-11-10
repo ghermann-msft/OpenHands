@@ -36,6 +36,7 @@ describe("Halo deployment automation", () => {
     expect(job).toContain("--export-cache type=registry");
     expect(job).toContain("azure.workload.identity/use: \"true\"");
     expect(job).toContain("allowPrivilegeEscalation: false");
+    expect(job).toContain('add: ["SYS_ADMIN"]');
     expect(job).not.toContain("privileged: true");
     expect(job).not.toContain("ttlSecondsAfterFinished");
   });

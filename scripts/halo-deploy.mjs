@@ -451,6 +451,8 @@ spec:
             runAsUser: 0
             runAsGroup: 0
             allowPrivilegeEscalation: false
+            capabilities:
+              add: ["SYS_ADMIN"]
             seccompProfile:
               type: Unconfined
             appArmorProfile:
