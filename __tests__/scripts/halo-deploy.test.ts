@@ -2,11 +2,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildNodePoolCreateArgs,
   imageReference,
   normalizeDigest,
   renderBuildJob,
   renderHelmValues,
   renderSecretProviderClass,
+  validateBuildNodePool,
 } from "../../scripts/halo-deploy.mjs";
 
 const digest = `sha256:${"a".repeat(64)}`;
@@ -21,24 +23,61 @@ describe("Halo deployment automation", () => {
     ).toBe(`registry.example/openhands-halo@${digest}`);
   });
 
-  it("renders a rootless cached build for the exact commit", () => {
-    const job = renderBuildJob({
-      commit,
-      builderClientId: "builder-client-id",
-    });
+  it("renders an isolated privileged cached build for the exact commit", () => {
+    const job = renderBuildJob({ commit });
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
-    expect(job).toContain("hostUsers: false");
-    expect(job).toContain("--oci-worker-snapshotter=native");
-    expect(job).toContain("--oci-worker-no-process-sandbox");
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
-    expect(job).toContain("azure.workload.identity/use: \"true\"");
-    expect(job).toContain("allowPrivilegeEscalation: false");
-    expect(job).toContain('add: ["SYS_ADMIN"]');
-    expect(job).not.toContain("privileged: true");
+    expect(job).toContain('azure.workload.identity/use: "true"');
+    expect(job).toContain("agentpool: halobuild");
+    expect(job).toContain("value: halo-build");
+    expect(job).toContain("privileged: true");
+    expect(job).not.toContain("hostUsers: false");
+    expect(job).not.toContain("--oci-worker-no-process-sandbox");
+    expect(job).not.toContain('add: ["SYS_ADMIN"]');
+    expect(job).not.toContain("type: Unconfined");
     expect(job).not.toContain("ttlSecondsAfterFinished");
+  });
+
+  it("defines and validates the scale-to-zero build pool boundary", () => {
+    const args = buildNodePoolCreateArgs();
+
+    expect(args).toContain("halobuild");
+    expect(args).toContain("Standard_D8s_v5");
+    expect(args).toContain("--enable-cluster-autoscaler");
+    expect(args).toContain("unrealhands.io/pool=halo-build:NoSchedule");
+    expect(() =>
+      validateBuildNodePool({
+        mode: "User",
+        osType: "Linux",
+        osSku: "Ubuntu",
+        vmSize: "Standard_D8s_v5",
+        enableAutoScaling: true,
+        minCount: 0,
+        maxCount: 1,
+        nodeLabels: {
+          "unrealhands.io/pool": "halo-build",
+        },
+        nodeTaints: ["unrealhands.io/pool=halo-build:NoSchedule"],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateBuildNodePool({
+        mode: "User",
+        osType: "Linux",
+        osSku: "Ubuntu",
+        vmSize: "Standard_D8s_v5",
+        enableAutoScaling: true,
+        minCount: 0,
+        maxCount: 1,
+        nodeLabels: {
+          "unrealhands.io/pool": "halo-build",
+        },
+        nodeTaints: [],
+      }),
+    ).toThrow(/taint/);
   });
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {

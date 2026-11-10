@@ -12,12 +12,16 @@ npm run halo -- status
 ```
 
 `build` creates an ephemeral BuildKit Job in the dedicated
-`openhands-halo-build` namespace. The pod uses Kubernetes native user
-namespaces (`hostUsers: false`) and BuildKit's native snapshotter, so BuildKit
-runs as root only inside an unprivileged pod user namespace without a
-privileged container. The Job clones the exact pushed commit, imports and
-exports its cache through ACR, pushes a commit-tagged image, and prints the
-immutable digest.
+`openhands-halo-build` namespace. The Job runs only on the dedicated
+`halobuild` AKS user node pool, which is tainted against application workloads
+and scales from zero to one node. Only the BuildKit container is privileged;
+the Job and node are ephemeral, and no build service remains running between
+builds. The Job clones the exact pushed commit, imports and exports its cache
+through ACR, pushes a commit-tagged image, and prints the immutable digest.
+
+`bootstrap` and `build` create the `Standard_D8s_v5` build pool when it is
+absent and reject an existing pool whose VM size, autoscaling limits, label, or
+taint does not match the configured isolation boundary.
 
 `deploy-candidate` installs that digest into the isolated PPE namespace,
 mounting Key Vault secrets through the Azure Secrets Store CSI driver. It

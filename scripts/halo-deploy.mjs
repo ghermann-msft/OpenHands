@@ -251,6 +251,121 @@ metadata:
   });
 }
 
+export function buildNodePoolCreateArgs() {
+  const build = config.build;
+  return [
+    "aks",
+    "nodepool",
+    "add",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--cluster-name",
+    config.azure.aksCluster,
+    "--name",
+    build.nodePool,
+    "--mode",
+    "User",
+    "--os-type",
+    "Linux",
+    "--os-sku",
+    "Ubuntu",
+    "--node-vm-size",
+    build.nodePoolVmSize,
+    "--node-count",
+    String(build.nodePoolMinCount),
+    "--enable-cluster-autoscaler",
+    "--min-count",
+    String(build.nodePoolMinCount),
+    "--max-count",
+    String(build.nodePoolMaxCount),
+    "--labels",
+    `${build.nodeTaintKey}=${build.nodeTaintValue}`,
+    "--node-taints",
+    `${build.nodeTaintKey}=${build.nodeTaintValue}:NoSchedule`,
+    "--output",
+    "none",
+  ];
+}
+
+export function validateBuildNodePool(nodePool) {
+  const build = config.build;
+  const expectedLabel = build.nodeTaintValue;
+  const expectedTaint = `${build.nodeTaintKey}=${build.nodeTaintValue}:NoSchedule`;
+  const mismatches = [];
+  if (nodePool.mode !== "User") mismatches.push("mode=User");
+  if (nodePool.osType !== "Linux") mismatches.push("osType=Linux");
+  if (nodePool.osSku !== "Ubuntu") mismatches.push("osSku=Ubuntu");
+  if (nodePool.vmSize !== build.nodePoolVmSize) {
+    mismatches.push(`vmSize=${build.nodePoolVmSize}`);
+  }
+  if (!nodePool.enableAutoScaling) mismatches.push("autoscaling enabled");
+  if (nodePool.minCount !== build.nodePoolMinCount) {
+    mismatches.push(`minCount=${build.nodePoolMinCount}`);
+  }
+  if (nodePool.maxCount !== build.nodePoolMaxCount) {
+    mismatches.push(`maxCount=${build.nodePoolMaxCount}`);
+  }
+  if (nodePool.nodeLabels?.[build.nodeTaintKey] !== expectedLabel) {
+    mismatches.push(`label ${build.nodeTaintKey}=${build.nodeTaintValue}`);
+  }
+  if (!nodePool.nodeTaints?.includes(expectedTaint)) {
+    mismatches.push(`taint ${expectedTaint}`);
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `AKS node pool ${build.nodePool} does not match the Halo build contract: ${mismatches.join(", ")}`,
+    );
+  }
+}
+
+function ensureBuildNodePool() {
+  const build = config.build;
+  const existing = az(
+    [
+      "aks",
+      "nodepool",
+      "list",
+      "--subscription",
+      config.azure.subscriptionId,
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--cluster-name",
+      config.azure.aksCluster,
+      "--query",
+      `[?name=='${build.nodePool}'] | [0]`,
+      "--output",
+      "json",
+    ],
+    { capture: true },
+  );
+  if (!existing || existing === "null") {
+    az(buildNodePoolCreateArgs());
+  }
+  const nodePool = JSON.parse(
+    az(
+      [
+        "aks",
+        "nodepool",
+        "show",
+        "--subscription",
+        config.azure.subscriptionId,
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--cluster-name",
+        config.azure.aksCluster,
+        "--name",
+        build.nodePool,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  validateBuildNodePool(nodePool);
+}
+
 function graphPatch(applicationObjectId, body, suffix) {
   const path = join(
     tmpdir(),
@@ -338,7 +453,7 @@ function ensureEntraApplication(environment) {
   );
 }
 
-export function renderBuildJob({ commit, builderClientId }) {
+export function renderBuildJob({ commit }) {
   const short = commit.slice(0, 9);
   const build = config.build;
   const image = `${config.azure.acrLoginServer}/${build.repository}:${short}`;
@@ -360,7 +475,6 @@ spec:
         app.kubernetes.io/name: openhands-halo-builder
         azure.workload.identity/use: "true"
     spec:
-      hostUsers: false
       restartPolicy: Never
       serviceAccountName: ${build.serviceAccount}
       nodeSelector:
@@ -413,9 +527,7 @@ spec:
           args:
             - |
               buildkitd \\
-                --addr unix:///run/buildkit/buildkitd.sock \\
-                --oci-worker-snapshotter=native \\
-                --oci-worker-no-process-sandbox &
+                --addr unix:///run/buildkit/buildkitd.sock &
               buildkitd_pid="$!"
               trap 'kill "$buildkitd_pid" 2>/dev/null || true' EXIT
               for attempt in $(seq 1 30); do
@@ -448,15 +560,7 @@ spec:
             - name: DOCKER_CONFIG
               value: /docker
           securityContext:
-            runAsUser: 0
-            runAsGroup: 0
-            allowPrivilegeEscalation: false
-            capabilities:
-              add: ["SYS_ADMIN"]
-            seccompProfile:
-              type: Unconfined
-            appArmorProfile:
-              type: Unconfined
+            privileged: true
           resources:
             requests:
               cpu: "2"
@@ -483,6 +587,7 @@ spec:
 }
 
 function bootstrapBuild() {
+  ensureBuildNodePool();
   const builder = identity(config.identities.builder);
   const acrId = az(
     [
@@ -834,7 +939,7 @@ async function build(args) {
   const ref = option(args, "--ref", "HEAD");
   const commit = resolveCommit(ref);
   verifyCommitIsPushed(commit);
-  const builder = bootstrapBuild();
+  bootstrapBuild();
   const short = commit.slice(0, 9);
   const job = `halo-build-${short}`;
   kubectl([
@@ -847,7 +952,7 @@ async function build(args) {
     "--wait=true",
   ]);
   kubectl(["apply", "-f", "-"], {
-    input: renderBuildJob({ commit, builderClientId: builder.clientId }),
+    input: renderBuildJob({ commit }),
   });
   try {
     await waitForJob(config.build.namespace, job, 90 * 60 * 1000);
