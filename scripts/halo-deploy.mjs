@@ -371,6 +371,67 @@ function ensureBuildNodePool() {
   validateBuildNodePool(nodePool);
 }
 
+export function runtimeNodePoolAutoscalerArgs() {
+  return [
+    "aks",
+    "nodepool",
+    "update",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--cluster-name",
+    config.azure.aksCluster,
+    "--name",
+    config.runtime.nodePool,
+    "--update-cluster-autoscaler",
+    "--min-count",
+    String(config.runtime.nodePoolMinCount),
+    "--max-count",
+    String(config.runtime.nodePoolMaxCount),
+    "--output",
+    "none",
+  ];
+}
+
+function ensureRuntimeNodePool() {
+  az(runtimeNodePoolAutoscalerArgs());
+  const nodePool = JSON.parse(
+    az(
+      [
+        "aks",
+        "nodepool",
+        "show",
+        "--subscription",
+        config.azure.subscriptionId,
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--cluster-name",
+        config.azure.aksCluster,
+        "--name",
+        config.runtime.nodePool,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  const expectedTaint =
+    `${config.runtime.nodeTaintKey}=${config.runtime.nodeTaintValue}:NoSchedule`;
+  if (
+    !nodePool.enableAutoScaling ||
+    nodePool.minCount !== config.runtime.nodePoolMinCount ||
+    nodePool.maxCount !== config.runtime.nodePoolMaxCount ||
+    nodePool.nodeLabels?.[config.runtime.nodeTaintKey] !==
+      config.runtime.nodeTaintValue ||
+    !nodePool.nodeTaints?.includes(expectedTaint)
+  ) {
+    throw new Error(
+      `AKS node pool ${config.runtime.nodePool} does not match the Halo runtime capacity and isolation contract`,
+    );
+  }
+}
+
 function graphPatch(applicationObjectId, body, suffix) {
   const path = join(
     tmpdir(),
@@ -1076,6 +1137,7 @@ function bootstrapEnvironment(environment, runtime) {
 
 function bootstrap() {
   bootstrapBuild();
+  ensureRuntimeNodePool();
   ensureFrontDoorAccess();
   const runtime = identity(config.identities.runtime);
   bootstrapEnvironment("candidate", runtime);

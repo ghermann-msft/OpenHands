@@ -42,6 +42,8 @@
   },
   "runtime": {
     "nodePool": "services",
+    "nodePoolMinCount": 1,
+    "nodePoolMaxCount": 1,
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "services"
   },

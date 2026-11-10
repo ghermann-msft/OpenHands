@@ -13,6 +13,7 @@ import {
   renderFrontDoorWafPolicy,
   renderHelmValues,
   renderSecretProviderClass,
+  runtimeNodePoolAutoscalerArgs,
   validateBuildNodePool,
 } from "../../scripts/halo-deploy.mjs";
 
@@ -129,6 +130,19 @@ describe("Halo deployment automation", () => {
       { id: "candidate-endpoint-id" },
       { id: "primary-endpoint-id" },
     ]);
+  });
+
+  it("keeps one isolated runtime services node warm", () => {
+    const args = runtimeNodePoolAutoscalerArgs();
+
+    expect(args).toContain("services");
+    expect(args).toContain("--update-cluster-autoscaler");
+    expect(
+      args.slice(args.indexOf("--min-count"), args.indexOf("--min-count") + 2),
+    ).toEqual(["--min-count", "1"]);
+    expect(
+      args.slice(args.indexOf("--max-count"), args.indexOf("--max-count") + 2),
+    ).toEqual(["--max-count", "1"]);
   });
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {
