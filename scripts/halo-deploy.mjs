@@ -354,7 +354,6 @@ metadata:
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 5400
-  ttlSecondsAfterFinished: 1800
   template:
     metadata:
       labels:
@@ -789,7 +788,47 @@ function bootstrap() {
   bootstrapEnvironment("primary", runtime);
 }
 
-function build(args) {
+function printResult(result) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+}
+
+async function waitForJob(namespace, job, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const state = JSON.parse(
+      kubectl(["-n", namespace, "get", "job", job, "-o", "json"], {
+        capture: true,
+      }),
+    );
+    const conditions = state.status?.conditions ?? [];
+    if (
+      conditions.some(
+        (condition) =>
+          condition.type === "Complete" && condition.status === "True",
+      )
+    ) {
+      return;
+    }
+    if (
+      conditions.some(
+        (condition) =>
+          condition.type === "Failed" && condition.status === "True",
+      )
+    ) {
+      throw new Error(
+        `Build Job ${job} failed: ${conditions
+          .filter((condition) => condition.status === "True")
+          .map((condition) => `${condition.reason}: ${condition.message}`)
+          .join("; ")}`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+  throw new Error(`Timed out waiting for build Job ${job}`);
+}
+
+async function build(args) {
   const ref = option(args, "--ref", "HEAD");
   const commit = resolveCommit(ref);
   verifyCommitIsPushed(commit);
@@ -809,24 +848,27 @@ function build(args) {
     input: renderBuildJob({ commit, builderClientId: builder.clientId }),
   });
   try {
-    kubectl([
-      "-n",
-      config.build.namespace,
-      "wait",
-      "--for=condition=complete",
-      `job/${job}`,
-      "--timeout=5400s",
-    ]);
+    await waitForJob(config.build.namespace, job, 90 * 60 * 1000);
   } catch (error) {
-    tryRun("kubectl", [
-      "-n",
-      config.build.namespace,
-      "logs",
-      `job/${job}`,
-      "--all-containers=true",
-      "--prefix",
-      "--tail=300",
-    ]);
+    printResult(
+      tryRun("kubectl", [
+        "-n",
+        config.build.namespace,
+        "describe",
+        `job/${job}`,
+      ]),
+    );
+    printResult(
+      tryRun("kubectl", [
+        "-n",
+        config.build.namespace,
+        "logs",
+        `job/${job}`,
+        "--all-containers=true",
+        "--prefix",
+        "--tail=300",
+      ]),
+    );
     throw error;
   }
   const digest = az(
@@ -846,6 +888,14 @@ function build(args) {
     { capture: true },
   );
   console.log(`IMAGE_DIGEST=${normalizeDigest(digest)}`);
+  kubectl([
+    "-n",
+    config.build.namespace,
+    "delete",
+    "job",
+    job,
+    "--wait=false",
+  ]);
 }
 
 async function waitForReady(host) {
@@ -1001,7 +1051,7 @@ async function main(args = process.argv.slice(2)) {
       bootstrap();
       break;
     case "build":
-      build(args.slice(1));
+      await build(args.slice(1));
       break;
     case "deploy-candidate":
       await deploy(
