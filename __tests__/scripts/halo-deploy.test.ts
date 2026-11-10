@@ -2,10 +2,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appGatewayNsgRuleArgs,
   buildNodePoolCreateArgs,
+  frontDoorOriginGroupCreateArgs,
   imageReference,
   normalizeDigest,
   renderBuildJob,
+  renderFrontDoorSecurityPolicy,
+  renderFrontDoorWafPolicy,
   renderHelmValues,
   renderSecretProviderClass,
   validateBuildNodePool,
@@ -86,6 +90,38 @@ describe("Halo deployment automation", () => {
         nodeTaints: ["unrealhands.io/pool=halo-build:NoSchedule"],
       }),
     ).toThrow(/SSH access disabled/);
+  });
+
+  it("restricts Front Door clients and its Application Gateway origin", () => {
+    const originGroupArgs = frontDoorOriginGroupCreateArgs("candidate");
+    const nsgArgs = appGatewayNsgRuleArgs();
+    const waf = renderFrontDoorWafPolicy();
+    const securityPolicy = renderFrontDoorSecurityPolicy([
+      "candidate-endpoint-id",
+      "primary-endpoint-id",
+    ]);
+
+    expect(originGroupArgs).toContain("--sample-size");
+    expect(originGroupArgs).toContain("--successful-samples-required");
+    expect(nsgArgs).toContain("AzureFrontDoor.Backend");
+    expect(nsgArgs).toContain("80");
+    expect(waf.properties.customRules.rules[0]).toMatchObject({
+      action: "Block",
+      matchConditions: [
+        {
+          matchVariable: "RemoteAddr",
+          operator: "IPMatch",
+          negateCondition: true,
+          matchValue: ["207.68.149.128/28"],
+        },
+      ],
+    });
+    expect(
+      securityPolicy.properties.parameters.associations[0].domains,
+    ).toEqual([
+      { id: "candidate-endpoint-id" },
+      { id: "primary-endpoint-id" },
+    ]);
   });
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {

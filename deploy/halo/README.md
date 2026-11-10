@@ -41,3 +41,8 @@ Secret values stay in Azure Key Vault.
 avoids an interactive permission-consent prompt without granting Microsoft
 Graph access. Security-group claims remain disabled until application RBAC
 needs them.
+
+Both Front Door endpoints are protected by a shared WAF policy that blocks
+clients outside the configured CIDR allowlist. The Application Gateway subnet
+accepts the HTTP origin connection only from the `AzureFrontDoor.Backend`
+service tag; direct Internet traffic to that origin port remains denied.

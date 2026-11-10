@@ -726,14 +726,200 @@ extraVolumeMounts:
 `;
 }
 
-function ensureFrontDoor(environment) {
-  const env = config.environments[environment];
-  const common = [
+function frontDoorCommonArgs() {
+  return [
     "--resource-group",
     config.azure.resourceGroup,
     "--profile-name",
     config.azure.frontDoorProfile,
   ];
+}
+
+export function frontDoorOriginGroupCreateArgs(environment) {
+  const env = config.environments[environment];
+  return [
+    "afd",
+    "origin-group",
+    "create",
+    ...frontDoorCommonArgs(),
+    "--origin-group-name",
+    env.frontDoorOriginGroup,
+    "--probe-request-type",
+    "GET",
+    "--probe-protocol",
+    "Http",
+    "--probe-path",
+    "/ready",
+    "--probe-interval-in-seconds",
+    "30",
+    "--sample-size",
+    "4",
+    "--successful-samples-required",
+    "3",
+    "--additional-latency-in-milliseconds",
+    "50",
+    "--output",
+    "none",
+  ];
+}
+
+export function appGatewayNsgRuleArgs() {
+  return [
+    "network",
+    "nsg",
+    "rule",
+    "create",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--nsg-name",
+    config.azure.applicationGatewayNsg,
+    "--name",
+    "AllowAzureFrontDoorBackendHttp",
+    "--priority",
+    "115",
+    "--access",
+    "Allow",
+    "--direction",
+    "Inbound",
+    "--protocol",
+    "Tcp",
+    "--source-address-prefixes",
+    "AzureFrontDoor.Backend",
+    "--source-port-ranges",
+    "*",
+    "--destination-address-prefixes",
+    "*",
+    "--destination-port-ranges",
+    "80",
+    "--output",
+    "none",
+  ];
+}
+
+export function renderFrontDoorWafPolicy() {
+  return {
+    location: "global",
+    sku: {
+      name: "Standard_AzureFrontDoor",
+    },
+    properties: {
+      policySettings: {
+        enabledState: "Enabled",
+        mode: "Prevention",
+        requestBodyCheck: "Disabled",
+      },
+      customRules: {
+        rules: [
+          {
+            name: "BlockUnapprovedClients",
+            priority: 1,
+            enabledState: "Enabled",
+            ruleType: "MatchRule",
+            action: "Block",
+            matchConditions: [
+              {
+                matchVariable: "RemoteAddr",
+                operator: "IPMatch",
+                negateCondition: true,
+                matchValue: config.azure.allowedClientCidrs,
+              },
+            ],
+          },
+        ],
+      },
+      managedRules: {
+        managedRuleSets: [],
+      },
+    },
+  };
+}
+
+function frontDoorWafPolicyId() {
+  return `/subscriptions/${config.azure.subscriptionId}/resourceGroups/${config.azure.resourceGroup}/providers/Microsoft.Network/frontDoorWebApplicationFirewallPolicies/${config.azure.frontDoorWafPolicy}`;
+}
+
+function frontDoorSecurityPolicyId() {
+  return `/subscriptions/${config.azure.subscriptionId}/resourceGroups/${config.azure.resourceGroup}/providers/Microsoft.Cdn/profiles/${config.azure.frontDoorProfile}/securityPolicies/${config.azure.frontDoorSecurityPolicy}`;
+}
+
+export function renderFrontDoorSecurityPolicy(endpointIds) {
+  return {
+    properties: {
+      parameters: {
+        type: "WebApplicationFirewall",
+        wafPolicy: {
+          id: frontDoorWafPolicyId(),
+        },
+        associations: [
+          {
+            domains: endpointIds.map((id) => ({ id })),
+            patternsToMatch: ["/*"],
+          },
+        ],
+      },
+    },
+  };
+}
+
+function azurePut(resourceId, apiVersion, body) {
+  az([
+    "rest",
+    "--method",
+    "PUT",
+    "--url",
+    `https://management.azure.com${resourceId}?api-version=${apiVersion}`,
+    "--body",
+    JSON.stringify(body),
+    "--output",
+    "none",
+  ]);
+}
+
+function ensureFrontDoorAccess() {
+  az(appGatewayNsgRuleArgs());
+  azurePut(frontDoorWafPolicyId(), "2022-05-01", renderFrontDoorWafPolicy());
+  const endpointIds = Object.values(config.environments).map((env) =>
+    az(
+      [
+        "afd",
+        "endpoint",
+        "show",
+        ...frontDoorCommonArgs(),
+        "--endpoint-name",
+        env.frontDoorEndpoint,
+        "--query",
+        "id",
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    ),
+  );
+  azurePut(
+    frontDoorSecurityPolicyId(),
+    "2025-04-15",
+    renderFrontDoorSecurityPolicy(endpointIds),
+  );
+  az([
+    "afd",
+    "security-policy",
+    "wait",
+    ...frontDoorCommonArgs(),
+    "--security-policy-name",
+    config.azure.frontDoorSecurityPolicy,
+    "--updated",
+    "--interval",
+    "10",
+    "--timeout",
+    "600",
+  ]);
+}
+
+function ensureFrontDoor(environment) {
+  const env = config.environments[environment];
+  const common = frontDoorCommonArgs();
   if (
     !az(
       [
@@ -749,24 +935,7 @@ function ensureFrontDoor(environment) {
       { capture: true },
     )
   ) {
-    az([
-      "afd",
-      "origin-group",
-      "create",
-      ...common,
-      "--origin-group-name",
-      env.frontDoorOriginGroup,
-      "--probe-request-type",
-      "GET",
-      "--probe-protocol",
-      "Http",
-      "--probe-path",
-      "/ready",
-      "--probe-interval-in-seconds",
-      "30",
-      "--output",
-      "none",
-    ]);
+    az(frontDoorOriginGroupCreateArgs(environment));
   }
   const origin = tryRun("az", [
     "afd",
@@ -895,6 +1064,7 @@ function bootstrapEnvironment(environment, runtime) {
 
 function bootstrap() {
   bootstrapBuild();
+  ensureFrontDoorAccess();
   const runtime = identity(config.identities.runtime);
   bootstrapEnvironment("candidate", runtime);
   bootstrapEnvironment("primary", runtime);
