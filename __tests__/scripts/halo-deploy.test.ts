@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   appGatewayNsgRuleArgs,
   buildNodePoolCreateArgs,
+  entraIdentifierUri,
   frontDoorOriginCreateArgs,
   frontDoorOriginGroupCreateArgs,
   imageReference,
@@ -130,6 +131,15 @@ describe("Halo deployment automation", () => {
       { id: "candidate-endpoint-id" },
       { id: "primary-endpoint-id" },
     ]);
+  });
+
+  it("uses each Entra application's API identifier for its delegated scope", () => {
+    expect(entraIdentifierUri("candidate")).toBe(
+      "api://9071e6b8-c981-4a11-b975-256cc4b7b841",
+    );
+    expect(entraIdentifierUri("primary")).toBe(
+      "api://a43e0aee-2f24-4b80-91e5-b6eb3db972c0",
+    );
   });
 
   it("keeps one isolated runtime services node warm", () => {

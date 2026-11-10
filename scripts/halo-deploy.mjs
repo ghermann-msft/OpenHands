@@ -457,6 +457,10 @@ function graphPatch(applicationObjectId, body, suffix) {
   }
 }
 
+export function entraIdentifierUri(environment) {
+  return `api://${config.environments[environment].entraClientId}`;
+}
+
 function ensureEntraApplication(environment) {
   const env = config.environments[environment];
   const application = JSON.parse(
@@ -489,6 +493,7 @@ function ensureEntraApplication(environment) {
     application.id,
     {
       groupMembershipClaims: null,
+      identifierUris: [entraIdentifierUri(environment)],
       api,
       web: {
         homePageUrl: `https://${env.frontDoorHost}`,
