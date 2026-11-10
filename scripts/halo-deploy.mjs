@@ -280,6 +280,8 @@ export function buildNodePoolCreateArgs() {
     String(build.nodePoolMinCount),
     "--max-count",
     String(build.nodePoolMaxCount),
+    "--ssh-access",
+    "disabled",
     "--labels",
     `${build.nodeTaintKey}=${build.nodeTaintValue}`,
     "--node-taints",
@@ -306,6 +308,9 @@ export function validateBuildNodePool(nodePool) {
   }
   if (nodePool.maxCount !== build.nodePoolMaxCount) {
     mismatches.push(`maxCount=${build.nodePoolMaxCount}`);
+  }
+  if (nodePool.securityProfile?.sshAccess !== "Disabled") {
+    mismatches.push("SSH access disabled");
   }
   if (nodePool.nodeLabels?.[build.nodeTaintKey] !== expectedLabel) {
     mismatches.push(`label ${build.nodeTaintKey}=${build.nodeTaintValue}`);

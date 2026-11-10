@@ -47,6 +47,8 @@ describe("Halo deployment automation", () => {
     expect(args).toContain("halobuild");
     expect(args).toContain("Standard_D8s_v5");
     expect(args).toContain("--enable-cluster-autoscaler");
+    expect(args).toContain("--ssh-access");
+    expect(args).toContain("disabled");
     expect(args).toContain("unrealhands.io/pool=halo-build:NoSchedule");
     expect(() =>
       validateBuildNodePool({
@@ -57,6 +59,9 @@ describe("Halo deployment automation", () => {
         enableAutoScaling: true,
         minCount: 0,
         maxCount: 1,
+        securityProfile: {
+          sshAccess: "Disabled",
+        },
         nodeLabels: {
           "unrealhands.io/pool": "halo-build",
         },
@@ -72,12 +77,15 @@ describe("Halo deployment automation", () => {
         enableAutoScaling: true,
         minCount: 0,
         maxCount: 1,
+        securityProfile: {
+          sshAccess: "LocalUser",
+        },
         nodeLabels: {
           "unrealhands.io/pool": "halo-build",
         },
-        nodeTaints: [],
+        nodeTaints: ["unrealhands.io/pool=halo-build:NoSchedule"],
       }),
-    ).toThrow(/taint/);
+    ).toThrow(/SSH access disabled/);
   });
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {
