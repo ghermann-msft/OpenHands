@@ -33,6 +33,12 @@ reference to primary. It refuses mutable tags and does not rebuild. Candidate
 and primary use separate namespaces, PVCs, Entra credentials, cookie keys,
 internal API keys, settings encryption keys, and Automation KV keys.
 
+Conversation state is stored on a separate retained Azure Files PVC in each
+environment and mounted at `/home/openhands/conversations`. Workspace files and
+the remaining OpenHands state stay on the environment's Azure Disk. The first
+rollout copies any existing conversation directories from the Azure Disk when
+the Azure Files share is empty.
+
 All names and non-secret Azure identifiers live in `deploy/halo/config.json`.
 Secret values stay in Azure Key Vault.
 

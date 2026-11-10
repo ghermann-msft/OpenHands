@@ -725,6 +725,11 @@ ${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n  
 export function renderHelmValues(environment, digest, runtimeClientId) {
   const env = config.environments[environment];
   normalizeDigest(digest);
+  const image = imageReference(
+    config.azure.acrLoginServer,
+    config.build.repository,
+    digest,
+  );
   return `fullnameOverride: openhands-halo
 image:
   repository: ${config.azure.acrLoginServer}/${config.build.repository}
@@ -782,6 +787,8 @@ secrets:
     key: ohSecretKey
 config:
   extraEnv:
+    - name: OH_CONVERSATIONS_PATH
+      value: /home/openhands/conversations
     - name: DO_NOT_TRACK
       value: "1"
     - name: VITE_DO_NOT_TRACK
@@ -793,7 +800,30 @@ config:
         secretKeyRef:
           name: openhands-halo-secrets
           key: automationKvSecret
+extraInitContainers:
+  - name: migrate-conversations
+    image: ${image}
+    imagePullPolicy: IfNotPresent
+    command: ["/bin/sh", "-ec"]
+    args:
+      - |
+        if [ -z "$(find /conversations -mindepth 1 -maxdepth 1 -print -quit)" ] && [ -d /legacy/agent-canvas/conversations ]; then
+          cp -R /legacy/agent-canvas/conversations/. /conversations/
+        fi
+    securityContext:
+      runAsUser: 10001
+      runAsGroup: 10001
+    volumeMounts:
+      - name: data
+        mountPath: /legacy
+        subPath: openhands
+        readOnly: true
+      - name: halo-conversations
+        mountPath: /conversations
 extraVolumes:
+  - name: halo-conversations
+    persistentVolumeClaim:
+      claimName: ${env.conversationPvc}
   - name: halo-secrets-store
     csi:
       driver: secrets-store.csi.k8s.io
@@ -801,9 +831,52 @@ extraVolumes:
       volumeAttributes:
         secretProviderClass: openhands-halo-secrets
 extraVolumeMounts:
+  - name: halo-conversations
+    mountPath: /home/openhands/conversations
   - name: halo-secrets-store
     mountPath: /mnt/secrets-store
     readOnly: true
+`;
+}
+
+export function renderConversationStorageClass() {
+  const storage = config.conversationStorage;
+  return `apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ${storage.storageClass}
+provisioner: file.csi.azure.com
+parameters:
+  skuName: ${storage.skuName}
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+mountOptions:
+  - dir_mode=0770
+  - file_mode=0660
+  - uid=10001
+  - gid=10001
+  - mfsymlinks
+  - cache=strict
+  - actimeo=30
+`;
+}
+
+export function renderConversationPvc(environment) {
+  const env = config.environments[environment];
+  const storage = config.conversationStorage;
+  return `apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${env.conversationPvc}
+  namespace: ${env.namespace}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ${storage.storageClass}
+  resources:
+    requests:
+      storage: ${storage.size}
 `;
 }
 
@@ -1142,6 +1215,12 @@ function bootstrapEnvironment(environment, runtime) {
   );
   kubectl(["apply", "-f", "-"], {
     input: renderSecretProviderClass(environment, runtime.clientId),
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderConversationStorageClass(),
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderConversationPvc(environment),
   });
   ensureFrontDoor(environment);
 }

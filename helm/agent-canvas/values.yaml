@@ -222,6 +222,7 @@ topologySpreadConstraints: []
 # Additional pod volumes and container mounts. Halo uses these to mount the
 # Azure Key Vault Secrets Store CSI provider without baking cloud-specific
 # resources into the reusable chart.
+extraInitContainers: []
 extraVolumes: []
 extraVolumeMounts: []
 

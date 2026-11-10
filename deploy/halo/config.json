@@ -47,11 +47,17 @@
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "services"
   },
+  "conversationStorage": {
+    "storageClass": "openhands-halo-azurefile",
+    "size": "5Gi",
+    "skuName": "Standard_LRS"
+  },
   "environments": {
     "candidate": {
       "namespace": "openhands-halo-ppe",
       "release": "openhands-halo",
       "serviceAccount": "openhands-halo",
+      "conversationPvc": "openhands-halo-conversations",
       "federatedCredential": "halo-ppe-runtime",
       "frontDoorEndpoint": "openhands-ppe",
       "frontDoorHost": "openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
@@ -72,6 +78,7 @@
       "namespace": "openhands-halo-primary",
       "release": "openhands-halo",
       "serviceAccount": "openhands-halo",
+      "conversationPvc": "openhands-halo-conversations",
       "federatedCredential": "halo-primary-runtime",
       "frontDoorEndpoint": "openhands",
       "frontDoorHost": "openhands-h0e3cucrh3gfg3gr.b01.azurefd.net",

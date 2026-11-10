@@ -10,6 +10,8 @@ import {
   imageReference,
   normalizeDigest,
   renderBuildJob,
+  renderConversationPvc,
+  renderConversationStorageClass,
   renderFrontDoorSecurityPolicy,
   renderFrontDoorWafPolicy,
   renderHelmValues,
@@ -179,11 +181,32 @@ describe("Halo deployment automation", () => {
       "api://9071e6b8-c981-4a11-b975-256cc4b7b841/access_as_user",
     );
     expect(values).toContain("secretProviderClass: openhands-halo-secrets");
+    expect(values).toContain(
+      "name: OH_CONVERSATIONS_PATH\n      value: /home/openhands/conversations",
+    );
+    expect(values).toContain("claimName: openhands-halo-conversations");
+    expect(values).toContain("name: migrate-conversations");
+    expect(values).toContain(
+      "cp -R /legacy/agent-canvas/conversations/. /conversations/",
+    );
     expect(values).toContain('name: DO_NOT_TRACK\n      value: "1"');
     expect(values).toContain('name: VITE_DO_NOT_TRACK\n      value: "1"');
     expect(values).toContain(
       'name: AGENT_CANVAS_DISABLE_TELEMETRY\n      value: "1"',
     );
     expect(values).not.toContain("halo-primary-entra-client-secret");
+  });
+
+  it("uses retained Azure Files storage for conversation state", () => {
+    const storageClass = renderConversationStorageClass();
+    const pvc = renderConversationPvc("candidate");
+
+    expect(storageClass).toContain("provisioner: file.csi.azure.com");
+    expect(storageClass).toContain("reclaimPolicy: Retain");
+    expect(storageClass).toContain("skuName: Standard_LRS");
+    expect(pvc).toContain("namespace: openhands-halo-ppe");
+    expect(pvc).toContain("accessModes:\n    - ReadWriteMany");
+    expect(pvc).toContain("storageClassName: openhands-halo-azurefile");
+    expect(pvc).toContain("storage: 5Gi");
   });
 });
