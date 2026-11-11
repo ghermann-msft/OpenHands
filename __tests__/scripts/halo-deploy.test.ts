@@ -95,6 +95,8 @@ describe("Halo deployment automation", () => {
     expect(runner).toContain("minRunners: 0");
     expect(runner).toContain("maxRunners: 1");
     expect(runner).toContain("image: ghcr.io/actions/actions-runner:2.338.1");
+    expect(runner).toContain("runAsUser: 1001");
+    expect(runner).toContain("runAsGroup: 1001");
     expect(runner).toContain("agentpool: halobuild");
     expect(rbac).toContain("namespace: openhands-halo-build");
     expect(rbac).toContain("namespace: openhands-halo-ppe");

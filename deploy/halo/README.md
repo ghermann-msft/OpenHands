@@ -40,10 +40,13 @@ internal API keys, settings encryption keys, and Automation KV keys.
 
 The `Halo deployment` workflow validates every push to `openhands-halo` on a
 GitHub-hosted runner, then uses an ephemeral in-cluster runner to build the
-image and deploy its digest to PPE. A manual `promote-candidate` dispatch uses
-the protected `halo-production` environment and promotes the digest already
-running in PPE without rebuilding it. Pull requests never run on the
-self-hosted scale set.
+image and deploy its digest to PPE. The same run then waits at the protected
+`halo-production` environment. Approving that job promotes the exact digest
+built by the run, without rebuilding it; promotion fails if PPE has moved to a
+newer digest while approval was pending. Pull requests never run on the
+self-hosted scale set. Deployment readiness and authentication smoke checks
+use the in-cluster service because Front Door intentionally permits only the
+configured client CIDRs.
 
 `bootstrap-ci` installs Actions Runner Controller and the runner scale set from
 the pinned `0.15.1` Helm charts. The controller and listener run on the warm

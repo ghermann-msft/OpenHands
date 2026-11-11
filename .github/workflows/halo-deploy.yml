@@ -4,20 +4,6 @@ on:
   push:
     branches:
       - openhands-halo
-  workflow_dispatch:
-    inputs:
-      action:
-        description: Halo deployment action
-        required: true
-        type: choice
-        default: deploy-candidate
-        options:
-          - deploy-candidate
-          - promote-candidate
-
-concurrency:
-  group: halo-deployment
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -53,11 +39,15 @@ jobs:
           npm run build
 
   deploy-candidate:
-    if: github.event_name == 'push' || inputs.action == 'deploy-candidate'
     needs: validate
     runs-on: openhands-halo-ci
     timeout-minutes: 120
     environment: halo-ppe
+    concurrency:
+      group: halo-candidate
+      cancel-in-progress: false
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
     steps:
       - name: Check out exact commit
         uses: actions/checkout@v7
@@ -110,17 +100,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/ready
+          base_url=http://openhands-halo.openhands-halo-ppe.svc.cluster.local:8000
+          curl --fail --silent --show-error "$base_url/ready"
           status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/api/workspace-runtimes)"
+            "$base_url/api/workspace-runtimes")"
           test "$status" = "401"
 
   promote-candidate:
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'promote-candidate'
-    needs: validate
+    needs:
+      - validate
+      - deploy-candidate
     runs-on: openhands-halo-ci
     timeout-minutes: 30
     environment: halo-production
+    concurrency:
+      group: halo-production
+      cancel-in-progress: false
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -153,4 +148,4 @@ jobs:
           kubectl config use-context halo
 
       - name: Promote the candidate digest
-        run: node scripts/halo-deploy.mjs promote
+        run: node scripts/halo-deploy.mjs promote --digest "${{ needs.deploy-candidate.outputs.digest }}"

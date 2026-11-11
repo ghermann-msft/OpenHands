@@ -764,6 +764,8 @@ template:
         securityContext:
           allowPrivilegeEscalation: false
           runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
         resources:
           requests:
             cpu: 250m
@@ -1741,23 +1743,26 @@ async function build(args) {
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
 
-async function waitForReady(host) {
+async function waitForReady(environment) {
+  const env = config.environments[environment];
+  const readyPath = `/api/v1/namespaces/${env.namespace}/services/http:openhands-halo:8000/proxy/ready`;
   const deadline = Date.now() + 15 * 60 * 1000;
   let lastError = "not attempted";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`https://${host}/ready`, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (response.ok) return;
-      lastError = `HTTP ${response.status}`;
+      const response = JSON.parse(
+        kubectl(["get", "--raw", readyPath], { capture: true }),
+      );
+      if (response.status === "ready") return;
+      lastError = `unexpected response: ${JSON.stringify(response)}`;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
     await new Promise((resolve) => setTimeout(resolve, 10_000));
   }
-  throw new Error(`Timed out waiting for https://${host}/ready: ${lastError}`);
+  throw new Error(
+    `Timed out waiting for ${env.namespace}/openhands-halo readiness: ${lastError}`,
+  );
 }
 
 function runtimeClientId(environment) {
@@ -1822,7 +1827,7 @@ async function deploy(environment, digest) {
     "statefulset/openhands-halo",
     "--timeout=15m",
   ]);
-  await waitForReady(env.frontDoorHost);
+  await waitForReady(environment);
   console.log(
     `${environment.toUpperCase()}_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.repository, digest)}`,
   );
@@ -1849,7 +1854,7 @@ function candidateDigest() {
   return normalizeDigest(image.slice(expectedPrefix.length));
 }
 
-async function promote() {
+async function promote(args) {
   const env = config.environments.candidate;
   kubectl([
     "-n",
@@ -1859,8 +1864,14 @@ async function promote() {
     "statefulset/openhands-halo",
     "--timeout=5m",
   ]);
-  await waitForReady(env.frontDoorHost);
+  await waitForReady("candidate");
   const digest = candidateDigest();
+  const expectedDigest = option(args, "--digest");
+  if (expectedDigest && normalizeDigest(expectedDigest) !== digest) {
+    throw new Error(
+      `Candidate digest changed while promotion awaited approval: expected ${expectedDigest}, found ${digest}`,
+    );
+  }
   console.log(`Promoting candidate digest ${digest}`);
   await deploy("primary", digest);
 }
@@ -1888,7 +1899,7 @@ function usage() {
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
   npm run halo -- deploy-candidate --digest sha256:<digest>
-  npm run halo -- promote
+  npm run halo -- promote [--digest sha256:<candidate-digest>]
   npm run halo -- status`);
 }
 
@@ -1908,7 +1919,7 @@ async function main(args = process.argv.slice(2)) {
       await deploy("candidate", normalizeDigest(option(args, "--digest")));
       break;
     case "promote":
-      await promote();
+      await promote(args.slice(1));
       break;
     case "status":
       status();

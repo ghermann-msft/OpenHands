@@ -25,13 +25,22 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       '--server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}"',
     );
+    expect(workflow).toContain(
+      "http://openhands-halo.openhands-halo-ppe.svc.cluster.local:8000",
+    );
+    expect(workflow).not.toContain(
+      "https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/ready",
+    );
     expect(workflow).toContain("environment: halo-ppe");
   });
 
-  it("requires a protected manual job to promote the existing candidate digest", () => {
-    expect(workflow).toContain("inputs.action == 'promote-candidate'");
+  it("requires protected approval to promote the digest built by the same run", () => {
     expect(workflow).toContain("environment: halo-production");
-    expect(workflow).toContain("node scripts/halo-deploy.mjs promote");
+    expect(workflow).toContain(
+      'node scripts/halo-deploy.mjs promote --digest "${{ needs.deploy-candidate.outputs.digest }}"',
+    );
+    expect(workflow).toContain("group: halo-candidate");
+    expect(workflow).toContain("group: halo-production");
     expect(workflow).toContain("cancel-in-progress: false");
   });
 });
