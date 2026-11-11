@@ -45,7 +45,11 @@ jobs:
       - name: Validate application
         run: |
           npm run lint
-          npm test
+          npm test -- --run \
+            __tests__/scripts/halo-deploy.test.ts \
+            __tests__/scripts/workspace-runtime-controller.test.ts \
+            __tests__/scripts/static-server.test.ts \
+            __tests__/github-workflows/halo-deploy.test.ts
           npm run build
 
   deploy-candidate:

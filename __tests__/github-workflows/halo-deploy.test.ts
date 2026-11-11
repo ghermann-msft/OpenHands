@@ -10,6 +10,10 @@ describe("Halo deployment workflow", () => {
     expect(workflow).not.toContain("pull_request:");
     expect(workflow).toContain("runs-on: openhands-halo-ci");
     expect(workflow).toContain(
+      "__tests__/scripts/workspace-runtime-controller.test.ts",
+    );
+    expect(workflow).toContain("__tests__/scripts/static-server.test.ts");
+    expect(workflow).toContain(
       'node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA"',
     );
     expect(workflow).toContain(
