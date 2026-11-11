@@ -1,0 +1,152 @@
+name: Halo deployment
+
+on:
+  push:
+    branches:
+      - openhands-halo
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Halo deployment action
+        required: true
+        type: choice
+        default: deploy-candidate
+        options:
+          - deploy-candidate
+          - promote-candidate
+
+concurrency:
+  group: halo-deployment
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js with npm cache
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+          cache: npm
+
+      - name: Use pinned npm
+        run: npm install --global npm@11.12.1 --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate application
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
+  deploy-candidate:
+    if: github.event_name == 'push' || inputs.action == 'deploy-candidate'
+    needs: validate
+    runs-on: openhands-halo-ci
+    timeout-minutes: 120
+    environment: halo-ppe
+    steps:
+      - name: Check out exact commit
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.1
+
+      - name: Configure in-cluster Kubernetes access
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          ca_file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          test -s "$token_file"
+          test -s "$ca_file"
+          kubectl config set-cluster halo \
+            --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" \
+            --certificate-authority="$ca_file" \
+            --embed-certs=true
+          kubectl config set-credentials halo-ci --token="$(cat "$token_file")"
+          kubectl config set-context halo --cluster=halo --user=halo-ci
+          kubectl config use-context halo
+
+      - name: Build immutable image in AKS
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA")"
+          printf '%s\n' "$output"
+          digest="$(printf '%s\n' "$output" | sed -n 's/^IMAGE_DIGEST=//p' | tail -1)"
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Halo build did not return an immutable image digest"
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy candidate digest
+        run: node scripts/halo-deploy.mjs deploy-candidate --digest "${{ steps.image.outputs.digest }}"
+
+      - name: Verify candidate access boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/ready
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/api/workspace-runtimes)"
+          test "$status" = "401"
+
+  promote-candidate:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'promote-candidate'
+    needs: validate
+    runs-on: openhands-halo-ci
+    timeout-minutes: 30
+    environment: halo-production
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.1
+
+      - name: Configure in-cluster Kubernetes access
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          ca_file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          test -s "$token_file"
+          test -s "$ca_file"
+          kubectl config set-cluster halo \
+            --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" \
+            --certificate-authority="$ca_file" \
+            --embed-certs=true
+          kubectl config set-credentials halo-ci --token="$(cat "$token_file")"
+          kubectl config set-context halo --cluster=halo --user=halo-ci
+          kubectl config use-context halo
+
+      - name: Promote the candidate digest
+        run: node scripts/halo-deploy.mjs promote

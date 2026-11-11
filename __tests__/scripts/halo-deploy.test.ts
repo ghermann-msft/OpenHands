@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   appGatewayNsgRuleArgs,
+  buildDigestFromPodList,
   buildNodePoolCreateArgs,
   entraIdentifierUri,
   frontDoorOriginCreateArgs,
   frontDoorOriginGroupCreateArgs,
   imageReference,
   normalizeDigest,
+  renderArcControllerValues,
+  renderArcRunnerRbac,
+  renderArcRunnerValues,
   renderBuildJob,
   renderConversationPvc,
   renderConversationStorageClass,
@@ -49,7 +53,53 @@ describe("Halo deployment automation", () => {
     expect(job).not.toContain("--oci-worker-no-process-sandbox");
     expect(job).not.toContain('add: ["SYS_ADMIN"]');
     expect(job).not.toContain("type: Unconfined");
-    expect(job).not.toContain("ttlSecondsAfterFinished");
+    expect(job).toContain("ttlSecondsAfterFinished: 600");
+    expect(job).toContain("--metadata-file");
+    expect(job).toContain("> /dev/termination-log");
+  });
+
+  it("reads the immutable digest reported by the completed build container", () => {
+    expect(
+      buildDigestFromPodList({
+        items: [
+          {
+            status: {
+              containerStatuses: [
+                {
+                  name: "buildkit",
+                  state: { terminated: { message: digest } },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ).toBe(digest);
+    expect(() => buildDigestFromPodList({ items: [] })).toThrow(
+      /did not publish an immutable image digest/,
+    );
+  });
+
+  it("renders pinned ephemeral ARC runners on the isolated build pool", () => {
+    const controller = renderArcControllerValues();
+    const runner = renderArcRunnerValues();
+    const rbac = renderArcRunnerRbac();
+
+    expect(controller).toContain("fullnameOverride: openhands-halo-arc");
+    expect(controller).toContain("agentpool: services");
+    expect(runner).toContain(
+      'githubConfigUrl: "https://github.com/ghermann-msft/OpenHands"',
+    );
+    expect(runner).toContain("githubConfigSecret: openhands-halo-github-app");
+    expect(runner).toContain("runnerScaleSetName: openhands-halo-ci");
+    expect(runner).toContain("minRunners: 0");
+    expect(runner).toContain("maxRunners: 1");
+    expect(runner).toContain("image: ghcr.io/actions/actions-runner:2.338.1");
+    expect(runner).toContain("agentpool: halobuild");
+    expect(rbac).toContain("namespace: openhands-halo-build");
+    expect(rbac).toContain("namespace: openhands-halo-ppe");
+    expect(rbac).toContain("namespace: openhands-halo-primary");
+    expect(rbac).not.toContain("ClusterRoleBinding");
   });
 
   it("defines and validates the scale-to-zero build pool boundary", () => {

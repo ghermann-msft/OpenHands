@@ -38,6 +38,20 @@
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "halo-build"
   },
+  "ci": {
+    "arcVersion": "0.15.1",
+    "controllerNamespace": "openhands-halo-arc",
+    "controllerRelease": "openhands-halo-arc",
+    "runnerNamespace": "openhands-halo-ci",
+    "runnerRelease": "openhands-halo-ci",
+    "runnerScaleSetName": "openhands-halo-ci",
+    "runnerServiceAccount": "openhands-halo-ci",
+    "githubConfigUrl": "https://github.com/ghermann-msft/OpenHands",
+    "githubAppSecret": "openhands-halo-github-app",
+    "githubAppKeyVaultSecret": "halo-ci-github-app",
+    "runnerImage": "ghcr.io/actions/actions-runner:2.338.1",
+    "maxRunners": 1
+  },
   "runtime": {
     "nodePool": "services",
     "nodePoolMinCount": 1,

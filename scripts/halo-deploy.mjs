@@ -542,6 +542,7 @@ metadata:
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 5400
+  ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels:
@@ -599,6 +600,7 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
+              metadata=/tmp/build-metadata.json
               buildkitd \\
                 --addr unix:///run/buildkit/buildkitd.sock &
               buildkitd_pid="$!"
@@ -628,7 +630,16 @@ spec:
                 --opt build-arg:AGENT_CANVAS_VERSION=halo-${short} \\
                 --import-cache type=registry,ref=${cache} \\
                 --export-cache type=registry,ref=${cache},mode=max,compression=zstd,ignore-error=true \\
+                --metadata-file "$metadata" \\
                 --output type=image,name=${image},push=true
+              digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$metadata")"
+              if ! printf '%s' "$digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                echo "BuildKit did not report an immutable image digest" >&2
+                cat "$metadata" >&2
+                exit 1
+              fi
+              printf '%s' "$digest" > /dev/termination-log
+              printf 'IMAGE_DIGEST=%s\\n' "$digest"
           env:
             - name: DOCKER_CONFIG
               value: /docker
@@ -657,6 +668,180 @@ spec:
         - name: docker-config
           emptyDir: {}
 `;
+}
+
+export function buildDigestFromPodList(podList) {
+  for (const pod of podList?.items ?? []) {
+    const status = (pod.status?.containerStatuses ?? []).find(
+      (container) => container.name === "buildkit",
+    );
+    const message = status?.state?.terminated?.message?.trim();
+    if (/^sha256:[a-f0-9]{64}$/.test(message ?? "")) {
+      return message;
+    }
+  }
+  throw new Error("Build Job did not publish an immutable image digest");
+}
+
+export function renderArcControllerValues() {
+  const ci = config.ci;
+  return `fullnameOverride: ${ci.controllerRelease}
+serviceAccount:
+  create: true
+  name: ${ci.controllerRelease}
+nodeSelector:
+  kubernetes.io/os: linux
+  kubernetes.io/arch: amd64
+  agentpool: ${config.runtime.nodePool}
+tolerations:
+  - key: ${config.runtime.nodeTaintKey}
+    operator: Equal
+    value: ${config.runtime.nodeTaintValue}
+    effect: NoSchedule
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+flags:
+  logLevel: info
+  logFormat: json
+`;
+}
+
+export function renderArcRunnerValues() {
+  const ci = config.ci;
+  return `githubConfigUrl: ${quote(ci.githubConfigUrl)}
+githubConfigSecret: ${ci.githubAppSecret}
+runnerScaleSetName: ${ci.runnerScaleSetName}
+minRunners: 0
+maxRunners: ${ci.maxRunners}
+controllerServiceAccount:
+  namespace: ${ci.controllerNamespace}
+  name: ${ci.controllerRelease}
+listenerTemplate:
+  spec:
+    nodeSelector:
+      kubernetes.io/os: linux
+      kubernetes.io/arch: amd64
+      agentpool: ${config.runtime.nodePool}
+    tolerations:
+      - key: ${config.runtime.nodeTaintKey}
+        operator: Equal
+        value: ${config.runtime.nodeTaintValue}
+        effect: NoSchedule
+    containers:
+      - name: listener
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+template:
+  spec:
+    serviceAccountName: ${ci.runnerServiceAccount}
+    automountServiceAccountToken: true
+    nodeSelector:
+      kubernetes.io/os: linux
+      kubernetes.io/arch: amd64
+      agentpool: ${config.build.nodePool}
+    tolerations:
+      - key: ${config.build.nodeTaintKey}
+        operator: Equal
+        value: ${config.build.nodeTaintValue}
+        effect: NoSchedule
+    containers:
+      - name: runner
+        image: ${ci.runnerImage}
+        command: ["/home/runner/run.sh"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+            ephemeral-storage: 2Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+            ephemeral-storage: 8Gi
+`;
+}
+
+export function renderArcRunnerRbac() {
+  const ci = config.ci;
+  const subject = `subjects:
+    - kind: ServiceAccount
+      name: ${ci.runnerServiceAccount}
+      namespace: ${ci.runnerNamespace}`;
+  const adminBinding = (environment) => {
+    const namespace = config.environments[environment].namespace;
+    return `apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ${ci.runnerServiceAccount}-admin
+  namespace: ${namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+${subject}
+`;
+  };
+  return `apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${ci.controllerNamespace}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${ci.runnerNamespace}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${ci.runnerServiceAccount}
+  namespace: ${ci.runnerNamespace}
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ${ci.runnerServiceAccount}
+  namespace: ${config.build.namespace}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "delete", "get", "list", "patch", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ${ci.runnerServiceAccount}
+  namespace: ${config.build.namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ${ci.runnerServiceAccount}
+${subject}
+---
+${adminBinding("candidate")}---
+${adminBinding("primary")}`;
 }
 
 function bootstrapBuild() {
@@ -1312,6 +1497,148 @@ function bootstrap() {
   bootstrapEnvironment("primary", runtime);
 }
 
+function arcGithubAppCredentials(args) {
+  const appId = option(args, "--github-app-id");
+  const installationId = option(args, "--github-app-installation-id");
+  const privateKeyPath = option(args, "--github-app-private-key");
+  const supplied = [appId, installationId, privateKeyPath].filter(Boolean);
+  let value;
+  if (supplied.length > 0 && supplied.length !== 3) {
+    throw new Error(
+      "GitHub App setup requires --github-app-id, --github-app-installation-id, and --github-app-private-key together",
+    );
+  }
+  if (supplied.length === 3) {
+    value = JSON.stringify({
+      github_app_id: appId,
+      github_app_installation_id: installationId,
+      github_app_private_key: readFileSync(resolve(privateKeyPath), "utf8"),
+    });
+    const secretPath = join(
+      tmpdir(),
+      `openhands-halo-github-app-${process.pid}.json`,
+    );
+    writeFileSync(secretPath, value, { encoding: "utf8", mode: 0o600 });
+    try {
+      az([
+        "keyvault",
+        "secret",
+        "set",
+        "--vault-name",
+        config.azure.keyVaultName,
+        "--name",
+        config.ci.githubAppKeyVaultSecret,
+        "--file",
+        secretPath,
+        "--output",
+        "none",
+      ]);
+    } finally {
+      unlinkSync(secretPath);
+    }
+  } else {
+    value = az(
+      [
+        "keyvault",
+        "secret",
+        "show",
+        "--vault-name",
+        config.azure.keyVaultName,
+        "--name",
+        config.ci.githubAppKeyVaultSecret,
+        "--query",
+        "value",
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    );
+  }
+  const credentials = JSON.parse(value);
+  for (const key of [
+    "github_app_id",
+    "github_app_installation_id",
+    "github_app_private_key",
+  ]) {
+    if (!credentials[key]) {
+      throw new Error(`GitHub App credential is missing ${key}`);
+    }
+  }
+  return credentials;
+}
+
+function applyArcGithubAppSecret(credentials) {
+  const data = Object.fromEntries(
+    Object.entries(credentials).map(([key, value]) => [
+      key,
+      Buffer.from(String(value), "utf8").toString("base64"),
+    ]),
+  );
+  kubectl(["apply", "-f", "-"], {
+    input: JSON.stringify({
+      apiVersion: "v1",
+      kind: "Secret",
+      metadata: {
+        name: config.ci.githubAppSecret,
+        namespace: config.ci.runnerNamespace,
+      },
+      type: "Opaque",
+      data,
+    }),
+  });
+}
+
+function bootstrapCi(args) {
+  bootstrapBuild();
+  kubectl(["apply", "-f", "-"], { input: renderArcRunnerRbac() });
+  applyArcGithubAppSecret(arcGithubAppCredentials(args));
+  const controllerValuesPath = join(
+    tmpdir(),
+    `openhands-halo-arc-controller-${process.pid}.yaml`,
+  );
+  const runnerValuesPath = join(
+    tmpdir(),
+    `openhands-halo-arc-runner-${process.pid}.yaml`,
+  );
+  writeFileSync(controllerValuesPath, renderArcControllerValues(), "utf8");
+  writeFileSync(runnerValuesPath, renderArcRunnerValues(), "utf8");
+  try {
+    helm([
+      "upgrade",
+      "--install",
+      config.ci.controllerRelease,
+      "oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller",
+      "--version",
+      config.ci.arcVersion,
+      "--namespace",
+      config.ci.controllerNamespace,
+      "--values",
+      controllerValuesPath,
+      "--wait",
+      "--timeout",
+      "10m",
+    ]);
+    helm([
+      "upgrade",
+      "--install",
+      config.ci.runnerRelease,
+      "oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set",
+      "--version",
+      config.ci.arcVersion,
+      "--namespace",
+      config.ci.runnerNamespace,
+      "--values",
+      runnerValuesPath,
+      "--wait",
+      "--timeout",
+      "10m",
+    ]);
+  } finally {
+    unlinkSync(controllerValuesPath);
+    unlinkSync(runnerValuesPath);
+  }
+}
+
 function printResult(result) {
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -1356,7 +1683,6 @@ async function build(args) {
   const ref = option(args, "--ref", "HEAD");
   const commit = resolveCommit(ref);
   verifyCommitIsPushed(commit);
-  bootstrapBuild();
   const short = commit.slice(0, 9);
   const job = `halo-build-${short}`;
   kubectl([
@@ -1395,22 +1721,22 @@ async function build(args) {
     );
     throw error;
   }
-  const digest = az(
-    [
-      "acr",
-      "manifest",
-      "show-metadata",
-      "--registry",
-      config.azure.acrName,
-      "--name",
-      `${config.build.repository}:${short}`,
-      "--query",
-      "digest",
-      "--output",
-      "tsv",
-    ],
-    { capture: true },
+  const pods = JSON.parse(
+    kubectl(
+      [
+        "-n",
+        config.build.namespace,
+        "get",
+        "pods",
+        "-l",
+        `job-name=${job}`,
+        "-o",
+        "json",
+      ],
+      { capture: true },
+    ),
   );
+  const digest = buildDigestFromPodList(pods);
   console.log(`IMAGE_DIGEST=${normalizeDigest(digest)}`);
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
@@ -1434,28 +1760,33 @@ async function waitForReady(host) {
   throw new Error(`Timed out waiting for https://${host}/ready: ${lastError}`);
 }
 
-function enableEndpoint(environment) {
+function runtimeClientId(environment) {
   const env = config.environments[environment];
-  az([
-    "afd",
-    "endpoint",
-    "update",
-    "--resource-group",
-    config.azure.resourceGroup,
-    "--profile-name",
-    config.azure.frontDoorProfile,
-    "--endpoint-name",
-    env.frontDoorEndpoint,
-    "--enabled-state",
-    "Enabled",
-    "--output",
-    "none",
-  ]);
+  const serviceAccount = JSON.parse(
+    kubectl(
+      [
+        "-n",
+        env.namespace,
+        "get",
+        "serviceaccount",
+        env.serviceAccount,
+        "-o",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  const clientId =
+    serviceAccount.metadata?.annotations?.["azure.workload.identity/client-id"];
+  if (!clientId) {
+    throw new Error(
+      `ServiceAccount ${env.namespace}/${env.serviceAccount} is missing its Azure Workload Identity client id; run halo bootstrap`,
+    );
+  }
+  return clientId;
 }
 
 async function deploy(environment, digest) {
-  const runtime = identity(config.identities.runtime);
-  bootstrapEnvironment(environment, runtime);
   const env = config.environments[environment];
   const valuesPath = join(
     tmpdir(),
@@ -1463,7 +1794,7 @@ async function deploy(environment, digest) {
   );
   writeFileSync(
     valuesPath,
-    renderHelmValues(environment, digest, runtime.clientId),
+    renderHelmValues(environment, digest, runtimeClientId(environment)),
     "utf8",
   );
   try {
@@ -1491,7 +1822,6 @@ async function deploy(environment, digest) {
     "statefulset/openhands-halo",
     "--timeout=15m",
   ]);
-  enableEndpoint(environment);
   await waitForReady(env.frontDoorHost);
   console.log(
     `${environment.toUpperCase()}_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.repository, digest)}`,
@@ -1555,6 +1885,7 @@ function status() {
 function usage() {
   console.log(`Usage:
   npm run halo -- bootstrap
+  npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
   npm run halo -- deploy-candidate --digest sha256:<digest>
   npm run halo -- promote
@@ -1566,6 +1897,9 @@ async function main(args = process.argv.slice(2)) {
   switch (command) {
     case "bootstrap":
       bootstrap();
+      break;
+    case "bootstrap-ci":
+      bootstrapCi(args.slice(1));
       break;
     case "build":
       await build(args.slice(1));
