@@ -46,6 +46,8 @@ PVC, one Agent Server Deployment with `Recreate` rollout semantics, and one
 ClusterIP Service. The runtime mounts its disk at `/workspace` and stores its
 conversation state under a workspace-specific directory on the shared Azure
 Files volume. Stopping or replacing the runtime leaves both stores intact.
+Git initialization uses an on-disk progress marker and copies `.git` last, so
+an interrupted copy can be retried without adopting a partial checkout.
 Deleting a workspace requires the explicit `deleteStorage=true` confirmation.
 
 The control-plane ServiceAccount has only namespace-scoped permissions for

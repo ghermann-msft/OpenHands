@@ -173,6 +173,24 @@ describe("workspace runtime resources", () => {
       'git clone --single-branch --branch "$GIT_REF" "$GIT_URL" /clone/repository',
     );
     expect(podSpec.initContainers[0].args[0]).toContain(
+      "git -c safe.directory=/workspace -C /workspace",
+    );
+    expect(podSpec.initContainers[0].args[0]).toContain(
+      'origin="$(git_workspace config --get remote.origin.url)"',
+    );
+    expect(podSpec.initContainers[0].args[0]).toContain(
+      "Existing Git checkout does not match the configured workspace ref",
+    );
+    expect(podSpec.initContainers[0].args[0]).toContain(
+      "! -name .openhands-workspace-initializing -exec rm -rf -- {} +",
+    );
+    expect(podSpec.initContainers[0].args[0]).toContain(
+      "find /clone/repository -mindepth 1 -maxdepth 1 ! -name .git -exec cp -R",
+    );
+    expect(podSpec.initContainers[0].args[0]).toContain(
+      "cp -R /clone/repository/.git /workspace/.git",
+    );
+    expect(podSpec.initContainers[0].args[0]).not.toContain(
       "cp -a /clone/repository/. /workspace/",
     );
     expect(podSpec.initContainers[0].volumeMounts).toContainEqual({
