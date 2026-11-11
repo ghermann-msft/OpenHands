@@ -227,18 +227,28 @@ function sourceInitContainer(config, source) {
     command: ["/bin/sh", "-ec"],
     args: [
       [
-        'if [ -z "$(find /workspace -mindepth 1 -maxdepth 1 -print -quit)" ]; then',
-        '  if [ -n "${GIT_REF:-}" ]; then',
-        '    git clone --single-branch --branch "$GIT_REF" "$GIT_URL" /workspace',
-        "  else",
-        '    git clone "$GIT_URL" /workspace',
+        "if [ ! -e /workspace/.openhands-workspace-initialized ]; then",
+        '  if [ -n "$(find /workspace -mindepth 1 -maxdepth 1 ! -name lost+found -print -quit)" ]; then',
+        '    echo "Workspace disk contains unexpected data; refusing to overwrite it" >&2',
+        "    exit 1",
         "  fi",
+        '  if [ -n "${GIT_REF:-}" ]; then',
+        '    git clone --single-branch --branch "$GIT_REF" "$GIT_URL" /clone/repository',
+        "  else",
+        '    git clone "$GIT_URL" /clone/repository',
+        "  fi",
+        "  cp -a /clone/repository/. /workspace/",
+        "  touch /workspace/.openhands-workspace-initialized",
         "fi",
       ].join("\n"),
     ],
     env: [
       { name: "GIT_URL", value: source.url },
       { name: "GIT_REF", value: source.ref ?? "" },
+    ],
+    volumeMounts: [
+      ...common.volumeMounts,
+      { name: "workspace-init", mountPath: "/clone" },
     ],
   };
 }
@@ -412,6 +422,7 @@ export function renderWorkspaceResources(config, record) {
                   claimName: config.conversationPvc,
                 },
               },
+              { name: "workspace-init", emptyDir: {} },
             ],
           },
         },

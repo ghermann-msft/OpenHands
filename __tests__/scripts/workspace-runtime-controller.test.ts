@@ -167,11 +167,18 @@ describe("workspace runtime resources", () => {
     expect(podSpec.automountServiceAccountToken).toBe(false);
     expect(podSpec.nodeSelector.agentpool).toBe("services");
     expect(podSpec.initContainers[0].args[0]).toContain(
-      "find /workspace -mindepth 1",
+      "find /workspace -mindepth 1 -maxdepth 1 ! -name lost+found",
     );
     expect(podSpec.initContainers[0].args[0]).toContain(
-      'git clone --single-branch --branch "$GIT_REF"',
+      'git clone --single-branch --branch "$GIT_REF" "$GIT_URL" /clone/repository',
     );
+    expect(podSpec.initContainers[0].args[0]).toContain(
+      "cp -a /clone/repository/. /workspace/",
+    );
+    expect(podSpec.initContainers[0].volumeMounts).toContainEqual({
+      name: "workspace-init",
+      mountPath: "/clone",
+    });
     expect(podSpec.containers[0]).toMatchObject({
       command: ["openhands-agent-server"],
       args: ["--port", "8000", "--import-modules", "canvas_ui_tool"],
