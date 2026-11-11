@@ -34,10 +34,24 @@ and primary use separate namespaces, PVCs, Entra credentials, cookie keys,
 internal API keys, settings encryption keys, and Automation KV keys.
 
 Conversation state is stored on a separate retained Azure Files PVC in each
-environment and mounted at `/home/openhands/conversations`. Workspace files and
-the remaining OpenHands state stay on the environment's Azure Disk. The first
-rollout copies any existing conversation directories from the Azure Disk when
+environment and mounted at `/home/openhands/conversations`. The shared Canvas
+control plane keeps its remaining state on the environment's Azure Disk. The
+first rollout copies any existing conversation directories from that disk when
 the Azure Files share is empty.
+
+Halo workspaces are source-control neutral. The authenticated Entra BFF exposes
+`/api/workspace-runtimes` to create an empty workspace or initialize one from
+an HTTPS Git repository. Each workspace gets a retained Azure Managed Disk
+PVC, one Agent Server Deployment with `Recreate` rollout semantics, and one
+ClusterIP Service. The runtime mounts its disk at `/workspace` and stores its
+conversation state under a workspace-specific directory on the shared Azure
+Files volume. Stopping or replacing the runtime leaves both stores intact.
+Deleting a workspace requires the explicit `deleteStorage=true` confirmation.
+
+The control-plane ServiceAccount has only namespace-scoped permissions for
+workspace ConfigMaps, PVCs, Services, and Deployments. Runtime pods use the
+same identity for Key Vault access but disable ServiceAccount token mounting,
+so agent workloads cannot call the Kubernetes API.
 
 All names and non-secret Azure identifiers live in `deploy/halo/config.json`.
 Secret values stay in Azure Key Vault.

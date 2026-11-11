@@ -16,6 +16,8 @@ import {
   renderFrontDoorWafPolicy,
   renderHelmValues,
   renderSecretProviderClass,
+  renderWorkspaceRuntimeRbac,
+  renderWorkspaceStorageClass,
   runtimeNodePoolAutoscalerArgs,
   validateBuildNodePool,
 } from "../../scripts/halo-deploy.mjs";
@@ -27,9 +29,9 @@ describe("Halo deployment automation", () => {
   it("requires immutable image digests", () => {
     expect(normalizeDigest(digest)).toBe(digest);
     expect(() => normalizeDigest("84d224f45")).toThrow(/immutable sha256/);
-    expect(
-      imageReference("registry.example", "openhands-halo", digest),
-    ).toBe(`registry.example/openhands-halo@${digest}`);
+    expect(imageReference("registry.example", "openhands-halo", digest)).toBe(
+      `registry.example/openhands-halo@${digest}`,
+    );
   });
 
   it("renders an isolated privileged cached build for the exact commit", () => {
@@ -129,10 +131,7 @@ describe("Halo deployment automation", () => {
     });
     expect(
       securityPolicy.properties.parameters.associations[0].domains,
-    ).toEqual([
-      { id: "candidate-endpoint-id" },
-      { id: "primary-endpoint-id" },
-    ]);
+    ).toEqual([{ id: "candidate-endpoint-id" }, { id: "primary-endpoint-id" }]);
   });
 
   it("uses each Entra application's API identifier for its delegated scope", () => {
@@ -159,11 +158,7 @@ describe("Halo deployment automation", () => {
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {
     const spc = renderSecretProviderClass("candidate", "runtime-client-id");
-    const values = renderHelmValues(
-      "candidate",
-      digest,
-      "runtime-client-id",
-    );
+    const values = renderHelmValues("candidate", digest, "runtime-client-id");
 
     expect(spc).toContain("halo-ppe-entra-client-secret");
     expect(spc).toContain("halo-ppe-session-api-key");
@@ -174,9 +169,7 @@ describe("Halo deployment automation", () => {
     expect(values).toContain(
       "host: openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
     );
-    expect(values).toContain(
-      "clientId: 9071e6b8-c981-4a11-b975-256cc4b7b841",
-    );
+    expect(values).toContain("clientId: 9071e6b8-c981-4a11-b975-256cc4b7b841");
     expect(values).toContain(
       "api://9071e6b8-c981-4a11-b975-256cc4b7b841/access_as_user",
     );
@@ -194,6 +187,16 @@ describe("Halo deployment automation", () => {
     expect(values).toContain(
       'name: AGENT_CANVAS_DISABLE_TELEMETRY\n      value: "1"',
     );
+    expect(values).toContain("automountServiceAccountToken: true");
+    expect(values).toContain(
+      "name: AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE\n      value: openhands-halo-ppe",
+    );
+    expect(values).toContain(
+      `name: AGENT_CANVAS_WORKSPACE_RUNTIME_IMAGE\n      value: uhunrealhaacukmdbkacr.azurecr.io/openhands-halo@${digest}`,
+    );
+    expect(values).toContain(
+      "name: AGENT_CANVAS_WORKSPACE_STORAGE_CLASS\n      value: openhands-halo-workspace-disk",
+    );
     expect(values).not.toContain("halo-primary-entra-client-secret");
   });
 
@@ -208,5 +211,24 @@ describe("Halo deployment automation", () => {
     expect(pvc).toContain("accessModes:\n    - ReadWriteMany");
     expect(pvc).toContain("storageClassName: openhands-halo-azurefile");
     expect(pvc).toContain("storage: 5Gi");
+  });
+
+  it("uses retained Azure Disks and namespace-scoped runtime permissions", () => {
+    const storageClass = renderWorkspaceStorageClass();
+    const rbac = renderWorkspaceRuntimeRbac("candidate");
+
+    expect(storageClass).toContain("provisioner: disk.csi.azure.com");
+    expect(storageClass).toContain("reclaimPolicy: Retain");
+    expect(storageClass).toContain("skuName: StandardSSD_LRS");
+    expect(storageClass).toContain("volumeBindingMode: WaitForFirstConsumer");
+    expect(rbac).toContain("namespace: openhands-halo-ppe");
+    expect(rbac).toContain(
+      'resources: ["configmaps", "persistentvolumeclaims", "services"]',
+    );
+    expect(rbac).toContain('resources: ["deployments"]');
+    expect(rbac).toContain(
+      'verbs: ["create", "delete", "get", "list", "patch"]',
+    );
+    expect(rbac).not.toContain("ClusterRole");
   });
 });

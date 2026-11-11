@@ -10,9 +10,7 @@
     "frontDoorProfile": "uh-unrealhands-dev-fd",
     "frontDoorWafPolicy": "openhandsHaloCidr",
     "frontDoorSecurityPolicy": "openhands-halo-cidr",
-    "allowedClientCidrs": [
-      "207.68.149.128/28"
-    ],
+    "allowedClientCidrs": ["207.68.149.128/28"],
     "applicationGatewayOriginHost": "unrealhands-dev-origin-acukmdbk.westus3.cloudapp.azure.com",
     "applicationGatewayNsg": "uh-unrealhands-dev-acukmd-application-gateway-nsg"
   },
@@ -51,6 +49,11 @@
     "storageClass": "openhands-halo-azurefile",
     "size": "5Gi",
     "skuName": "Standard_LRS"
+  },
+  "workspaceStorage": {
+    "storageClass": "openhands-halo-workspace-disk",
+    "size": "50Gi",
+    "skuName": "StandardSSD_LRS"
   },
   "environments": {
     "candidate": {

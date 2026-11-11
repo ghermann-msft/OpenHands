@@ -111,7 +111,11 @@ function resolveCommit(ref) {
 function verifyCommitIsPushed(commit) {
   const remoteCommit = run(
     "git",
-    ["ls-remote", config.source.repository, `refs/heads/${config.source.branch}`],
+    [
+      "ls-remote",
+      config.source.repository,
+      `refs/heads/${config.source.branch}`,
+    ],
     { capture: true },
   ).split(/\s+/)[0];
   if (remoteCommit !== commit) {
@@ -416,8 +420,7 @@ function ensureRuntimeNodePool() {
       { capture: true },
     ),
   );
-  const expectedTaint =
-    `${config.runtime.nodeTaintKey}=${config.runtime.nodeTaintValue}:NoSchedule`;
+  const expectedTaint = `${config.runtime.nodeTaintKey}=${config.runtime.nodeTaintValue}:NoSchedule`;
   if (
     !nodePool.enableAutoScaling ||
     nodePool.minCount !== config.runtime.nodePoolMinCount ||
@@ -464,10 +467,9 @@ export function entraIdentifierUri(environment) {
 function ensureEntraApplication(environment) {
   const env = config.environments[environment];
   const application = JSON.parse(
-    az(
-      ["ad", "app", "show", "--id", env.entraClientId, "--output", "json"],
-      { capture: true },
-    ),
+    az(["ad", "app", "show", "--id", env.entraClientId, "--output", "json"], {
+      capture: true,
+    }),
   );
   if (application.displayName !== env.entraDisplayName) {
     throw new Error(
@@ -675,7 +677,11 @@ function bootstrapBuild() {
     ],
     { capture: true },
   );
-  ensureRole({ principalId: builder.principalId, role: "AcrPush", scope: acrId });
+  ensureRole({
+    principalId: builder.principalId,
+    role: "AcrPush",
+    scope: acrId,
+  });
   ensureFederatedCredential({
     identityName: config.identities.builder,
     credentialName: config.build.federatedCredential,
@@ -738,7 +744,7 @@ image:
 serviceAccount:
   create: false
   name: ${env.serviceAccount}
-  automountServiceAccountToken: false
+  automountServiceAccountToken: true
   annotations:
     azure.workload.identity/client-id: ${quote(runtimeClientId)}
 podLabels:
@@ -795,6 +801,26 @@ config:
       value: "1"
     - name: AGENT_CANVAS_DISABLE_TELEMETRY
       value: "1"
+    - name: AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE
+      value: ${env.namespace}
+    - name: AGENT_CANVAS_WORKSPACE_RUNTIME_IMAGE
+      value: ${image}
+    - name: AGENT_CANVAS_WORKSPACE_STORAGE_CLASS
+      value: ${config.workspaceStorage.storageClass}
+    - name: AGENT_CANVAS_WORKSPACE_STORAGE_SIZE
+      value: ${config.workspaceStorage.size}
+    - name: AGENT_CANVAS_WORKSPACE_CONVERSATION_PVC
+      value: ${env.conversationPvc}
+    - name: AGENT_CANVAS_WORKSPACE_SHARED_SECRET
+      value: openhands-halo-secrets
+    - name: AGENT_CANVAS_WORKSPACE_SERVICE_ACCOUNT
+      value: ${env.serviceAccount}
+    - name: AGENT_CANVAS_WORKSPACE_NODE_POOL
+      value: ${config.runtime.nodePool}
+    - name: AGENT_CANVAS_WORKSPACE_TAINT_KEY
+      value: ${config.runtime.nodeTaintKey}
+    - name: AGENT_CANVAS_WORKSPACE_TAINT_VALUE
+      value: ${config.runtime.nodeTaintValue}
     - name: AUTOMATION_KV_SECRET
       valueFrom:
         secretKeyRef:
@@ -877,6 +903,52 @@ spec:
   resources:
     requests:
       storage: ${storage.size}
+`;
+}
+
+export function renderWorkspaceStorageClass() {
+  const storage = config.workspaceStorage;
+  return `apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ${storage.storageClass}
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: ${storage.skuName}
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+`;
+}
+
+export function renderWorkspaceRuntimeRbac(environment) {
+  const env = config.environments[environment];
+  return `apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openhands-halo-workspace-controller
+  namespace: ${env.namespace}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "persistentvolumeclaims", "services"]
+    verbs: ["create", "delete", "get", "list", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "delete", "get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openhands-halo-workspace-controller
+  namespace: ${env.namespace}
+subjects:
+  - kind: ServiceAccount
+    name: ${env.serviceAccount}
+    namespace: ${env.namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openhands-halo-workspace-controller
 `;
 }
 
@@ -1220,7 +1292,13 @@ function bootstrapEnvironment(environment, runtime) {
     input: renderConversationStorageClass(),
   });
   kubectl(["apply", "-f", "-"], {
+    input: renderWorkspaceStorageClass(),
+  });
+  kubectl(["apply", "-f", "-"], {
     input: renderConversationPvc(environment),
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderWorkspaceRuntimeRbac(environment),
   });
   ensureFrontDoor(environment);
 }
@@ -1334,14 +1412,7 @@ async function build(args) {
     { capture: true },
   );
   console.log(`IMAGE_DIGEST=${normalizeDigest(digest)}`);
-  kubectl([
-    "-n",
-    config.build.namespace,
-    "delete",
-    "job",
-    job,
-    "--wait=false",
-  ]);
+  kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
 
 async function waitForReady(host) {
@@ -1500,10 +1571,7 @@ async function main(args = process.argv.slice(2)) {
       await build(args.slice(1));
       break;
     case "deploy-candidate":
-      await deploy(
-        "candidate",
-        normalizeDigest(option(args, "--digest")),
-      );
+      await deploy("candidate", normalizeDigest(option(args, "--digest")));
       break;
     case "promote":
       await promote();

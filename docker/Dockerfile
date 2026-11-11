@@ -137,6 +137,7 @@ COPY scripts/static-server.mjs /opt/agent-canvas/static-server.mjs
 COPY scripts/bind-host.mjs /opt/agent-canvas/bind-host.mjs
 COPY scripts/proxy-utils.mjs /opt/agent-canvas/proxy-utils.mjs
 COPY scripts/entra-bff.mjs /opt/agent-canvas/entra-bff.mjs
+COPY scripts/workspace-runtime-controller.mjs /opt/agent-canvas/workspace-runtime-controller.mjs
 # static-server.mjs mounts the MARS web bridge, which pulls in these modules.
 COPY scripts/http-body.mjs /opt/agent-canvas/http-body.mjs
 COPY scripts/mars-web-bridge.mjs /opt/agent-canvas/mars-web-bridge.mjs

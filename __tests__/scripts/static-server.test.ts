@@ -121,6 +121,30 @@ describe("static-server.mjs", () => {
       expect(parseArgs([]).host).toBe("127.0.0.1");
     });
 
+    it("does not expose workspace provisioning without Entra authentication", () => {
+      const buildDir = mkdtempSync(
+        path.join(tmpdir(), "workspace-runtime-auth-"),
+      );
+      tempDirs.push(buildDir);
+      writeFileSync(
+        path.join(buildDir, "index.html"),
+        "<html><head></head><body>app</body></html>",
+      );
+
+      expect(() =>
+        startStaticServer({
+          port: 0,
+          host: "127.0.0.1",
+          dir: buildDir,
+          routes: {},
+          workspaceRuntimeController: {
+            handleHttp: vi.fn(),
+            resolveProxyRequest: vi.fn(),
+          },
+        }),
+      ).toThrow(/requires Microsoft Entra BFF authentication/);
+    });
+
     it("defaults sessionApiKey to null", () => {
       const config = parseArgs([]);
       expect(config.sessionApiKey).toBeNull();
@@ -792,7 +816,9 @@ describe("static-server.mjs", () => {
 
       try {
         const server = await startStaticServer({
-          ...parseArgs(["--host", "0.0.0.0"], { SESSION_API_KEY: "lan-secret" }),
+          ...parseArgs(["--host", "0.0.0.0"], {
+            SESSION_API_KEY: "lan-secret",
+          }),
           port: 0,
           dir: buildDir,
         });

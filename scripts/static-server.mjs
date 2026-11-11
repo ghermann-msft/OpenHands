@@ -44,6 +44,7 @@ import {
   matchesPathPrefix,
   proxyServerInfoRequest,
 } from "./proxy-utils.mjs";
+import { createWorkspaceRuntimeController } from "./workspace-runtime-controller.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SPA fallback helpers
@@ -396,6 +397,7 @@ function makeConfigInjectionScript(
   vscodeBasePath,
   disableTelemetry,
   entraBff,
+  workspaceRuntimes,
 ) {
   const parts = [];
 
@@ -457,6 +459,9 @@ function makeConfigInjectionScript(
   if (entraBff) {
     parts.push(`window.__AGENT_CANVAS_ENTRA_BFF__=true;`);
   }
+  if (workspaceRuntimes) {
+    parts.push(`window.__AGENT_CANVAS_WORKSPACE_RUNTIMES__=true;`);
+  }
 
   if (parts.length === 0) return "";
 
@@ -480,6 +485,7 @@ async function serveInjectedIndexHtml(
     vscodeBasePath,
     disableTelemetry,
     entraBff,
+    workspaceRuntimes,
   } = {},
 ) {
   let content;
@@ -498,6 +504,7 @@ async function serveInjectedIndexHtml(
     vscodeBasePath,
     disableTelemetry,
     entraBff,
+    workspaceRuntimes,
   );
   // Inject right before </head> so the key is available before any app code runs.
   // replace() targets the first (and only) </head> in well-formed HTML.
@@ -549,6 +556,7 @@ function needsRuntimeInjection(injectionOpts) {
     injectionOpts.vscodeBasePath ||
     injectionOpts.disableTelemetry ||
     injectionOpts.entraBff ||
+    injectionOpts.workspaceRuntimes ||
     (injectionOpts.basePath && injectionOpts.basePath !== "/"),
   );
 }
@@ -704,12 +712,22 @@ export function startStaticServer(config) {
     vscodeBasePath: config.vscodeBasePath || null,
     disableTelemetry: config.disableTelemetry || false,
     entraBff: Boolean(config.entraBff),
+    workspaceRuntimes: false,
   };
   const basePath = injectionOpts.basePath;
   const rejectPrefixes = config.rejectPrefixes ?? [];
   const noReferrerPrefixes = config.noReferrerPrefixes ?? [];
   const staticMiddleware = createStaticMiddleware(dirAbs);
   const entraBff = createEntraBff(config.entraBff, config.entraBffOptions);
+  const workspaceRuntimes =
+    config.workspaceRuntimeController ??
+    createWorkspaceRuntimeController(config.env ?? process.env);
+  if (workspaceRuntimes && !entraBff) {
+    throw new Error(
+      "Workspace runtime provisioning requires Microsoft Entra BFF authentication",
+    );
+  }
+  injectionOpts.workspaceRuntimes = Boolean(workspaceRuntimes);
   const internalAuthHeaders = config.entraBff
     ? { "X-Session-API-Key": config.sessionApiKey }
     : undefined;
@@ -744,6 +762,17 @@ export function startStaticServer(config) {
     if (entraBff) {
       if (await entraBff.handleHttp(req, res)) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
+    }
+    if (workspaceRuntimes) {
+      if (await workspaceRuntimes.handleHttp(req, res)) return;
+      const runtimeProxy = workspaceRuntimes.resolveProxyRequest(url);
+      if (runtimeProxy) {
+        req.url = runtimeProxy.upstreamPath;
+        proxy.proxyHttp(req, res, runtimeProxy.target, {
+          headers: internalAuthHeaders,
+        });
+        return;
+      }
     }
     if (marsWeb?.handleHttp(req, res)) return;
     const backend = route(url);
@@ -800,6 +829,16 @@ export function startStaticServer(config) {
     if (entraBff) {
       if (!(await entraBff.authorizeWebSocket(req, socket))) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
+    }
+    if (workspaceRuntimes) {
+      const runtimeProxy = workspaceRuntimes.resolveProxyRequest(req.url);
+      if (runtimeProxy) {
+        req.url = runtimeProxy.upstreamPath;
+        proxy.proxyWebSocket(req, socket, head, runtimeProxy.target, {
+          headers: internalAuthHeaders,
+        });
+        return;
+      }
     }
     if (marsWeb?.handleUpgrade(req, socket, head)) return;
     const backend = route(req.url ?? "/");
