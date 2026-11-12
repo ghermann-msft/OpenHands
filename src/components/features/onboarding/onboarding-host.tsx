@@ -3,7 +3,7 @@ import { getLockedCloudHost } from "#/api/agent-server-config";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { SEEDED_DEFAULT_BACKEND_ID } from "#/api/backend-registry/default-backend";
 import { useSettings } from "#/hooks/query/use-settings";
-import { isSubscriptionLlmConfig } from "#/constants/llm-subscription";
+import { isLlmConfigUsableWithoutApiKey } from "#/constants/llm-subscription";
 import type { Settings } from "#/types/settings";
 import { OnboardingModal } from "./onboarding-modal";
 import {
@@ -18,7 +18,7 @@ function hasUsableLlm(settings: Settings | undefined): boolean {
   const hasModel =
     typeof llm?.model === "string" && llm.model.trim().length > 0;
   const hasAuth =
-    settings?.llm_api_key_set === true || isSubscriptionLlmConfig(llm);
+    settings?.llm_api_key_set === true || isLlmConfigUsableWithoutApiKey(llm);
   return hasModel && hasAuth;
 }
 

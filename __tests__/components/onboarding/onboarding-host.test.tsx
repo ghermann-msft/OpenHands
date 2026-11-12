@@ -228,6 +228,35 @@ describe("OnboardingHost", () => {
     ).toBeNull();
   });
 
+  it("skips the modal when the active Cloud backend uses Azure workload identity", async () => {
+    seedCloudBackend();
+    const getSettings = vi
+      .spyOn(SettingsService, "getSettings")
+      .mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        llm_api_key_set: false,
+        agent_settings: {
+          ...DEFAULT_SETTINGS.agent_settings,
+          llm: {
+            model: "azure/gpt-5.6-sol",
+            auth_type: "azure_workload_identity",
+          },
+        },
+      });
+
+    renderHost();
+
+    await waitFor(() => {
+      expect(getSettings).toHaveBeenCalledOnce();
+      expect(
+        screen.queryByTestId("onboarding-modal-stub"),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      window.localStorage.getItem(ONBOARDING_COMPLETED_STORAGE_KEY),
+    ).toBeNull();
+  });
+
   it("still shows the modal for a Cloud user when an API key is set but no model is configured", async () => {
     seedCloudBackend();
     vi.spyOn(SettingsService, "getSettings").mockResolvedValue({

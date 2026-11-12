@@ -121,6 +121,36 @@ describe("useLlmConfigured", () => {
     expect(mockGetProfile).toHaveBeenCalledWith("gpt-5.5-sub");
   });
 
+  it("treats an active Azure workload identity profile without an API key as configured", async () => {
+    mockListProfiles.mockResolvedValue({
+      active_profile: "halo-azure",
+      profiles: [
+        {
+          name: "halo-azure",
+          model: "gpt-5.6-sol",
+          base_url: "https://mortmain-openai2.openai.azure.com/",
+          api_key_set: false,
+        },
+      ],
+    });
+    mockGetProfile.mockResolvedValue({
+      name: "halo-azure",
+      api_key_set: false,
+      config: {
+        model: "azure/gpt-5.6-sol",
+        auth_type: "azure_workload_identity",
+        base_url: "https://mortmain-openai2.openai.azure.com/",
+      },
+    });
+
+    const { result } = renderLlmConfiguredHook();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isConfigured).toBe(true);
+    expect(mockGetProfile).toHaveBeenCalledWith("halo-azure");
+  });
+
   it("uses the api_key_set fast path for an API-key profile without fetching profile detail", async () => {
     mockListProfiles.mockResolvedValue({
       active_profile: "gpt-5.5",

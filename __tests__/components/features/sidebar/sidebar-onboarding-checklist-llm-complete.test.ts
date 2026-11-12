@@ -68,6 +68,28 @@ describe("isConfigureLlmChecklistItemComplete", () => {
     ).toBe(true);
   });
 
+  it("returns true when settings use Azure workload identity", () => {
+    expect(
+      isConfigureLlmChecklistItemComplete(
+        {
+          ...DEFAULT_SETTINGS,
+          llm_api_key_set: false,
+          agent_settings: {
+            ...(DEFAULT_SETTINGS.agent_settings ?? {}),
+            llm: {
+              model: "azure/gpt-5.6-sol",
+              auth_type: "azure_workload_identity",
+            },
+          },
+        },
+        false,
+        false,
+        undefined,
+        false,
+      ),
+    ).toBe(true);
+  });
+
   it("returns false when no model or auth is present", () => {
     expect(
       isConfigureLlmChecklistItemComplete(

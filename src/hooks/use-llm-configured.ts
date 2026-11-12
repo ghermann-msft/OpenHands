@@ -11,13 +11,13 @@ import {
   CONFIG_CACHE_OPTIONS,
   LLM_PROFILES_QUERY_KEYS,
 } from "#/hooks/query/query-keys";
-import { isSubscriptionLlmConfig } from "#/constants/llm-subscription";
+import { isLlmConfigUsableWithoutApiKey } from "#/constants/llm-subscription";
 
 interface LlmConfiguredResult {
   /**
    * True when the active backend's agent has a usable LLM:
    * - ACP agents own their LLM via a subprocess, so they never need a key.
-   * - OpenHands agents are ready only once an LLM API key has been saved.
+   * - OpenHands agents need an API key or a supported keyless auth mode.
    * - When the LLM settings page is hidden by a feature flag there is no
    *   place to finish setup, so we treat the LLM as configured to avoid
    *   surfacing an actionless warning.
@@ -35,7 +35,7 @@ interface LlmConfiguredResult {
 /**
  * Reports whether the active backend's agent has an LLM ready to run
  * conversations. Surfaces the gap left by the onboarding "Skip for now" path,
- * which persists no settings — leaving an OpenHands agent without an API key.
+ * which persists no settings — leaving an OpenHands agent without usable auth.
  */
 export function useLlmConfigured(): LlmConfiguredResult {
   const {
@@ -105,9 +105,9 @@ export function useLlmConfigured(): LlmConfiguredResult {
     enabled: shouldLoadActiveProfileDetail,
     meta: { disableToast: true },
   });
-  const hasActiveProfileSubscription =
+  const hasActiveProfileKeylessAuth =
     shouldLoadActiveProfileDetail &&
-    isSubscriptionLlmConfig(
+    isLlmConfigUsableWithoutApiKey(
       activeProfileDetail?.config as Record<string, unknown> | undefined,
     );
   const llmSettingsHidden = isSettingsPageHidden(
@@ -116,10 +116,10 @@ export function useLlmConfigured(): LlmConfiguredResult {
   );
 
   // Profiles are the source of truth on local. Cloud still accepts the legacy
-  // settings-key signal, but provider-backed org profiles can be usable even
-  // when settings.llm_api_key_set is false.
+  // settings-key signal, but keyless and provider-backed profiles can be
+  // usable even when settings.llm_api_key_set is false.
   const hasUsableActiveProfile =
-    hasActiveProfileApiKey || hasActiveProfileSubscription;
+    hasActiveProfileApiKey || hasActiveProfileKeylessAuth;
   const hasUsableLlm = isLocal
     ? hasUsableActiveProfile
     : hasApiKey || hasUsableActiveProfile;

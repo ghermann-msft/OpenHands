@@ -4,6 +4,7 @@ export const LLM_AUTH_TYPE_KEY = "llm.auth_type";
 export const LLM_SUBSCRIPTION_VENDOR_KEY = "llm.subscription_vendor";
 export const LLM_AUTH_TYPE_API_KEY = "api_key";
 export const LLM_AUTH_TYPE_SUBSCRIPTION = "subscription";
+export const LLM_AUTH_TYPE_AZURE_WORKLOAD_IDENTITY = "azure_workload_identity";
 export const OPENAI_SUBSCRIPTION_VENDOR = "openai";
 
 export const OPENAI_SUBSCRIPTION_MODELS_PATH =
@@ -71,4 +72,13 @@ export function isSubscriptionLlmConfig(
   llm: Record<string, unknown> | null | undefined,
 ): boolean {
   return resolveLlmAuthType(llm?.auth_type) === LLM_AUTH_TYPE_SUBSCRIPTION;
+}
+
+export function isLlmConfigUsableWithoutApiKey(
+  llm: Record<string, unknown> | null | undefined,
+): boolean {
+  return (
+    isSubscriptionLlmConfig(llm) ||
+    llm?.auth_type === LLM_AUTH_TYPE_AZURE_WORKLOAD_IDENTITY
+  );
 }

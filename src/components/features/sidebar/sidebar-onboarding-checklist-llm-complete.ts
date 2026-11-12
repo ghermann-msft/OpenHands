@@ -1,4 +1,5 @@
 import type { ProfileListResponse } from "#/api/profiles-service/profiles-service.api";
+import { isLlmConfigUsableWithoutApiKey } from "#/constants/llm-subscription";
 import type { Settings } from "#/types/settings";
 
 function hasLlmProfileWithApiKey(
@@ -17,7 +18,7 @@ function hasConfiguredLlmInSettings(settings: Settings | undefined): boolean {
   const hasAuth =
     settings?.llm_api_key_set === true ||
     settings?.llm_api_key_is_set === true ||
-    llm?.auth_type === "subscription";
+    isLlmConfigUsableWithoutApiKey(llm);
 
   return hasModel && hasAuth;
 }
