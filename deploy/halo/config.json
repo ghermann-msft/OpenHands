@@ -2,6 +2,7 @@
   "azure": {
     "subscriptionId": "3956877a-1e3c-4990-aba7-7481b5d99a60",
     "tenantId": "49391958-917a-40c8-956f-ec1ce0196aa9",
+    "location": "westus3",
     "resourceGroup": "rg-unrealhands-dev",
     "aksCluster": "aks-unrealhands-dev",
     "acrName": "uhunrealhaacukmdbkacr",
@@ -14,13 +15,22 @@
     "applicationGatewayOriginHost": "unrealhands-dev-origin-acukmdbk.westus3.cloudapp.azure.com",
     "applicationGatewayNsg": "uh-unrealhands-dev-acukmd-application-gateway-nsg"
   },
+  "azureOpenAI": {
+    "subscriptionId": "fe0b1156-f0b3-4f98-aa1e-7d980f834fcf",
+    "resourceGroup": "DefaultResourceGroup-EUS",
+    "accountName": "mortmain-openai2",
+    "endpoint": "https://mortmain-openai2.openai.azure.com/",
+    "deployment": "gpt-5.6-sol",
+    "apiVersion": "2024-12-01-preview"
+  },
   "source": {
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
-    "branch": "openhands-halo"
+    "branch": "openhands-halo",
+    "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
+    "agentServerSdkRef": "50c9e251682c9a5771cc5b5d12dabc66ac9fdb91"
   },
   "identities": {
-    "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
-    "runtime": "uh-unrealhands-dev-acukmd-credentials-broker-mi"
+    "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi"
   },
   "build": {
     "namespace": "openhands-halo-build",
@@ -74,6 +84,7 @@
       "namespace": "openhands-halo-ppe",
       "release": "openhands-halo",
       "serviceAccount": "openhands-halo",
+      "runtimeIdentity": "openhands-halo-ppe-runtime-mi",
       "conversationPvc": "openhands-halo-conversations",
       "federatedCredential": "halo-ppe-runtime",
       "frontDoorEndpoint": "openhands-ppe",
@@ -95,6 +106,7 @@
       "namespace": "openhands-halo-primary",
       "release": "openhands-halo",
       "serviceAccount": "openhands-halo",
+      "runtimeIdentity": "openhands-halo-primary-runtime-mi",
       "conversationPvc": "openhands-halo-conversations",
       "federatedCredential": "halo-primary-runtime",
       "frontDoorEndpoint": "openhands",

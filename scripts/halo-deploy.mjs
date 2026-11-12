@@ -143,6 +143,37 @@ function identity(name) {
   );
 }
 
+function ensureIdentity(name) {
+  const existing = tryRun("az", [
+    "identity",
+    "show",
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    name,
+    "--output",
+    "json",
+  ]);
+  if (existing.status === 0) return JSON.parse(existing.stdout);
+  return JSON.parse(
+    az(
+      [
+        "identity",
+        "create",
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--name",
+        name,
+        "--location",
+        config.azure.location,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+}
+
 function ensureRole({ principalId, role, scope }) {
   const existing = az(
     [
@@ -176,6 +207,61 @@ function ensureRole({ principalId, role, scope }) {
     "--output",
     "none",
   ]);
+}
+
+function validateAzureOpenAi() {
+  const account = JSON.parse(
+    az(
+      [
+        "cognitiveservices",
+        "account",
+        "show",
+        "--subscription",
+        config.azureOpenAI.subscriptionId,
+        "--resource-group",
+        config.azureOpenAI.resourceGroup,
+        "--name",
+        config.azureOpenAI.accountName,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  if (account.properties?.endpoint !== config.azureOpenAI.endpoint) {
+    throw new Error(
+      `Azure OpenAI endpoint mismatch: expected ${config.azureOpenAI.endpoint}, found ${account.properties?.endpoint ?? "none"}`,
+    );
+  }
+  const deployment = JSON.parse(
+    az(
+      [
+        "cognitiveservices",
+        "account",
+        "deployment",
+        "show",
+        "--subscription",
+        config.azureOpenAI.subscriptionId,
+        "--resource-group",
+        config.azureOpenAI.resourceGroup,
+        "--name",
+        config.azureOpenAI.accountName,
+        "--deployment-name",
+        config.azureOpenAI.deployment,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  if (
+    deployment.properties?.provisioningState !== "Succeeded" ||
+    deployment.properties?.model?.name !== config.azureOpenAI.deployment
+  ) {
+    throw new Error(
+      `Azure OpenAI deployment ${config.azureOpenAI.deployment} is not a matching succeeded deployment`,
+    );
+  }
 }
 
 function ensureFederatedCredential({
@@ -623,6 +709,8 @@ spec:
                 --opt platform=linux/amd64 \\
                 --opt build-arg:AGENT_SERVER_IMAGE=${defaults.images.agentServer}:${defaults.versions.agentServer}-python \\
                 --opt build-arg:AGENT_SERVER_VERSION=${defaults.versions.agentServer} \\
+                --opt build-arg:AGENT_SERVER_SDK_GIT_REPOSITORY=${config.source.agentServerSdkRepository} \\
+                --opt build-arg:AGENT_SERVER_SDK_GIT_REF=${config.source.agentServerSdkRef} \\
                 --opt build-arg:AUTOMATION_VERSION=${defaults.versions.automation} \\
                 --opt build-arg:VITE_BASE_PATH=${defaults.paths.canvasBasePath} \\
                 --opt build-arg:OPENHANDS_BUILD_GIT_SHA=${commit} \\
@@ -988,6 +1076,22 @@ config:
       value: "1"
     - name: AGENT_CANVAS_DISABLE_TELEMETRY
       value: "1"
+    - name: LLM_MODEL
+      value: azure/${config.azureOpenAI.deployment}
+    - name: LLM_BASE_URL
+      value: ${config.azureOpenAI.endpoint}
+    - name: LLM_API_VERSION
+      value: ${config.azureOpenAI.apiVersion}
+    - name: LLM_AUTH_TYPE
+      value: azure_workload_identity
+    - name: AGENT_CANVAS_WORKSPACE_LLM_MODEL
+      value: azure/${config.azureOpenAI.deployment}
+    - name: AGENT_CANVAS_WORKSPACE_LLM_BASE_URL
+      value: ${config.azureOpenAI.endpoint}
+    - name: AGENT_CANVAS_WORKSPACE_LLM_API_VERSION
+      value: ${config.azureOpenAI.apiVersion}
+    - name: AGENT_CANVAS_WORKSPACE_LLM_AUTH_TYPE
+      value: azure_workload_identity
     - name: AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE
       value: ${env.namespace}
     - name: AGENT_CANVAS_WORKSPACE_RUNTIME_IMAGE
@@ -1438,8 +1542,9 @@ function ensureFrontDoor(environment) {
   }
 }
 
-function bootstrapEnvironment(environment, runtime) {
+function bootstrapEnvironment(environment) {
   const env = config.environments[environment];
+  const runtime = ensureIdentity(env.runtimeIdentity);
   ensureEntraApplication(environment);
   const vaultId = az(
     [
@@ -1461,8 +1566,14 @@ function bootstrapEnvironment(environment, runtime) {
     role: "Key Vault Secrets User",
     scope: vaultId,
   });
+  const openAiScope = `/subscriptions/${config.azureOpenAI.subscriptionId}/resourceGroups/${config.azureOpenAI.resourceGroup}/providers/Microsoft.CognitiveServices/accounts/${config.azureOpenAI.accountName}`;
+  ensureRole({
+    principalId: runtime.principalId,
+    role: "Cognitive Services OpenAI User",
+    scope: openAiScope,
+  });
   ensureFederatedCredential({
-    identityName: config.identities.runtime,
+    identityName: env.runtimeIdentity,
     credentialName: env.federatedCredential,
     namespace: env.namespace,
     serviceAccount: env.serviceAccount,
@@ -1494,9 +1605,9 @@ function bootstrap() {
   bootstrapBuild();
   ensureRuntimeNodePool();
   ensureFrontDoorAccess();
-  const runtime = identity(config.identities.runtime);
-  bootstrapEnvironment("candidate", runtime);
-  bootstrapEnvironment("primary", runtime);
+  validateAzureOpenAi();
+  bootstrapEnvironment("candidate");
+  bootstrapEnvironment("primary");
 }
 
 function arcGithubAppCredentials(args) {

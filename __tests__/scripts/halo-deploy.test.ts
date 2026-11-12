@@ -43,6 +43,12 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
+    expect(job).toContain(
+      "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
+    );
+    expect(job).toContain(
+      "AGENT_SERVER_SDK_GIT_REF=50c9e251682c9a5771cc5b5d12dabc66ac9fdb91",
+    );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
     expect(job).toContain('azure.workload.identity/use: "true"');
@@ -216,6 +222,11 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-session-api-key");
     expect(values).toContain(`digest: ${digest}`);
     expect(values).toContain("serviceAccount:\n  create: false");
+    expect(values).toContain("value: azure/gpt-5.6-sol");
+    expect(values).toContain(
+      "value: https://mortmain-openai2.openai.azure.com/",
+    );
+    expect(values).toContain("value: azure_workload_identity");
     expect(values).toContain("agentpool: services");
     expect(values).toContain("value: services");
     expect(values).toContain(

@@ -22,6 +22,8 @@
 #   docker build --build-arg AGENT_SERVER_IMAGE=... --build-arg AUTOMATION_VERSION=... -f docker/Dockerfile .
 ARG AGENT_SERVER_IMAGE
 ARG AGENT_SERVER_VERSION
+ARG AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/OpenHands/software-agent-sdk.git
+ARG AGENT_SERVER_SDK_GIT_REF=""
 ARG AUTOMATION_VERSION
 
 # ── Stage 1: Build frontend ──────────────────────────────────────────────────
@@ -69,6 +71,7 @@ FROM ${AGENT_SERVER_IMAGE} AS final
 
 ARG AUTOMATION_VERSION
 ARG AGENT_SERVER_VERSION
+ARG AGENT_SERVER_SDK_GIT_REPOSITORY
 ARG AGENT_SERVER_SDK_GIT_REF=""
 ARG OPENHANDS_BUILD_GIT_SHA=unknown
 ARG OPENHANDS_BUILD_GIT_REF=unknown
@@ -121,11 +124,15 @@ RUN uv pip install --system "openhands-automation==${AUTOMATION_VERSION}" "openh
     || pip install --no-cache-dir "openhands-automation==${AUTOMATION_VERSION}" "openhands-tools==${AGENT_SERVER_VERSION}" "openhands-agent-server==${AGENT_SERVER_VERSION}"
 
 RUN if [ -n "${AGENT_SERVER_SDK_GIT_REF}" ]; then \
-      BASE_GIT_URL="git+https://github.com/OpenHands/software-agent-sdk@${AGENT_SERVER_SDK_GIT_REF}" && \
+      BASE_GIT_URL="git+${AGENT_SERVER_SDK_GIT_REPOSITORY}@${AGENT_SERVER_SDK_GIT_REF}" && \
       uv pip install --system --force-reinstall \
+        "${BASE_GIT_URL}#subdirectory=openhands-agent-server" \
         "${BASE_GIT_URL}#subdirectory=openhands-sdk" \
         "${BASE_GIT_URL}#subdirectory=openhands-tools" \
-        "${BASE_GIT_URL}#subdirectory=openhands-workspace"; \
+        "${BASE_GIT_URL}#subdirectory=openhands-workspace" && \
+      mv /usr/local/bin/openhands-agent-server /usr/local/bin/openhands-agent-server-frozen && \
+      printf '%s\n' '#!/bin/sh' 'exec python -m openhands.agent_server "$@"' > /usr/local/bin/openhands-agent-server && \
+      chmod +x /usr/local/bin/openhands-agent-server; \
     fi
 
 # Copy the frontend build output.

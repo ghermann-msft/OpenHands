@@ -331,6 +331,7 @@ export function renderWorkspaceResources(config, record) {
       value: "/opt/agent-canvas/node_modules/@openhands/extensions",
     },
     { name: "DO_NOT_TRACK", value: "1" },
+    ...(config.llmEnvironment ?? []),
     {
       name: "OH_SECRET_KEY",
       valueFrom: {
@@ -634,6 +635,15 @@ export function loadWorkspaceRuntimeConfig(env = process.env) {
     runtimeServiceAccount: trimToNull(
       env.AGENT_CANVAS_WORKSPACE_SERVICE_ACCOUNT,
     ),
+    llmEnvironment: [
+      ["LLM_MODEL", "AGENT_CANVAS_WORKSPACE_LLM_MODEL"],
+      ["LLM_BASE_URL", "AGENT_CANVAS_WORKSPACE_LLM_BASE_URL"],
+      ["LLM_API_VERSION", "AGENT_CANVAS_WORKSPACE_LLM_API_VERSION"],
+      ["LLM_AUTH_TYPE", "AGENT_CANVAS_WORKSPACE_LLM_AUTH_TYPE"],
+    ].flatMap(([name, source]) => {
+      const value = trimToNull(env[source]);
+      return value ? [{ name, value }] : [];
+    }),
     nodeSelector: {
       "kubernetes.io/os": "linux",
       "kubernetes.io/arch": "amd64",

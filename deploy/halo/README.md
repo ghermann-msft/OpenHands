@@ -72,6 +72,12 @@ Create GitHub environments named `halo-ppe` and `halo-production`. Configure
 has no approval gate. The cluster needs outbound HTTPS access to GitHub and
 GHCR, but no inbound connection from GitHub and no public Kubernetes API.
 
+Halo uses separate federated workload identities for PPE and production. Each
+identity has `Key Vault Secrets User` on the Halo vault and `Cognitive Services
+OpenAI User` on `mortmain-openai2`; no Azure OpenAI API key is stored. The
+default LLM profile uses the `gpt-5.6-sol` deployment through the Azure endpoint,
+and the SDK refreshes Entra access tokens through `DefaultAzureCredential`.
+
 Conversation state is stored on a separate retained Azure Files PVC in each
 environment and mounted at `/home/openhands/conversations`. The shared Canvas
 control plane keeps its remaining state on the environment's Azure Disk. The

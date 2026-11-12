@@ -18,6 +18,15 @@ const runtimeConfig = {
   sessionApiKeyKey: "sessionApiKey",
   ohSecretKeyKey: "ohSecretKey",
   runtimeServiceAccount: "openhands-halo",
+  llmEnvironment: [
+    { name: "LLM_MODEL", value: "azure/gpt-5.6-sol" },
+    {
+      name: "LLM_BASE_URL",
+      value: "https://mortmain-openai2.openai.azure.com/",
+    },
+    { name: "LLM_API_VERSION", value: "2024-12-01-preview" },
+    { name: "LLM_AUTH_TYPE", value: "azure_workload_identity" },
+  ],
   nodeSelector: {
     "kubernetes.io/os": "linux",
     "kubernetes.io/arch": "amd64",
@@ -111,11 +120,25 @@ describe("workspace runtime configuration", () => {
         AGENT_CANVAS_WORKSPACE_CONVERSATION_PVC: "conversations",
         AGENT_CANVAS_WORKSPACE_SHARED_SECRET: "shared-secrets",
         AGENT_CANVAS_WORKSPACE_SERVICE_ACCOUNT: "runtime",
+        AGENT_CANVAS_WORKSPACE_LLM_MODEL: "azure/gpt-5.6-sol",
+        AGENT_CANVAS_WORKSPACE_LLM_BASE_URL:
+          "https://mortmain-openai2.openai.azure.com/",
+        AGENT_CANVAS_WORKSPACE_LLM_API_VERSION: "2024-12-01-preview",
+        AGENT_CANVAS_WORKSPACE_LLM_AUTH_TYPE: "azure_workload_identity",
       }),
     ).toMatchObject({
       namespace: "openhands-halo-ppe",
       storageSize: "50Gi",
       runtimeServiceAccount: "runtime",
+      llmEnvironment: [
+        { name: "LLM_MODEL", value: "azure/gpt-5.6-sol" },
+        {
+          name: "LLM_BASE_URL",
+          value: "https://mortmain-openai2.openai.azure.com/",
+        },
+        { name: "LLM_API_VERSION", value: "2024-12-01-preview" },
+        { name: "LLM_AUTH_TYPE", value: "azure_workload_identity" },
+      ],
       nodeSelector: { agentpool: "services" },
     });
   });
@@ -201,6 +224,9 @@ describe("workspace runtime resources", () => {
       command: ["openhands-agent-server"],
       args: ["--port", "8000", "--import-modules", "canvas_ui_tool"],
     });
+    expect(podSpec.containers[0].env).toEqual(
+      expect.arrayContaining(runtimeConfig.llmEnvironment),
+    );
     expect(podSpec.volumes).toContainEqual({
       name: "conversations",
       persistentVolumeClaim: { claimName: "openhands-halo-conversations" },
