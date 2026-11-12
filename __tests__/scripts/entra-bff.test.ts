@@ -2,7 +2,14 @@ import { createServer, request, type Server } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
+import {
+  SignJWT,
+  createLocalJWKSet,
+  exportJWK,
+  generateKeyPair,
+  importJWK,
+  jwtVerify,
+} from "jose";
 import { WebSocket, WebSocketServer } from "ws";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -25,6 +32,17 @@ function entraEnv(overrides: Record<string, string> = {}) {
     AGENT_CANVAS_ENTRA_COOKIE_SECRET: "0123456789abcdef0123456789abcdef",
     ...overrides,
   };
+}
+
+function importAssertionKey(secret: string) {
+  return importJWK(
+    {
+      kty: "oct",
+      k: Buffer.from(secret, "utf8").toString("base64url"),
+      alg: "HS256",
+    },
+    "HS256",
+  );
 }
 
 describe("loadEntraBffConfig", () => {
@@ -108,13 +126,17 @@ describe("Microsoft Entra BFF", () => {
     return `http://127.0.0.1:${address.port}`;
   }
 
-  async function rawRequest(url: string, headers: Record<string, string> = {}) {
+  async function rawRequest(
+    url: string,
+    headers: Record<string, string> = {},
+    method = "GET",
+  ) {
     return new Promise<{
       status: number;
       headers: import("node:http").IncomingHttpHeaders;
       body: string;
     }>((resolve, reject) => {
-      const req = request(url, { headers }, (res) => {
+      const req = request(url, { headers, method }, (res) => {
         let body = "";
         res.setEncoding("utf8");
         res.on("data", (chunk) => {
@@ -133,9 +155,9 @@ describe("Microsoft Entra BFF", () => {
     });
   }
 
-  function makeConfig() {
+  function makeConfig(overrides: Record<string, string> = {}) {
     return {
-      ...loadEntraBffConfig(entraEnv()),
+      ...loadEntraBffConfig(entraEnv(overrides)),
       secureCookies: false,
     };
   }
@@ -145,6 +167,7 @@ describe("Microsoft Entra BFF", () => {
   }: { idTokenNonce?: string } = {}) {
     let nonce = "";
     let tokenRequestBody = "";
+    let upstreamIdentityAssertion: string | undefined;
     const fetchImpl: typeof fetch = async (input, init) => {
       const url = String(input);
       if (url.endsWith("/.well-known/openid-configuration")) {
@@ -179,6 +202,9 @@ describe("Microsoft Entra BFF", () => {
     let upstreamHttpKey: string | undefined;
     const upstream = createServer((req, res) => {
       upstreamHttpKey = req.headers["x-session-api-key"] as string | undefined;
+      upstreamIdentityAssertion = req.headers[
+        "x-openhands-identity-assertion"
+      ] as string | undefined;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end('{"ok":true}');
     });
@@ -201,7 +227,10 @@ describe("Microsoft Entra BFF", () => {
         "/sockets": upstreamOrigin,
       },
       sessionApiKey: "internal-agent-server-key",
-      entraBff: makeConfig(),
+      entraBff: makeConfig({
+        OH_TRUSTED_IDENTITY_ASSERTION_SECRET:
+          "halo-identity-assertion-secret-32-bytes",
+      }),
       entraBffOptions: { fetchImpl, jwks: localJwks },
     });
     servers.push(server);
@@ -222,6 +251,7 @@ describe("Microsoft Entra BFF", () => {
       authorizationUrl,
       getTokenRequestBody: () => tokenRequestBody,
       getUpstreamHttpKey: () => upstreamHttpKey,
+      getUpstreamIdentityAssertion: () => upstreamIdentityAssertion,
       origin,
       state,
       upstream,
@@ -314,9 +344,56 @@ describe("Microsoft Entra BFF", () => {
     });
   });
 
+  it("signs the Entra identity for trusted upstream services", async () => {
+    const assertionSecret = "halo-identity-assertion-secret-32-bytes";
+    const config = {
+      ...makeConfig(),
+      identityAssertion: {
+        secret: assertionSecret,
+        issuer: "openhands-halo-bff",
+        audience: "openhands-sandbox-server",
+        header: "X-OpenHands-Identity-Assertion",
+        lifetimeSeconds: 60,
+      },
+    };
+    const bff = createEntraBff(config);
+    const req = {
+      trustedIdentity: {
+        oid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        tid: tenantId,
+        name: "Halo User",
+        preferred_username: "halo@example.com",
+      },
+    };
+
+    const headers = await bff!.getUpstreamIdentityHeaders(req);
+    const assertion = headers["X-OpenHands-Identity-Assertion"];
+    const verified = await jwtVerify(
+      assertion,
+      await importAssertionKey(assertionSecret),
+      {
+        issuer: "openhands-halo-bff",
+        audience: "openhands-sandbox-server",
+      },
+    );
+
+    expect(verified.payload).toMatchObject({
+      sub: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      oid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      tid: tenantId,
+      name: "Halo User",
+      preferred_username: "halo@example.com",
+    });
+  });
+
   it("protects static and API routes, exempts probes, injects the internal key, and logs out", async () => {
-    const { authCookie, origin, state, getUpstreamHttpKey } =
-      await startAuthenticatedServer();
+    const {
+      authCookie,
+      origin,
+      state,
+      getUpstreamHttpKey,
+      getUpstreamIdentityAssertion,
+    } = await startAuthenticatedServer();
 
     const staticResponse = await fetch(origin, {
       headers: { Accept: "text/html" },
@@ -338,12 +415,42 @@ describe("Microsoft Entra BFF", () => {
       .getSetCookie()
       .find((cookie) => cookie.startsWith("agent-canvas-entra-session="))!
       .split(";")[0];
-    const protectedApi = await rawRequest(`${origin}/api/settings`, {
+    const protectedApi = await rawRequest(`${origin}/api/halo-identity-test`, {
       Cookie: sessionCookie,
+      "X-OpenHands-Identity-Assertion": "attacker-assertion",
       "X-Session-API-Key": "attacker-key",
     });
     expect(protectedApi.status).toBe(200);
     expect(getUpstreamHttpKey()).toBe("internal-agent-server-key");
+    const identityAssertion = getUpstreamIdentityAssertion();
+    expect(identityAssertion).toBeTruthy();
+    const verifiedIdentity = await jwtVerify(
+      identityAssertion!,
+      await importAssertionKey("halo-identity-assertion-secret-32-bytes"),
+      {
+        issuer: "openhands-halo-bff",
+        audience: "openhands-sandbox-server",
+      },
+    );
+    expect(verifiedIdentity.payload).toMatchObject({
+      sub: "user-object-id",
+      oid: "user-object-id",
+      tid: tenantId,
+    });
+
+    const authenticated = await rawRequest(
+      `${origin}/api/authenticate`,
+      { Cookie: sessionCookie },
+      "POST",
+    );
+    expect(authenticated.status).toBe(200);
+    const login = await fetch(`${origin}/login?returnTo=%2Fcanvas`, {
+      redirect: "manual",
+    });
+    expect(login.status).toBe(302);
+    expect(login.headers.get("location")).toBe(
+      "/auth/login?returnTo=%2Fcanvas",
+    );
 
     const protectedHtml = await rawRequest(origin, {
       Accept: "text/html",
@@ -366,8 +473,12 @@ describe("Microsoft Entra BFF", () => {
     const { authCookie, origin, state, upstream } =
       await startAuthenticatedServer();
     const wsServer = new WebSocketServer({ server: upstream });
+    let upstreamIdentityAssertion: string | undefined;
     let upstreamKey: string | undefined;
     wsServer.on("connection", (socket, req) => {
+      upstreamIdentityAssertion = req.headers[
+        "x-openhands-identity-assertion"
+      ] as string | undefined;
       upstreamKey = req.headers["x-session-api-key"] as string | undefined;
       socket.close();
     });
@@ -397,6 +508,15 @@ describe("Microsoft Entra BFF", () => {
       socket.on("error", reject);
     });
     expect(upstreamKey).toBe("internal-agent-server-key");
+    const verifiedIdentity = await jwtVerify(
+      upstreamIdentityAssertion!,
+      await importAssertionKey("halo-identity-assertion-secret-32-bytes"),
+      {
+        issuer: "openhands-halo-bff",
+        audience: "openhands-sandbox-server",
+      },
+    );
+    expect(verifiedIdentity.payload.oid).toBe("user-object-id");
     wsServer.close();
   });
 });

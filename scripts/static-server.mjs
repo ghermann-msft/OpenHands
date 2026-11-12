@@ -763,13 +763,14 @@ export function startStaticServer(config) {
       if (await entraBff.handleHttp(req, res)) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
     }
+    const identityHeaders = (await entraBff?.prepareUpstreamRequest(req)) ?? {};
     if (workspaceRuntimes) {
       if (await workspaceRuntimes.handleHttp(req, res)) return;
       const runtimeProxy = workspaceRuntimes.resolveProxyRequest(url);
       if (runtimeProxy) {
         req.url = runtimeProxy.upstreamPath;
         proxy.proxyHttp(req, res, runtimeProxy.target, {
-          headers: internalAuthHeaders,
+          headers: { ...internalAuthHeaders, ...identityHeaders },
         });
         return;
       }
@@ -789,16 +790,15 @@ export function startStaticServer(config) {
         isServerInfoRequest(req) &&
         (req.method === "GET" || req.method === "HEAD")
       ) {
-        proxyServerInfoRequest(
-          req,
-          res,
-          backend,
-          config.runtimeServicesInfo,
-          internalAuthHeaders,
-        );
+        proxyServerInfoRequest(req, res, backend, config.runtimeServicesInfo, {
+          ...internalAuthHeaders,
+          ...identityHeaders,
+        });
         return;
       }
-      proxy.proxyHttp(req, res, backend, { headers: internalAuthHeaders });
+      proxy.proxyHttp(req, res, backend, {
+        headers: { ...internalAuthHeaders, ...identityHeaders },
+      });
       return;
     }
     handleStatic(
@@ -829,6 +829,7 @@ export function startStaticServer(config) {
     if (entraBff) {
       if (!(await entraBff.authorizeWebSocket(req, socket))) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
+      await entraBff.prepareUpstreamRequest(req);
     }
     if (workspaceRuntimes) {
       const runtimeProxy = workspaceRuntimes.resolveProxyRequest(req.url);

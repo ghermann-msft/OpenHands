@@ -1,8 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   EncryptJWT,
+  SignJWT,
   customFetch,
   createRemoteJWKSet,
+  importJWK,
   jwtDecrypt,
   jwtVerify,
 } from "jose";
@@ -18,11 +20,20 @@ const OPTIONAL_ENV = [
   "AGENT_CANVAS_ENTRA_AUTHORITY",
   "AGENT_CANVAS_ENTRA_SCOPES",
   "AGENT_CANVAS_ENTRA_SESSION_MAX_AGE_SECONDS",
+  "OH_TRUSTED_IDENTITY_ASSERTION_SECRET",
+  "OH_TRUSTED_IDENTITY_ASSERTION_ISSUER",
+  "OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE",
+  "OH_TRUSTED_IDENTITY_ASSERTION_HEADER",
+  "OH_TRUSTED_IDENTITY_ASSERTION_MAX_LIFETIME_SECONDS",
 ];
 const DEFAULT_AUTHORITY = "https://login.microsoftonline.com";
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
 const AUTH_COOKIE_MAX_AGE_SECONDS = 10 * 60;
+const DEFAULT_ASSERTION_ISSUER = "openhands-halo-bff";
+const DEFAULT_ASSERTION_AUDIENCE = "openhands-sandbox-server";
+const DEFAULT_ASSERTION_HEADER = "X-OpenHands-Identity-Assertion";
+const DEFAULT_ASSERTION_LIFETIME_SECONDS = 60;
 const PROBE_PATHS = new Set(["/alive", "/health", "/ready"]);
 
 function trimToNull(value) {
@@ -94,6 +105,17 @@ export function loadEntraBffConfig(env = process.env) {
       );
     }
   }
+  const identityAssertionSecret = trimToNull(
+    env.OH_TRUSTED_IDENTITY_ASSERTION_SECRET,
+  );
+  if (
+    identityAssertionSecret &&
+    Buffer.byteLength(identityAssertionSecret, "utf8") < 32
+  ) {
+    throw new Error(
+      "OH_TRUSTED_IDENTITY_ASSERTION_SECRET must be at least 32 bytes",
+    );
+  }
 
   return {
     tenantId,
@@ -109,12 +131,47 @@ export function loadEntraBffConfig(env = process.env) {
       "AGENT_CANVAS_ENTRA_SESSION_MAX_AGE_SECONDS",
       DEFAULT_SESSION_MAX_AGE_SECONDS,
     ),
+    identityAssertion: identityAssertionSecret
+      ? {
+          secret: identityAssertionSecret,
+          issuer:
+            trimToNull(env.OH_TRUSTED_IDENTITY_ASSERTION_ISSUER) ??
+            DEFAULT_ASSERTION_ISSUER,
+          audience:
+            trimToNull(env.OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE) ??
+            DEFAULT_ASSERTION_AUDIENCE,
+          header:
+            trimToNull(env.OH_TRUSTED_IDENTITY_ASSERTION_HEADER) ??
+            DEFAULT_ASSERTION_HEADER,
+          lifetimeSeconds: Math.min(
+            parsePositiveInteger(
+              trimToNull(
+                env.OH_TRUSTED_IDENTITY_ASSERTION_MAX_LIFETIME_SECONDS,
+              ),
+              "OH_TRUSTED_IDENTITY_ASSERTION_MAX_LIFETIME_SECONDS",
+              DEFAULT_ASSERTION_LIFETIME_SECONDS,
+            ),
+            DEFAULT_ASSERTION_LIFETIME_SECONDS,
+          ),
+        }
+      : null,
     secureCookies: true,
   };
 }
 
 function deriveCookieKey(secret) {
   return new Uint8Array(createHash("sha256").update(secret, "utf8").digest());
+}
+
+function importAssertionKey(secret) {
+  return importJWK(
+    {
+      kty: "oct",
+      k: Buffer.from(secret, "utf8").toString("base64url"),
+      alg: "HS256",
+    },
+    "HS256",
+  );
 }
 
 function base64UrlRandom(bytes = 32) {
@@ -229,12 +286,24 @@ async function decryptCookie(value, key) {
 }
 
 function publicUser(payload) {
-  return {
+  return Object.freeze({
     id: payload.oid ?? payload.sub,
     name: payload.name ?? null,
     username: payload.preferred_username ?? payload.email ?? null,
     tenantId: payload.tid,
-  };
+  });
+}
+
+function trustedIdentity(payload) {
+  if (typeof payload.oid !== "string" || typeof payload.tid !== "string") {
+    return null;
+  }
+  return Object.freeze({
+    oid: payload.oid,
+    tid: payload.tid,
+    name: payload.name ?? null,
+    preferred_username: payload.preferred_username ?? payload.email ?? null,
+  });
 }
 
 export function createEntraBff(
@@ -441,6 +510,19 @@ export function createEntraBff(
     const pathname = requestUrl.pathname;
 
     if (PROBE_PATHS.has(pathname)) return false;
+    if (pathname === "/login") {
+      if (req.method !== "GET") {
+        writeJson(res, 405, { error: "method_not_allowed" });
+      } else {
+        const returnTo = safeReturnTo(requestUrl.searchParams.get("returnTo"));
+        res.writeHead(302, {
+          Location: `/auth/login?returnTo=${encodeURIComponent(returnTo)}`,
+          "Cache-Control": "no-store",
+        });
+        res.end();
+      }
+      return true;
+    }
     if (pathname === "/auth/login") {
       if (req.method !== "GET") {
         writeJson(res, 405, { error: "method_not_allowed" });
@@ -476,7 +558,24 @@ export function createEntraBff(
     }
 
     const session = await getSession(req);
-    if (session) return false;
+    if (session) {
+      req.authenticatedUser = publicUser(session);
+      req.trustedIdentity = trustedIdentity(session);
+      if (pathname === "/api/authenticate") {
+        if (req.method !== "POST") {
+          writeJson(res, 405, { error: "method_not_allowed" });
+        } else {
+          writeJson(res, 200, {});
+        }
+        return true;
+      }
+      if (pathname === "/api/analytics/events" && req.method === "POST") {
+        res.writeHead(204, { "Cache-Control": "no-store" });
+        res.end();
+        return true;
+      }
+      return false;
+    }
     const acceptsHtml = /\btext\/html\b/i.test(req.headers.accept ?? "");
     if ((req.method === "GET" || req.method === "HEAD") && acceptsHtml) {
       const returnTo = safeReturnTo(req.url ?? "/");
@@ -493,10 +592,59 @@ export function createEntraBff(
 
   async function authorizeWebSocket(req, socket) {
     const session = await getSession(req);
-    if (session) return true;
+    if (session) {
+      req.authenticatedUser = publicUser(session);
+      req.trustedIdentity = trustedIdentity(session);
+      return true;
+    }
     rejectWebSocket(socket);
     return false;
   }
 
-  return { authorizeWebSocket, handleHttp, names };
+  async function getUpstreamIdentityHeaders(req) {
+    if (!config.identityAssertion) return {};
+    const user = req.trustedIdentity;
+    if (!user) return {};
+    if (typeof user?.oid !== "string" || typeof user?.tid !== "string") {
+      throw new Error(
+        "Cannot create a trusted identity assertion without Entra oid and tid claims",
+      );
+    }
+    const assertion = await new SignJWT({
+      oid: user.oid,
+      tid: user.tid,
+      name: user.name,
+      preferred_username: user.preferred_username,
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuer(config.identityAssertion.issuer)
+      .setAudience(config.identityAssertion.audience)
+      .setSubject(user.oid)
+      .setIssuedAt()
+      .setExpirationTime(`${config.identityAssertion.lifetimeSeconds}s`)
+      .sign(await importAssertionKey(config.identityAssertion.secret));
+    return { [config.identityAssertion.header]: assertion };
+  }
+
+  async function prepareUpstreamRequest(req) {
+    const defaultHeader = DEFAULT_ASSERTION_HEADER.toLowerCase();
+    const configuredHeader =
+      config.identityAssertion?.header.toLowerCase() ?? defaultHeader;
+    if (!config.identityAssertion || configuredHeader !== defaultHeader) {
+      delete req.headers[defaultHeader];
+    }
+    const headers = await getUpstreamIdentityHeaders(req);
+    for (const [name, value] of Object.entries(headers)) {
+      req.headers[name.toLowerCase()] = value;
+    }
+    return headers;
+  }
+
+  return {
+    authorizeWebSocket,
+    getUpstreamIdentityHeaders,
+    handleHttp,
+    names,
+    prepareUpstreamRequest,
+  };
 }
