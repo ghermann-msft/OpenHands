@@ -601,6 +601,7 @@ export function createEntraBff(
     return false;
   }
 
+  /** @returns {Promise<Record<string, string>>} */
   async function getUpstreamIdentityHeaders(req) {
     if (!config.identityAssertion) return {};
     const user = req.trustedIdentity;
