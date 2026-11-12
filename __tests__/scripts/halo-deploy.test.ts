@@ -47,7 +47,7 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=9908eb16d718397a4f562192a36b0193b5dcb81b",
+      "AGENT_SERVER_SDK_GIT_REF=23fba4b2b914d87f191a92aed2c41cb86545ab43",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
