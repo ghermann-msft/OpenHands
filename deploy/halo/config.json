@@ -21,7 +21,7 @@
     "accountName": "mortmain-openai2",
     "endpoint": "https://mortmain-openai2.openai.azure.com/",
     "deployment": "gpt-5.6-sol",
-    "apiVersion": "2024-12-01-preview"
+    "apiVersion": "2025-03-01-preview"
   },
   "source": {
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
