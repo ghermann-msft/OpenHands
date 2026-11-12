@@ -101,7 +101,16 @@ jobs:
         run: |
           set -euo pipefail
           base_url=http://openhands-halo.openhands-halo-ppe.svc.cluster.local:8000
-          curl --fail --silent --show-error "$base_url/ready"
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$base_url/ready"; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "::error::Candidate service did not become reachable from the runner"
+              exit 1
+            fi
+            sleep 2
+          done
           status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
             "$base_url/api/workspace-runtimes")"
           test "$status" = "401"

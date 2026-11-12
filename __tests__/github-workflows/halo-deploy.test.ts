@@ -28,6 +28,11 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       "http://openhands-halo.openhands-halo-ppe.svc.cluster.local:8000",
     );
+    expect(workflow).toContain("for attempt in {1..30}; do");
+    expect(workflow).toContain(
+      'if curl --fail --silent --show-error "$base_url/ready"; then',
+    );
+    expect(workflow).toContain("sleep 2");
     expect(workflow).not.toContain(
       "https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/ready",
     );
