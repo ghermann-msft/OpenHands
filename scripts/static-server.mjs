@@ -855,34 +855,39 @@ export function startStaticServer(config) {
     void marsWeb?.dispose().catch(() => {});
   });
 
-  return new Promise((resolveListen) => {
-    server.listen(config.port, config.host, () => {
-      const displayPath = basePath === "/" ? "/" : `${basePath}/`;
-      console.log("");
-      console.log(
-        `Static-server + proxy listening on http://${config.host}:${config.port}${displayPath}`,
-      );
-      console.log(`  Static dir: ${dirAbs}`);
-      console.log(`  Base path: ${basePath}`);
-      const sortedRoutes = Object.entries(config.routes).sort(
-        ([a], [b]) => b.length - a.length,
-      );
-      for (const [prefix, backend] of sortedRoutes) {
-        console.log(`  ${prefix} -> ${backend}`);
-      }
-      if (rejectPrefixes.length > 0) {
-        for (const prefix of rejectPrefixes) {
-          console.log(`  ${prefix} -> 503 (rejected)`);
-        }
-      }
-      if (config.lockToCloud) {
-        console.log(`  Backend setup locked to Cloud: ${config.lockToCloud}`);
-      }
-      console.log("  * (default) -> static files + SPA fallback");
-      console.log("");
-      resolveListen(server);
-    });
-  });
+  return Promise.resolve(workspaceRuntimes?.reconcile?.()).then(
+    () =>
+      new Promise((resolveListen) => {
+        server.listen(config.port, config.host, () => {
+          const displayPath = basePath === "/" ? "/" : `${basePath}/`;
+          console.log("");
+          console.log(
+            `Static-server + proxy listening on http://${config.host}:${config.port}${displayPath}`,
+          );
+          console.log(`  Static dir: ${dirAbs}`);
+          console.log(`  Base path: ${basePath}`);
+          const sortedRoutes = Object.entries(config.routes).sort(
+            ([a], [b]) => b.length - a.length,
+          );
+          for (const [prefix, backend] of sortedRoutes) {
+            console.log(`  ${prefix} -> ${backend}`);
+          }
+          if (rejectPrefixes.length > 0) {
+            for (const prefix of rejectPrefixes) {
+              console.log(`  ${prefix} -> 503 (rejected)`);
+            }
+          }
+          if (config.lockToCloud) {
+            console.log(
+              `  Backend setup locked to Cloud: ${config.lockToCloud}`,
+            );
+          }
+          console.log("  * (default) -> static files + SPA fallback");
+          console.log("");
+          resolveListen(server);
+        });
+      }),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

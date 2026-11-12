@@ -174,6 +174,35 @@ describe("Kubernetes reconciliation", () => {
 });
 
 describe("workspace runtime resources", () => {
+  it("reconciles retained runtimes to deployment-managed image and LLM defaults", async () => {
+    const kubernetes = new FakeKubernetesClient();
+    const initial = new WorkspaceRuntimeController(
+      {
+        ...runtimeConfig,
+        image: "example.azurecr.io/openhands-halo@sha256:" + "b".repeat(64),
+        llmEnvironment: [],
+      },
+      { kubernetes },
+    );
+    const created = await initial.create({
+      id: workspaceRecord.id,
+      name: workspaceRecord.name,
+      source: workspaceRecord.source,
+    });
+    expect(created.status).toBe("provisioning");
+
+    const reconciler = new WorkspaceRuntimeController(runtimeConfig, {
+      kubernetes,
+    });
+    await reconciler.reconcile();
+
+    const deployment = await reconciler.getDeployment(workspaceRecord.id);
+    expect(deployment.spec.template.spec.containers[0]).toMatchObject({
+      image: runtimeConfig.image,
+      env: expect.arrayContaining(runtimeConfig.llmEnvironment),
+    });
+  });
+
   it("renders a retained-disk runtime with idempotent Git initialization", () => {
     const resources = renderWorkspaceResources(runtimeConfig, workspaceRecord);
 

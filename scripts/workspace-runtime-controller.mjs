@@ -737,6 +737,24 @@ export class WorkspaceRuntimeController {
     );
   }
 
+  async reconcile() {
+    const response = await this.kubernetes.list(
+      this.configMapsPath,
+      `${MANAGED_BY_LABEL}=${MANAGED_BY_VALUE},${WORKSPACE_RECORD_LABEL}=true`,
+    );
+    for (const configMap of response?.items ?? []) {
+      const record = parseWorkspaceRecord(configMap);
+      const currentDeployment = await this.getDeployment(record.id);
+      const resources = renderWorkspaceResources(this.config, record);
+      resources.deployment.spec.replicas =
+        currentDeployment?.spec?.replicas ?? resources.deployment.spec.replicas;
+      await this.kubernetes.ensure(this.configMapsPath, resources.configMap);
+      await this.kubernetes.ensure(this.pvcsPath, resources.pvc);
+      await this.kubernetes.ensure(this.servicesPath, resources.service);
+      await this.kubernetes.ensure(this.deploymentsPath, resources.deployment);
+    }
+  }
+
   async create(input) {
     let request;
     try {
