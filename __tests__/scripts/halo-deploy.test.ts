@@ -333,6 +333,12 @@ describe("Halo deployment automation", () => {
       "name: LLM_AUTH_TYPE\n              value: azure_workload_identity",
     );
     expect(resources).toContain(
+      'name: HIDE_LLM_SETTINGS\n              value: "true"',
+    );
+    expect(resources).toContain(
+      'name: OH_ALLOW_USER_LLM_CONFIGURATION\n              value: "false"',
+    );
+    expect(resources).toContain(
       "name: OH_SANDBOX_SANDBOX_URL_PATTERN\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/sandboxes/{sandbox_name}",
     );
     expect(resources).toContain(

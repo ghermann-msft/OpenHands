@@ -16,7 +16,10 @@ import { AppConversation } from "#/api/conversation-service/agent-server-convers
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { retryTransientRequest } from "#/utils/transient-error-retry";
 
-import type { ResolvedActiveBackend } from "#/api/backend-registry/types";
+import {
+  backendRequiresOrganizations,
+  type ResolvedActiveBackend,
+} from "#/api/backend-registry/types";
 import { getActiveBackend } from "#/api/backend-registry/active-store";
 import { CONVERSATION_QUERY_KEYS } from "./query-keys";
 
@@ -142,7 +145,7 @@ export const useUserConversation = (
   }
   const backendChanged = origin.current.backendId !== active.backend.id;
   const hasConversationScope =
-    active.backend.kind !== "cloud" || !!active.orgId;
+    !backendRequiresOrganizations(active.backend) || !!active.orgId;
 
   return useQuery({
     // Include the active backend identity so each (backend, org) pair

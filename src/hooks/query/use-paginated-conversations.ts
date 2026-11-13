@@ -10,6 +10,7 @@ import { useNavigation } from "#/context/navigation-context";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { isAutomationsRoute } from "#/manifests/automation-interface";
 import { AppConversationPage } from "#/api/conversation-service/agent-server-conversation-service.types";
+import { backendRequiresOrganizations } from "#/api/backend-registry/types";
 
 export const usePaginatedConversations = (
   limit: number = DEFAULT_CONVERSATION_PAGE_SIZE,
@@ -19,7 +20,7 @@ export const usePaginatedConversations = (
   const { currentPath } = useNavigation();
   const hasBackend = !isNoBackend(active.backend);
   const hasConversationScope =
-    active.backend.kind !== "cloud" || !!active.orgId;
+    !backendRequiresOrganizations(active.backend) || !!active.orgId;
 
   return useInfiniteQuery({
     // Include the active backend identity so each (backend, org) pair

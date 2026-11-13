@@ -54,6 +54,13 @@ const cloudBackend: Backend = {
   kind: "cloud",
 };
 
+const orglessCloudBackend: Backend = {
+  ...cloudBackend,
+  id: "sandbox-server",
+  name: "Sandbox Server",
+  organizationMode: "none",
+};
+
 const CLOUD_CONVERSATION_ID = "conv-cloud";
 
 function makeConversation(id: string): AppConversation {
@@ -116,7 +123,7 @@ beforeEach(() => {
   vi.mocked(
     AgentServerConversationService.batchGetAppConversations,
   ).mockResolvedValue([makeConversation(CLOUD_CONVERSATION_ID)]);
-  setRegisteredBackends([localBackend, cloudBackend]);
+  setRegisteredBackends([localBackend, cloudBackend, orglessCloudBackend]);
 });
 
 afterEach(() => {
@@ -213,6 +220,20 @@ describe("useUserConversation — backend switch", () => {
         AgentServerConversationService.batchGetAppConversations,
       ).toHaveBeenCalledTimes(1),
     );
+  });
+
+  it("loads an organizationless Cloud conversation without an org", async () => {
+    setActiveSelection({ backendId: orglessCloudBackend.id });
+
+    const { result } = renderHook(
+      () => useUserConversation(CLOUD_CONVERSATION_ID),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(
+      AgentServerConversationService.batchGetAppConversations,
+    ).toHaveBeenCalledTimes(1);
   });
 });
 

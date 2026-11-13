@@ -120,4 +120,25 @@ describe("usePaginatedConversations — interval polling", () => {
       AgentServerConversationService.searchConversations,
     ).not.toHaveBeenCalled();
   });
+
+  it("searches an organizationless Cloud control plane without an org", async () => {
+    useActiveBackendMock.mockReturnValue({
+      backend: {
+        id: "sandbox-server",
+        kind: "cloud",
+        organizationMode: "none",
+      },
+      orgId: null,
+    });
+
+    renderHook(() => usePaginatedConversations(), {
+      wrapper: createWrapper("/"),
+    });
+    await flushAsync();
+    await flushAsync();
+
+    expect(
+      AgentServerConversationService.searchConversations,
+    ).toHaveBeenCalledTimes(1);
+  });
 });
