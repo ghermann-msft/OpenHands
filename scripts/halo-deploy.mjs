@@ -1490,6 +1490,7 @@ metadata:
   namespace: ${env.namespace}
 spec:
   envVarsInjectionPolicy: Allowed
+  service: true
   networkPolicy:
     ingress:
       - from:

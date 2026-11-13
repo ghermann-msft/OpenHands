@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 838fbbb6084a05265e9d8e0d4b05c319e74fa831",
+      "git checkout --detach e089dd64301e8708e7e5d087e218d0cd165a416b",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain("containers/app/Dockerfile");
@@ -388,6 +388,7 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("kind: SandboxTemplate");
     expect(resources).toContain("namespace: openhands-halo-ppe");
     expect(resources).toContain("envVarsInjectionPolicy: Allowed");
+    expect(resources).toContain("service: true");
     expect(resources).toContain(
       `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${agentServerDigest}`,
     );
