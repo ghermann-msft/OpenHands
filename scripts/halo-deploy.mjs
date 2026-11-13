@@ -1572,7 +1572,9 @@ export function renderPostgresBootstrapJob(runtimeIdentities) {
                   "SELECT pg_catalog.pgaadauth_create_principal_with_oid('${env.runtimeIdentity}', '${principalId}', 'service', false, false)"
               fi
               psql --set ON_ERROR_STOP=1 --command \\
-                'ALTER DATABASE ${env.database} OWNER TO "${env.runtimeIdentity}"'`;
+                'ALTER DATABASE ${env.database} OWNER TO "${env.runtimeIdentity}"'
+              psql --set ON_ERROR_STOP=1 --dbname ${env.database} --command \\
+                'GRANT USAGE, CREATE ON SCHEMA public TO "${env.runtimeIdentity}"'`;
     })
     .join("\n");
   return `apiVersion: batch/v1
@@ -2678,6 +2680,26 @@ async function waitForReady(environment) {
   );
 }
 
+async function waitForSecretKey(namespace, secret, key) {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const result = tryRun("kubectl", [
+      "-n",
+      namespace,
+      "get",
+      "secret",
+      secret,
+      "-o",
+      `jsonpath={.data.${key}}`,
+    ]);
+    if (result.status === 0 && result.stdout.trim()) return;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error(
+    `Timed out waiting for ${namespace}/${secret} key ${key} to synchronize`,
+  );
+}
+
 function runtimeClientId(environment) {
   const env = config.environments[environment];
   const serviceAccount = JSON.parse(
@@ -2710,15 +2732,31 @@ async function deploy(environment, canvasDigest, sandboxServerDigest) {
   kubectl(["apply", "-f", "-"], {
     input: renderSecretProviderClass(environment, clientId),
   });
+  kubectl([
+    "-n",
+    env.namespace,
+    "delete",
+    "secret",
+    "openhands-halo-secrets",
+    "--ignore-not-found",
+  ]);
+  kubectl([
+    "-n",
+    env.namespace,
+    "delete",
+    "pod",
+    "-l",
+    "app.kubernetes.io/name=agent-canvas",
+    "--ignore-not-found",
+    "--wait=false",
+  ]);
+  await waitForSecretKey(
+    env.namespace,
+    "openhands-halo-secrets",
+    "trustedIdentityAssertion",
+  );
   kubectl(["apply", "-f", "-"], {
     input: renderAgentSandboxResources(environment),
-  });
-  kubectl(["apply", "-f", "-"], {
-    input: renderSandboxServerResources(
-      environment,
-      sandboxServerDigest,
-      clientId,
-    ),
   });
   const valuesPath = join(
     tmpdir(),
@@ -2754,6 +2792,13 @@ async function deploy(environment, canvasDigest, sandboxServerDigest) {
     "statefulset/openhands-halo",
     "--timeout=15m",
   ]);
+  kubectl(["apply", "-f", "-"], {
+    input: renderSandboxServerResources(
+      environment,
+      sandboxServerDigest,
+      clientId,
+    ),
+  });
   kubectl([
     "-n",
     env.namespace,

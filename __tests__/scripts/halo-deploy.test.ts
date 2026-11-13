@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 688bd21dadbfdf52ec5505cf1f56aa06a5bcd8ff",
+      "git checkout --detach 1bc64fb7830ecff064fdec95e9bf2c23be3eacff",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain("containers/app/Dockerfile");
@@ -408,6 +408,12 @@ describe("Halo deployment automation", () => {
     );
     expect(job).toContain(
       'ALTER DATABASE openhands_halo_ppe OWNER TO "openhands-halo-ppe-runtime-mi"',
+    );
+    expect(job).toContain(
+      'GRANT USAGE, CREATE ON SCHEMA public TO "openhands-halo-ppe-runtime-mi"',
+    );
+    expect(job).toContain(
+      'GRANT USAGE, CREATE ON SCHEMA public TO "openhands-halo-primary-runtime-mi"',
     );
     expect(job).not.toContain("DB_PASS");
   });
