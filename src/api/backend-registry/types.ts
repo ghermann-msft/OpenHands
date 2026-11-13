@@ -1,5 +1,6 @@
 export type BackendKind = "local" | "cloud";
 export type BackendAuthMode = "api-key" | "cookie";
+export type CloudOrganizationMode = "required" | "none";
 
 export interface Backend {
   id: string;
@@ -8,6 +9,11 @@ export interface Backend {
   apiKey: string;
   kind: BackendKind;
   authMode?: BackendAuthMode;
+  /**
+   * Whether this Cloud control plane implements the organization contract.
+   * Defaults to `required`; self-hosted Sandbox Server deployments use `none`.
+   */
+  organizationMode?: CloudOrganizationMode;
   /** Changes whenever connection credentials change, invalidating keyed data. */
   connectionRevision?: number;
   /**
@@ -29,4 +35,8 @@ export interface BackendSelection {
 export interface ResolvedActiveBackend {
   backend: Backend;
   orgId: string | null;
+}
+
+export function backendRequiresOrganizations(backend: Backend): boolean {
+  return backend.kind === "cloud" && backend.organizationMode !== "none";
 }

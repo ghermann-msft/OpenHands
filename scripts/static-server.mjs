@@ -135,6 +135,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     allowLanSessionKey: false,
     runtimeServicesInfo: null,
     lockToCloud: null,
+    cloudOrganizationMode: "required",
     basePath: "/",
     vscodeBasePath: null,
     entraBff: loadEntraBffConfig(env),
@@ -181,6 +182,16 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
       case "--lock-to-cloud":
         config.lockToCloud = argv[++i] || null;
         break;
+      case "--cloud-organization-mode": {
+        const mode = argv[++i];
+        if (mode !== "required" && mode !== "none") {
+          throw new Error(
+            `Invalid --cloud-organization-mode (expected required or none): ${mode ?? "(empty)"}`,
+          );
+        }
+        config.cloudOrganizationMode = mode;
+        break;
+      }
       case "--base-path":
         config.basePath = normalizeBasePath(argv[++i]);
         break;
@@ -325,6 +336,9 @@ OPTIONS:
   --lock-to-cloud <cloud-url>  Lock backend setup to a single OpenHands Cloud
                                URL. Hides manual/local backend setup and the
                                custom Cloud URL field in the pre-built frontend.
+  --cloud-organization-mode <required|none>
+                               Configure whether the locked Cloud control plane
+                               implements organization membership APIs.
   --disable-telemetry          Disable all product telemetry (including the
                                anonymous install event) in the pre-built
                                frontend at runtime, without VITE_DO_NOT_TRACK
@@ -398,6 +412,9 @@ ROUTING:
  *   `agent-server-config.ts` so pre-built frontend bundles can hide manual
  *   backend setup and the custom Cloud URL field at runtime.
  *
+ * - `cloudOrganizationMode`: whether the locked Cloud control plane implements
+ *   organization membership APIs. `none` is used by self-hosted Sandbox Server.
+ *
  * - `basePath`: the path prefix the SPA is mounted under, exposed as
  *   `window.__AGENT_CANVAS_BASE_PATH__` so runtime static assets like locale
  *   files can resolve through the same subpath as the built bundle.
@@ -428,6 +445,7 @@ function makeConfigInjectionScript(
   authRequired,
   runtimeServicesInfo,
   lockToCloud,
+  cloudOrganizationMode,
   basePath,
   vscodeBasePath,
   disableTelemetry,
@@ -476,6 +494,12 @@ function makeConfigInjectionScript(
     );
   }
 
+  if (cloudOrganizationMode === "none") {
+    parts.push(
+      `window.__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__="none";`,
+    );
+  }
+
   if (basePath && basePath !== "/") {
     parts.push(
       `window.__AGENT_CANVAS_BASE_PATH__=${serializeForInlineScript(basePath)};`,
@@ -516,6 +540,7 @@ async function serveInjectedIndexHtml(
     authRequired,
     runtimeServicesInfo,
     lockToCloud,
+    cloudOrganizationMode,
     basePath,
     vscodeBasePath,
     disableTelemetry,
@@ -535,6 +560,7 @@ async function serveInjectedIndexHtml(
     authRequired,
     runtimeServicesInfo,
     lockToCloud,
+    cloudOrganizationMode,
     basePath,
     vscodeBasePath,
     disableTelemetry,
@@ -743,6 +769,7 @@ export function startStaticServer(config) {
     authRequired: config.entraBff ? false : policy.authRequired,
     runtimeServicesInfo: config.runtimeServicesInfo || null,
     lockToCloud: config.lockToCloud || null,
+    cloudOrganizationMode: config.cloudOrganizationMode || "required",
     basePath: normalizeBasePath(config.basePath),
     vscodeBasePath: config.vscodeBasePath || null,
     disableTelemetry: config.disableTelemetry || false,

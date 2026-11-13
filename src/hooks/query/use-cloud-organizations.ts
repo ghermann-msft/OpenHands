@@ -6,7 +6,10 @@ import {
   getCloudOrganizations,
   getCurrentCloudApiKey,
 } from "#/api/cloud/organization-service.api";
-import type { Backend } from "#/api/backend-registry/types";
+import {
+  backendRequiresOrganizations,
+  type Backend,
+} from "#/api/backend-registry/types";
 
 function isAuthorizationError(error: unknown): boolean {
   const status =
@@ -27,7 +30,7 @@ function isAuthorizationError(error: unknown): boolean {
  */
 export function useAllCloudOrganizations() {
   const { backends } = useActiveBackendContext();
-  const cloudBackends = backends.filter((b) => b.kind === "cloud");
+  const cloudBackends = backends.filter(backendRequiresOrganizations);
 
   const queries = useQueries({
     queries: cloudBackends.map((backend) => ({

@@ -8,6 +8,7 @@ import type {
   BackendAuthMode,
   BackendKind,
   BackendSelection,
+  CloudOrganizationMode,
 } from "./types";
 
 export const BACKENDS_STORAGE_KEY = "openhands-backends";
@@ -21,6 +22,12 @@ function isValidAuthMode(value: unknown): value is BackendAuthMode {
   return value === undefined || value === "api-key" || value === "cookie";
 }
 
+function isValidOrganizationMode(
+  value: unknown,
+): value is CloudOrganizationMode {
+  return value === undefined || value === "required" || value === "none";
+}
+
 function isValidBackend(value: unknown): value is Backend {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Partial<Backend>;
@@ -32,6 +39,7 @@ function isValidBackend(value: unknown): value is Backend {
     typeof v.apiKey === "string" &&
     isValidKind(v.kind) &&
     isValidAuthMode(v.authMode) &&
+    isValidOrganizationMode(v.organizationMode) &&
     (v.connectionRevision === undefined ||
       (typeof v.connectionRevision === "number" &&
         Number.isSafeInteger(v.connectionRevision) &&
@@ -109,7 +117,11 @@ export function readStoredBackends(): Backend[] {
     if (lockedCloudBackend) {
       writeStoredBackends([lockedCloudBackend]);
       const activeSelection = readStoredActiveBackend();
-      if (activeSelection?.backendId !== lockedCloudBackend.id) {
+      if (
+        activeSelection?.backendId !== lockedCloudBackend.id ||
+        (lockedCloudBackend.organizationMode === "none" &&
+          activeSelection.orgId !== null)
+      ) {
         writeStoredActiveBackend({ backendId: lockedCloudBackend.id });
       }
       return [lockedCloudBackend];

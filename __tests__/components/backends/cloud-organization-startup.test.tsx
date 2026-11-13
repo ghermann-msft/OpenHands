@@ -164,6 +164,29 @@ describe("Cloud organization startup", () => {
     expect(getActiveSelection()?.orgId).toBe("restored-org");
   });
 
+  it("mounts an organizationless cloud control plane without loading memberships", async () => {
+    const orglessCloud = {
+      ...cloud,
+      organizationMode: "none" as const,
+    };
+    setRegisteredBackends([orglessCloud]);
+    setActiveSelection({ backendId: orglessCloud.id, orgId: null });
+
+    render(
+      <AgentServerUIProviders resolveCloudOrganization>
+        <SettingsConsumer />
+      </AgentServerUIProviders>,
+    );
+
+    await screen.findByLabelText("Draft");
+    expect(getCloudOrganizations).not.toHaveBeenCalled();
+    expect(getActiveSelection()).toEqual({
+      backendId: orglessCloud.id,
+      orgId: null,
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it.each([401, 403])(
     "does not bypass an HTTP %s authorization failure",
     async (status) => {

@@ -10,6 +10,7 @@ import {
 import { LoadingSpinner } from "#/components/shared/loading-spinner";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { I18nKey } from "#/i18n/declaration";
+import { backendRequiresOrganizations } from "#/api/backend-registry/types";
 
 export function CloudOrganizationBoundary({
   children,
@@ -19,7 +20,7 @@ export function CloudOrganizationBoundary({
   const { active, setActive } = useActiveBackendContext();
   const organizations = useAllCloudOrganizations();
   const entry = organizations[active.backend.id];
-  const isCloud = active.backend.kind === "cloud";
+  const requiresOrganizations = backendRequiresOrganizations(active.backend);
   const hasValidSelection =
     entry?.hasData && entry.orgs.some((org) => org.id === active.orgId);
   const suspension = React.useSyncExternalStore(
@@ -29,7 +30,12 @@ export function CloudOrganizationBoundary({
 
   // Resolve membership before mounting consumers that send org-scoped requests.
   React.useEffect(() => {
-    if (!isCloud || hasValidSelection || !entry?.isSuccess || entry.isFetching)
+    if (
+      !requiresOrganizations ||
+      hasValidSelection ||
+      !entry?.isSuccess ||
+      entry.isFetching
+    )
       return;
     const current = entry.orgs.find((org) => org.id === entry.currentOrgId);
     const personal = entry.orgs.find((org) => org.is_personal === true);
@@ -37,11 +43,11 @@ export function CloudOrganizationBoundary({
     if ((target?.id ?? null) !== active.orgId) {
       setActive(active.backend.id, target?.id ?? null);
     }
-  }, [active, entry, hasValidSelection, isCloud, setActive]);
+  }, [active, entry, hasValidSelection, requiresOrganizations, setActive]);
 
   // The cloud refused the selected org; replace the app until the user
   // switches, so org-scoped calls stop failing behind it.
-  if (isCloud && suspension) {
+  if (requiresOrganizations && suspension) {
     return (
       <SuspendedOrganizationScreen entry={entry} suspension={suspension} />
     );
@@ -49,7 +55,7 @@ export function CloudOrganizationBoundary({
 
   const canUseSavedSelection = active.orgId && entry?.isError && !entry.hasData;
   if (
-    !isCloud ||
+    !requiresOrganizations ||
     (!entry?.isAuthorizationError &&
       (hasValidSelection || canUseSavedSelection))
   )

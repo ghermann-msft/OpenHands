@@ -3,6 +3,7 @@ import {
   getAgentServerSessionApiKey,
   getCookieAuthCloudHost,
   getLockedCloudHost,
+  getLockedCloudOrganizationMode,
   isEntraBffEnabled,
 } from "../agent-server-config";
 import type { Backend } from "./types";
@@ -33,6 +34,9 @@ export function makeLockedCloudBackend(): Backend | null {
     apiKey: "",
     kind: "cloud",
     authMode: "cookie",
+    ...(getLockedCloudOrganizationMode() === "none"
+      ? { organizationMode: "none" as const }
+      : {}),
   };
 }
 

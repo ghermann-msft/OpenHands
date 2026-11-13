@@ -24,6 +24,8 @@ afterEach(() => {
   delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_LOCK_TO_CLOUD__;
   delete (window as unknown as Record<string, unknown>)
+    .__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__;
+  delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_ENTRA_BFF__;
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -153,6 +155,44 @@ describe("backend-registry storage", () => {
         authMode: "cookie",
       },
     ]);
+    expect(readStoredActiveBackend()).toEqual({
+      backendId: "locked-cloud",
+      orgId: null,
+    });
+  });
+
+  it("seeds an organizationless cookie-auth Cloud backend when configured", () => {
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_LOCK_TO_CLOUD__ = window.location.origin;
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__ = "none";
+
+    expect(readStoredBackends()).toEqual([
+      {
+        id: "locked-cloud",
+        name: "OpenHands Cloud",
+        host: window.location.origin,
+        apiKey: "",
+        kind: "cloud",
+        authMode: "cookie",
+        organizationMode: "none",
+      },
+    ]);
+  });
+
+  it("clears a stale organization selection for an organizationless control plane", () => {
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_LOCK_TO_CLOUD__ = window.location.origin;
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__ = "none";
+    writeStoredActiveBackend({ backendId: "locked-cloud", orgId: "stale-org" });
+
+    readStoredBackends();
+
     expect(readStoredActiveBackend()).toEqual({
       backendId: "locked-cloud",
       orgId: null,

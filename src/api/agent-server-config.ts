@@ -1,6 +1,7 @@
 export const DEFAULT_WORKING_DIR = "workspace/project";
 
 export type LockedCloudAuthMode = "api-key" | "cookie";
+export type LockedCloudOrganizationMode = "required" | "none";
 
 export interface AgentServerFormDefaults {
   baseUrl: string;
@@ -12,6 +13,8 @@ export interface AgentServerFormDefaults {
 // server (`scripts/static-server.mjs`) and its tests reference the literal
 // string directly, not this constant.
 const LOCK_TO_CLOUD_WINDOW_KEY = "__AGENT_CANVAS_LOCK_TO_CLOUD__";
+const CLOUD_ORGANIZATION_MODE_WINDOW_KEY =
+  "__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__";
 const LEGACY_CLOUD_DOMAIN = "all-hands.dev";
 const CURRENT_CLOUD_DOMAIN = "openhands.dev";
 const LEGACY_PRODUCTION_APP_HOST = `app.${LEGACY_CLOUD_DOMAIN}`;
@@ -152,6 +155,20 @@ export function getLockedCloudHost(): string | null {
   }
 
   return null;
+}
+
+export function getLockedCloudOrganizationMode(): LockedCloudOrganizationMode {
+  const envMode = trimToNull(import.meta.env.VITE_CLOUD_ORGANIZATION_MODE);
+  if (envMode === "none") return "none";
+
+  if (typeof window !== "undefined") {
+    const injected = (window as unknown as Record<string, unknown>)[
+      CLOUD_ORGANIZATION_MODE_WINDOW_KEY
+    ];
+    if (injected === "none") return "none";
+  }
+
+  return "required";
 }
 
 /**

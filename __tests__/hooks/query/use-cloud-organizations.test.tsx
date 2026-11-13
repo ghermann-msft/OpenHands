@@ -60,6 +60,20 @@ beforeEach(() => {
 });
 
 describe("useAllCloudOrganizations visibility filtering", () => {
+  it("does not query organizationless cloud control planes", () => {
+    setRegisteredBackends([
+      cloudBackend({ organizationMode: "none", authMode: "cookie" }),
+    ]);
+
+    const { result } = renderHook(() => useAllCloudOrganizations(), {
+      wrapper: makeWrapper(),
+    });
+
+    expect(result.current).toEqual({});
+    expect(getCloudOrganizationsMock).not.toHaveBeenCalled();
+    expect(getCurrentCloudApiKeyMock).not.toHaveBeenCalled();
+  });
+
   it("hides orgs the cloud marks is_visible=false", async () => {
     getCloudOrganizationsMock.mockResolvedValue({
       items: [
