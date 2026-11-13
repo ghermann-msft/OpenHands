@@ -1,8 +1,19 @@
 import { loadAgentServerInfo } from "../agent-server-compatibility";
+import { getActiveBackend } from "../backend-registry/active-store";
+import { callCloudProxy } from "../cloud/proxy";
 import { WebClientConfig } from "./option.types";
 
 class OptionService {
   static async getConfig(): Promise<WebClientConfig> {
+    const { backend } = getActiveBackend();
+    if (backend.kind === "cloud") {
+      return callCloudProxy<WebClientConfig>({
+        backend,
+        method: "GET",
+        path: "/api/v1/web-client/config",
+      });
+    }
+
     await loadAgentServerInfo();
 
     return {

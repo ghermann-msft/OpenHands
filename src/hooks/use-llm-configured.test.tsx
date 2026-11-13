@@ -240,6 +240,39 @@ describe("useLlmConfigured", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.isConfigured).toBe(true);
+  });
+
+  it("treats a backend-managed LLM as configured without user settings", async () => {
+    const cloudBackend: Backend = {
+      id: "test-cloud",
+      name: "Test Cloud",
+      host: "https://halo.example.com",
+      apiKey: "cloud-token",
+      kind: "cloud",
+      organizationMode: "none",
+    };
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+    mockGetSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      llm_api_key_set: false,
+    });
+    mockGetConfig.mockResolvedValue({
+      feature_flags: {
+        hide_llm_settings: true,
+        hide_users_page: true,
+      },
+    } as Awaited<ReturnType<typeof OptionService.getConfig>>);
+    mockListProfiles.mockResolvedValue({
+      active_profile: null,
+      profiles: [],
+    });
+
+    const { result } = renderLlmConfiguredHook();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isConfigured).toBe(true);
     expect(mockGetProfile).not.toHaveBeenCalled();
   });
 });
