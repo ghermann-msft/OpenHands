@@ -992,6 +992,30 @@ roleRef:
 ${subject}
 `;
   };
+  const agentSandboxBinding = (environment) => {
+    const namespace = config.environments[environment].namespace;
+    return `apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ${ci.runnerServiceAccount}-agent-sandbox
+  namespace: ${namespace}
+rules:
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxtemplates", "sandboxwarmpools"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ${ci.runnerServiceAccount}-agent-sandbox
+  namespace: ${namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ${ci.runnerServiceAccount}-agent-sandbox
+${subject}
+`;
+  };
   return `apiVersion: v1
 kind: Namespace
 metadata:
@@ -1037,7 +1061,9 @@ roleRef:
 ${subject}
 ---
 ${adminBinding("candidate")}---
-${adminBinding("primary")}`;
+${agentSandboxBinding("candidate")}---
+${adminBinding("primary")}---
+${agentSandboxBinding("primary")}`;
 }
 
 function bootstrapBuild() {

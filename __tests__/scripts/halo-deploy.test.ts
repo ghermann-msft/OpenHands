@@ -126,6 +126,13 @@ describe("Halo deployment automation", () => {
     expect(runner).toContain("runAsGroup: 1001");
     expect(runner).toContain("agentpool: halobuild");
     expect(rbac).toContain("namespace: openhands-halo-build");
+    expect(rbac).toContain("name: openhands-halo-ci-agent-sandbox");
+    expect(rbac).toContain(
+      'resources: ["sandboxtemplates", "sandboxwarmpools"]',
+    );
+    expect(rbac).toContain(
+      'verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]',
+    );
     expect(rbac).toContain("namespace: openhands-halo-ppe");
     expect(rbac).toContain("namespace: openhands-halo-primary");
     expect(rbac).not.toContain("ClusterRoleBinding");
