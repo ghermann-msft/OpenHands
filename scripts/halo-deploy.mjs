@@ -669,10 +669,13 @@ function ensureEntraApplication(environment) {
 
 export function renderBuildJob({ commit }) {
   const short = commit.slice(0, 9);
+  const agentServerShort = config.source.agentServerSdkRef.slice(0, 9);
   const sandboxShort = config.source.sandboxServerRef.slice(0, 9);
   const build = config.build;
   const image = `${config.azure.acrLoginServer}/${build.repository}:${short}`;
   const cache = `${config.azure.acrLoginServer}/${build.repository}:${build.cacheTag}`;
+  const agentServerImage = `${config.azure.acrLoginServer}/${build.agentServerRepository}:${agentServerShort}`;
+  const agentServerCache = `${config.azure.acrLoginServer}/${build.agentServerRepository}:${build.agentServerCacheTag}`;
   const sandboxImage = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${sandboxShort}`;
   const sandboxCache = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${build.sandboxServerCacheTag}`;
   return `apiVersion: batch/v1
@@ -737,6 +740,22 @@ spec:
           volumeMounts:
             - name: sandbox-source
               mountPath: /sandbox-server
+        - name: agent-server-source
+          image: ${build.gitImage}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              git clone --filter=blob:none --no-checkout ${config.source.agentServerSdkRepository} /agent-server
+              cd /agent-server
+              git checkout --detach ${config.source.agentServerSdkRef}
+              test "$(git rev-parse HEAD)" = "${config.source.agentServerSdkRef}"
+              chown -R 1000:1000 /agent-server
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: agent-server-source
+              mountPath: /agent-server
         - name: acr-auth
           image: ${build.azureCliImage}
           command: ["/bin/sh", "-ec"]
@@ -761,6 +780,7 @@ spec:
           args:
             - |
               canvas_metadata=/tmp/canvas-build-metadata.json
+              agent_server_metadata=/tmp/agent-server-build-metadata.json
               sandbox_metadata=/tmp/sandbox-build-metadata.json
               buildkitd \\
                 --addr unix:///run/buildkit/buildkitd.sock &
@@ -803,6 +823,23 @@ spec:
               fi
               buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
                 --frontend dockerfile.v0 \\
+                --local context=/agent-server \\
+                --local dockerfile=/agent-server \\
+                --opt filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile \\
+                --opt target=binary \\
+                --opt platform=linux/amd64 \\
+                --import-cache type=registry,ref=${agentServerCache} \\
+                --export-cache type=registry,ref=${agentServerCache},mode=max,compression=zstd,ignore-error=true \\
+                --metadata-file "$agent_server_metadata" \\
+                --output type=image,name=${agentServerImage},push=true
+              agent_server_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$agent_server_metadata")"
+              if ! printf '%s' "$agent_server_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                echo "BuildKit did not report an immutable Agent Server image digest" >&2
+                cat "$agent_server_metadata" >&2
+                exit 1
+              fi
+              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
+                --frontend dockerfile.v0 \\
                 --local context=/sandbox-server \\
                 --local dockerfile=/sandbox-server \\
                 --opt filename=containers/app/Dockerfile \\
@@ -819,8 +856,9 @@ spec:
                 cat "$sandbox_metadata" >&2
                 exit 1
               fi
-              printf '{"canvas":"%s","sandboxServer":"%s"}' "$canvas_digest" "$sandbox_digest" > /dev/termination-log
+              printf '{"canvas":"%s","agentServer":"%s","sandboxServer":"%s"}' "$canvas_digest" "$agent_server_digest" "$sandbox_digest" > /dev/termination-log
               printf 'CANVAS_IMAGE_DIGEST=%s\\n' "$canvas_digest"
+              printf 'AGENT_SERVER_IMAGE_DIGEST=%s\\n' "$agent_server_digest"
               printf 'SANDBOX_SERVER_IMAGE_DIGEST=%s\\n' "$sandbox_digest"
           env:
             - name: DOCKER_CONFIG
@@ -843,6 +881,9 @@ spec:
             - name: sandbox-source
               mountPath: /sandbox-server
               readOnly: true
+            - name: agent-server-source
+              mountPath: /agent-server
+              readOnly: true
             - name: docker-config
               mountPath: /docker
               readOnly: true
@@ -851,6 +892,9 @@ spec:
           emptyDir:
             sizeLimit: 8Gi
         - name: sandbox-source
+          emptyDir:
+            sizeLimit: 8Gi
+        - name: agent-server-source
           emptyDir:
             sizeLimit: 8Gi
         - name: docker-config
@@ -868,6 +912,7 @@ export function buildDigestsFromPodList(podList) {
       const digests = JSON.parse(message ?? "");
       return {
         canvas: normalizeDigest(digests.canvas),
+        agentServer: normalizeDigest(digests.agentServer),
         sandboxServer: normalizeDigest(digests.sandboxServer),
       };
     } catch {
@@ -1428,9 +1473,14 @@ spec:
 `;
 }
 
-export function renderAgentSandboxResources(environment) {
+export function renderAgentSandboxResources(environment, agentServerDigest) {
   const env = config.environments[environment];
   const agentSandbox = config.agentSandbox;
+  const agentServerImage = imageReference(
+    config.azure.acrLoginServer,
+    config.build.agentServerRepository,
+    agentServerDigest,
+  );
   return `apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
@@ -1500,7 +1550,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: agent-server
-          image: ${agentSandbox.agentServerImage}
+          image: ${agentServerImage}
           args: ["--host", "0.0.0.0", "--port", "8000"]
           workingDir: /workspace
           ports:
@@ -2667,6 +2717,7 @@ async function build(args) {
   );
   const digests = buildDigestsFromPodList(pods);
   console.log(`CANVAS_IMAGE_DIGEST=${digests.canvas}`);
+  console.log(`AGENT_SERVER_IMAGE_DIGEST=${digests.agentServer}`);
   console.log(`SANDBOX_SERVER_IMAGE_DIGEST=${digests.sandboxServer}`);
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
@@ -2739,7 +2790,12 @@ function runtimeClientId(environment) {
   return clientId;
 }
 
-async function deploy(environment, canvasDigest, sandboxServerDigest) {
+async function deploy(
+  environment,
+  canvasDigest,
+  agentServerDigest,
+  sandboxServerDigest,
+) {
   const env = config.environments[environment];
   const clientId = runtimeClientId(environment);
   kubectl(["apply", "-f", "-"], {
@@ -2769,7 +2825,7 @@ async function deploy(environment, canvasDigest, sandboxServerDigest) {
     "trustedIdentityAssertion",
   );
   kubectl(["apply", "-f", "-"], {
-    input: renderAgentSandboxResources(environment),
+    input: renderAgentSandboxResources(environment, agentServerDigest),
   });
   const valuesPath = join(
     tmpdir(),
@@ -2826,6 +2882,9 @@ async function deploy(environment, canvasDigest, sandboxServerDigest) {
     `${environment.toUpperCase()}_CANVAS_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.repository, canvasDigest)}`,
   );
   console.log(
+    `${environment.toUpperCase()}_AGENT_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.agentServerRepository, agentServerDigest)}`,
+  );
+  console.log(
     `${environment.toUpperCase()}_SANDBOX_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.sandboxServerRepository, sandboxServerDigest)}`,
   );
 }
@@ -2856,7 +2915,20 @@ function candidateDigests() {
     ],
     { capture: true },
   );
+  const agentServerImage = kubectl(
+    [
+      "-n",
+      env.namespace,
+      "get",
+      "sandboxtemplate",
+      config.agentSandbox.template,
+      "-o",
+      "jsonpath={.spec.podTemplate.spec.containers[0].image}",
+    ],
+    { capture: true },
+  );
   const canvasPrefix = `${config.azure.acrLoginServer}/${config.build.repository}@`;
+  const agentServerPrefix = `${config.azure.acrLoginServer}/${config.build.agentServerRepository}@`;
   const sandboxServerPrefix = `${config.azure.acrLoginServer}/${config.build.sandboxServerRepository}@`;
   if (!canvasImage.startsWith(canvasPrefix)) {
     throw new Error(
@@ -2868,8 +2940,16 @@ function candidateDigests() {
       `Candidate Sandbox Server is not deployed by immutable digest: ${sandboxServerImage}`,
     );
   }
+  if (!agentServerImage.startsWith(agentServerPrefix)) {
+    throw new Error(
+      `Candidate Agent Server is not deployed by immutable digest: ${agentServerImage}`,
+    );
+  }
   return {
     canvas: normalizeDigest(canvasImage.slice(canvasPrefix.length)),
+    agentServer: normalizeDigest(
+      agentServerImage.slice(agentServerPrefix.length),
+    ),
     sandboxServer: normalizeDigest(
       sandboxServerImage.slice(sandboxServerPrefix.length),
     ),
@@ -2889,6 +2969,7 @@ async function promote(args) {
   await waitForReady("candidate");
   const digests = candidateDigests();
   const expectedCanvasDigest = option(args, "--canvas-digest");
+  const expectedAgentServerDigest = option(args, "--agent-server-digest");
   const expectedSandboxServerDigest = option(args, "--sandbox-server-digest");
   if (
     expectedCanvasDigest &&
@@ -2896,6 +2977,14 @@ async function promote(args) {
   ) {
     throw new Error(
       `Candidate Canvas digest changed while promotion awaited approval: expected ${expectedCanvasDigest}, found ${digests.canvas}`,
+    );
+  }
+  if (
+    expectedAgentServerDigest &&
+    normalizeDigest(expectedAgentServerDigest) !== digests.agentServer
+  ) {
+    throw new Error(
+      `Candidate Agent Server digest changed while promotion awaited approval: expected ${expectedAgentServerDigest}, found ${digests.agentServer}`,
     );
   }
   if (
@@ -2907,9 +2996,14 @@ async function promote(args) {
     );
   }
   console.log(
-    `Promoting candidate digests ${digests.canvas} and ${digests.sandboxServer}`,
+    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, and ${digests.sandboxServer}`,
   );
-  await deploy("primary", digests.canvas, digests.sandboxServer);
+  await deploy(
+    "primary",
+    digests.canvas,
+    digests.agentServer,
+    digests.sandboxServer,
+  );
 }
 
 function status() {
@@ -2934,8 +3028,8 @@ function usage() {
   npm run halo -- bootstrap
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
-  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
-  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest>]
+  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
+  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest>]
   npm run halo -- status`);
 }
 
@@ -2955,6 +3049,7 @@ async function main(args = process.argv.slice(2)) {
       await deploy(
         "candidate",
         normalizeDigest(option(args, "--canvas-digest")),
+        normalizeDigest(option(args, "--agent-server-digest")),
         normalizeDigest(option(args, "--sandbox-server-digest")),
       );
       break;

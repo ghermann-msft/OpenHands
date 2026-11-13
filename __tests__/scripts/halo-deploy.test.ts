@@ -55,10 +55,20 @@ describe("Halo deployment automation", () => {
       "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-server:",
     );
     expect(job).toContain(
+      "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server:",
+    );
+    expect(job).toContain(
+      "git checkout --detach b1d818a6078691cd765e05adbc60cd5fecb4c671",
+    );
+    expect(job).toContain(
+      "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
+    );
+    expect(job).toContain("--opt target=binary");
+    expect(job).toContain(
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=23fba4b2b914d87f191a92aed2c41cb86545ab43",
+      "AGENT_SERVER_SDK_GIT_REF=b1d818a6078691cd765e05adbc60cd5fecb4c671",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
@@ -88,6 +98,7 @@ describe("Halo deployment automation", () => {
                     terminated: {
                       message: JSON.stringify({
                         canvas: digest,
+                        agentServer: `sha256:${"c".repeat(64)}`,
                         sandboxServer: `sha256:${"b".repeat(64)}`,
                       }),
                     },
@@ -100,6 +111,7 @@ describe("Halo deployment automation", () => {
       }),
     ).toEqual({
       canvas: digest,
+      agentServer: `sha256:${"c".repeat(64)}`,
       sandboxServer: `sha256:${"b".repeat(64)}`,
     });
     expect(() => buildDigestsFromPodList({ items: [] })).toThrow(
@@ -358,7 +370,11 @@ describe("Halo deployment automation", () => {
   });
 
   it("renders isolated agent-sandbox resources for each environment", () => {
-    const resources = renderAgentSandboxResources("candidate");
+    const agentServerDigest = `sha256:${"c".repeat(64)}`;
+    const resources = renderAgentSandboxResources(
+      "candidate",
+      agentServerDigest,
+    );
 
     expect(resources).toContain(
       "apiVersion: extensions.agents.x-k8s.io/v1beta1",
@@ -367,7 +383,7 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("namespace: openhands-halo-ppe");
     expect(resources).toContain("envVarsInjectionPolicy: Allowed");
     expect(resources).toContain(
-      "image: ghcr.io/openhands/agent-server:1.37.1-python",
+      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${agentServerDigest}`,
     );
     expect(resources).toContain(
       "storageClassName: openhands-halo-workspace-disk",

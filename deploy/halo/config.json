@@ -27,7 +27,7 @@
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
-    "agentServerSdkRef": "23fba4b2b914d87f191a92aed2c41cb86545ab43",
+    "agentServerSdkRef": "b1d818a6078691cd765e05adbc60cd5fecb4c671",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
     "sandboxServerRef": "b2f130386efc73c5b3c4732aecc1fcf4c52982ea"
   },
@@ -41,6 +41,8 @@
     "federatedCredential": "halo-image-builder",
     "repository": "openhands-halo",
     "cacheTag": "buildcache-amd64",
+    "agentServerRepository": "openhands-agent-server",
+    "agentServerCacheTag": "agent-server-buildcache-amd64",
     "sandboxServerRepository": "openhands-sandbox-server",
     "sandboxServerCacheTag": "sandbox-server-buildcache-amd64",
     "gitImage": "alpine/git:2.49.1",
@@ -115,8 +117,7 @@
     "version": "v0.5.2",
     "releaseManifest": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.2/sandbox-with-extensions.yaml",
     "template": "openhands-agent-server",
-    "warmPool": "openhands-pool",
-    "agentServerImage": "ghcr.io/openhands/agent-server:1.37.1-python"
+    "warmPool": "openhands-pool"
   },
   "environments": {
     "candidate": {

@@ -49,6 +49,7 @@ jobs:
       cancel-in-progress: false
     outputs:
       canvas_digest: ${{ steps.image.outputs.canvas_digest }}
+      agent_server_digest: ${{ steps.image.outputs.agent_server_digest }}
       sandbox_server_digest: ${{ steps.image.outputs.sandbox_server_digest }}
     steps:
       - name: Check out exact commit
@@ -89,6 +90,7 @@ jobs:
           output="$(node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA")"
           printf '%s\n' "$output"
           canvas_digest="$(printf '%s\n' "$output" | sed -n 's/^CANVAS_IMAGE_DIGEST=//p' | tail -1)"
+          agent_server_digest="$(printf '%s\n' "$output" | sed -n 's/^AGENT_SERVER_IMAGE_DIGEST=//p' | tail -1)"
           sandbox_server_digest="$(printf '%s\n' "$output" | sed -n 's/^SANDBOX_SERVER_IMAGE_DIGEST=//p' | tail -1)"
           if [[ ! "$canvas_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
             echo "::error::Halo build did not return an immutable Canvas image digest"
@@ -98,11 +100,16 @@ jobs:
             echo "::error::Halo build did not return an immutable Sandbox Server image digest"
             exit 1
           fi
+          if [[ ! "$agent_server_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Halo build did not return an immutable Agent Server image digest"
+            exit 1
+          fi
           echo "canvas_digest=$canvas_digest" >> "$GITHUB_OUTPUT"
+          echo "agent_server_digest=$agent_server_digest" >> "$GITHUB_OUTPUT"
           echo "sandbox_server_digest=$sandbox_server_digest" >> "$GITHUB_OUTPUT"
 
       - name: Deploy candidate digest
-        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}"
+        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}"
 
       - name: Verify candidate access boundary
         shell: bash
@@ -165,4 +172,4 @@ jobs:
           kubectl config use-context halo
 
       - name: Promote the candidate digest
-        run: node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}"
+        run: node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --agent-server-digest "${{ needs.deploy-candidate.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}"
