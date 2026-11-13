@@ -29,7 +29,7 @@
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
     "agentServerSdkRef": "b1d818a6078691cd765e05adbc60cd5fecb4c671",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "e089dd64301e8708e7e5d087e218d0cd165a416b"
+    "sandboxServerRef": "744237e4c160c4b8908bfcc95ca3db1449d81fac"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
@@ -71,8 +71,8 @@
   },
   "runtime": {
     "nodePool": "services",
-    "nodePoolMinCount": 1,
-    "nodePoolMaxCount": 1,
+    "nodePoolMinCount": 2,
+    "nodePoolMaxCount": 3,
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "services"
   },

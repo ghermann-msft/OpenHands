@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach e089dd64301e8708e7e5d087e218d0cd165a416b",
+      "git checkout --detach 744237e4c160c4b8908bfcc95ca3db1449d81fac",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain("containers/app/Dockerfile");
@@ -251,17 +251,17 @@ describe("Halo deployment automation", () => {
     );
   });
 
-  it("keeps one isolated runtime services node warm", () => {
+  it("keeps runtime services capacity and rollout headroom", () => {
     const args = runtimeNodePoolAutoscalerArgs();
 
     expect(args).toContain("services");
     expect(args).toContain("--update-cluster-autoscaler");
     expect(
       args.slice(args.indexOf("--min-count"), args.indexOf("--min-count") + 2),
-    ).toEqual(["--min-count", "1"]);
+    ).toEqual(["--min-count", "2"]);
     expect(
       args.slice(args.indexOf("--max-count"), args.indexOf("--max-count") + 2),
-    ).toEqual(["--max-count", "1"]);
+    ).toEqual(["--max-count", "3"]);
   });
 
   it("renders isolated candidate configuration with Key Vault CSI", () => {
