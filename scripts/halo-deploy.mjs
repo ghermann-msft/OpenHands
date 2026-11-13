@@ -1001,8 +1001,14 @@ metadata:
   namespace: ${namespace}
 rules:
   - apiGroups: ["extensions.agents.x-k8s.io"]
-    resources: ["sandboxtemplates", "sandboxwarmpools"]
+    resources: ["sandboxtemplates", "sandboxwarmpools", "sandboxclaims"]
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
