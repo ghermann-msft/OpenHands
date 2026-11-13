@@ -160,7 +160,7 @@ describe("Halo deployment automation", () => {
     expect(rbac).not.toContain("ClusterRoleBinding");
   });
 
-  it("defines and validates the scale-to-zero build pool boundary", () => {
+  it("defines and validates the warm build pool boundary", () => {
     const args = buildNodePoolCreateArgs();
 
     expect(args).toContain("halobuild");
@@ -176,7 +176,7 @@ describe("Halo deployment automation", () => {
         osSku: "Ubuntu",
         vmSize: "Standard_D8s_v5",
         enableAutoScaling: true,
-        minCount: 0,
+        minCount: 1,
         maxCount: 1,
         securityProfile: {
           sshAccess: "Disabled",
@@ -194,7 +194,7 @@ describe("Halo deployment automation", () => {
         osSku: "Ubuntu",
         vmSize: "Standard_D8s_v5",
         enableAutoScaling: true,
-        minCount: 0,
+        minCount: 1,
         maxCount: 1,
         securityProfile: {
           sshAccess: "LocalUser",

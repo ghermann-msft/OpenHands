@@ -50,7 +50,7 @@
     "buildkitImage": "moby/buildkit:v0.34.1",
     "nodePool": "halobuild",
     "nodePoolVmSize": "Standard_D8s_v5",
-    "nodePoolMinCount": 0,
+    "nodePoolMinCount": 1,
     "nodePoolMaxCount": 1,
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "halo-build"

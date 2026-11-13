@@ -15,9 +15,9 @@ npm run halo -- status
 `build` creates an ephemeral BuildKit Job in the dedicated
 `openhands-halo-build` namespace. The Job runs only on the dedicated
 `halobuild` AKS user node pool, which is tainted against application workloads
-and scales from zero to one node. Only the BuildKit container is privileged;
-the Job and node are ephemeral, and no build service remains running between
-builds. The Job clones the exact pushed commit, imports and exports its cache
+and keeps one node warm. Only the BuildKit container is privileged; the Job is
+ephemeral, and no build service remains running between builds. The Job clones
+the exact pushed commit, imports and exports its cache
 through ACR, pushes a commit-tagged image, and reports the immutable digest
 through its Kubernetes termination message.
 
