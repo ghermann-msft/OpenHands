@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach b2f130386efc73c5b3c4732aecc1fcf4c52982ea",
+      "git checkout --detach 21722e2b987445ed177f64945481e975b2db69bf",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain("containers/app/Dockerfile");
@@ -69,6 +69,12 @@ describe("Halo deployment automation", () => {
     );
     expect(job).toContain(
       "AGENT_SERVER_SDK_GIT_REF=b1d818a6078691cd765e05adbc60cd5fecb4c671",
+    );
+    expect(job).toContain(
+      "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
+    );
+    expect(job).toContain(
+      "SOFTWARE_AGENT_SDK_REF=b1d818a6078691cd765e05adbc60cd5fecb4c671",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");

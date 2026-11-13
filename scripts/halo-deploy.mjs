@@ -846,6 +846,8 @@ spec:
                 --opt target=openhands-sandbox-server \\
                 --opt platform=linux/amd64 \\
                 --opt build-arg:OPENHANDS_BUILD_VERSION=halo-${sandboxShort} \\
+                --opt build-arg:SOFTWARE_AGENT_SDK_REPOSITORY=${config.source.agentServerSdkRepository} \\
+                --opt build-arg:SOFTWARE_AGENT_SDK_REF=${config.source.agentServerSdkRef} \\
                 --import-cache type=registry,ref=${sandboxCache} \\
                 --export-cache type=registry,ref=${sandboxCache},mode=max,compression=zstd,ignore-error=true \\
                 --metadata-file "$sandbox_metadata" \\
