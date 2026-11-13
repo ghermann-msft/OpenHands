@@ -17,7 +17,7 @@ describe("Halo deployment workflow", () => {
       'node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA"',
     );
     expect(workflow).toContain(
-      'node scripts/halo-deploy.mjs deploy-candidate --digest "${{ steps.image.outputs.digest }}"',
+      'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}"',
     );
     expect(workflow).toContain(
       "/var/run/secrets/kubernetes.io/serviceaccount/token",
@@ -33,6 +33,8 @@ describe("Halo deployment workflow", () => {
       'if curl --fail --silent --show-error "$base_url/ready"; then',
     );
     expect(workflow).toContain("sleep 2");
+    expect(workflow).toContain('"$base_url/api/v1/sandboxes"');
+    expect(workflow).not.toContain("/api/workspace-runtimes");
     expect(workflow).not.toContain(
       "https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/ready",
     );
@@ -42,7 +44,7 @@ describe("Halo deployment workflow", () => {
   it("requires protected approval to promote the digest built by the same run", () => {
     expect(workflow).toContain("environment: halo-production");
     expect(workflow).toContain(
-      'node scripts/halo-deploy.mjs promote --digest "${{ needs.deploy-candidate.outputs.digest }}"',
+      'node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}"',
     );
     expect(workflow).toContain("group: halo-candidate");
     expect(workflow).toContain("group: halo-production");

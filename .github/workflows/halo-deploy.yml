@@ -33,6 +33,7 @@ jobs:
           npm run lint
           npm test -- --run \
             __tests__/scripts/halo-deploy.test.ts \
+            __tests__/scripts/docker-sandbox-server-route.test.ts \
             __tests__/scripts/workspace-runtime-controller.test.ts \
             __tests__/scripts/static-server.test.ts \
             __tests__/github-workflows/halo-deploy.test.ts
@@ -47,7 +48,8 @@ jobs:
       group: halo-candidate
       cancel-in-progress: false
     outputs:
-      digest: ${{ steps.image.outputs.digest }}
+      canvas_digest: ${{ steps.image.outputs.canvas_digest }}
+      sandbox_server_digest: ${{ steps.image.outputs.sandbox_server_digest }}
     steps:
       - name: Check out exact commit
         uses: actions/checkout@v7
@@ -86,15 +88,21 @@ jobs:
           set -euo pipefail
           output="$(node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA")"
           printf '%s\n' "$output"
-          digest="$(printf '%s\n' "$output" | sed -n 's/^IMAGE_DIGEST=//p' | tail -1)"
-          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "::error::Halo build did not return an immutable image digest"
+          canvas_digest="$(printf '%s\n' "$output" | sed -n 's/^CANVAS_IMAGE_DIGEST=//p' | tail -1)"
+          sandbox_server_digest="$(printf '%s\n' "$output" | sed -n 's/^SANDBOX_SERVER_IMAGE_DIGEST=//p' | tail -1)"
+          if [[ ! "$canvas_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Halo build did not return an immutable Canvas image digest"
             exit 1
           fi
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          if [[ ! "$sandbox_server_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Halo build did not return an immutable Sandbox Server image digest"
+            exit 1
+          fi
+          echo "canvas_digest=$canvas_digest" >> "$GITHUB_OUTPUT"
+          echo "sandbox_server_digest=$sandbox_server_digest" >> "$GITHUB_OUTPUT"
 
       - name: Deploy candidate digest
-        run: node scripts/halo-deploy.mjs deploy-candidate --digest "${{ steps.image.outputs.digest }}"
+        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}"
 
       - name: Verify candidate access boundary
         shell: bash
@@ -112,7 +120,7 @@ jobs:
             sleep 2
           done
           status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            "$base_url/api/workspace-runtimes")"
+            "$base_url/api/v1/sandboxes")"
           test "$status" = "401"
 
   promote-candidate:
@@ -157,4 +165,4 @@ jobs:
           kubectl config use-context halo
 
       - name: Promote the candidate digest
-        run: node scripts/halo-deploy.mjs promote --digest "${{ needs.deploy-candidate.outputs.digest }}"
+        run: node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}"

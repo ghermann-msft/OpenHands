@@ -27,10 +27,13 @@
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
-    "agentServerSdkRef": "23fba4b2b914d87f191a92aed2c41cb86545ab43"
+    "agentServerSdkRef": "23fba4b2b914d87f191a92aed2c41cb86545ab43",
+    "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
+    "sandboxServerRef": "688bd21dadbfdf52ec5505cf1f56aa06a5bcd8ff"
   },
   "identities": {
-    "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi"
+    "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
+    "postgresBootstrap": "openhands-halo-postgres-bootstrap-mi"
   },
   "build": {
     "namespace": "openhands-halo-build",
@@ -38,6 +41,8 @@
     "federatedCredential": "halo-image-builder",
     "repository": "openhands-halo",
     "cacheTag": "buildcache-amd64",
+    "sandboxServerRepository": "openhands-sandbox-server",
+    "sandboxServerCacheTag": "sandbox-server-buildcache-amd64",
     "gitImage": "alpine/git:2.49.1",
     "azureCliImage": "mcr.microsoft.com/azure-cli:2.92.0",
     "buildkitImage": "moby/buildkit:v0.34.1",
@@ -79,12 +84,47 @@
     "size": "50Gi",
     "skuName": "StandardSSD_LRS"
   },
+  "postgres": {
+    "resourceGroup": "rg-unrealhands-dev",
+    "serverName": "uh-halo-pg-acukmdbk",
+    "fqdn": "uh-halo-pg-acukmdbk.postgres.database.azure.com",
+    "privateDnsZone": "halo.private.postgres.database.azure.com",
+    "privateDnsLink": "halo-postgres-aks",
+    "vnet": "uh-unrealhands-dev-acukmd-vnet",
+    "subnet": "postgres",
+    "subnetPrefix": "10.70.15.0/24",
+    "skuName": "Standard_D2ads_v5",
+    "tier": "GeneralPurpose",
+    "version": "16",
+    "storageSizeGb": 32,
+    "bootstrapServiceAccount": "halo-postgres-bootstrap",
+    "bootstrapFederatedCredential": "halo-postgres-bootstrap"
+  },
+  "sandboxServer": {
+    "serviceName": "openhands-sandbox-server",
+    "port": 3000,
+    "replicas": 1,
+    "claimNamePrefix": "openhands-sandbox",
+    "trustedIdentityIssuer": "openhands-halo-bff",
+    "trustedIdentityAudience": "openhands-sandbox-server",
+    "trustedIdentityHeader": "X-OpenHands-Identity-Assertion",
+    "trustedIdentityMaxLifetimeSeconds": 300,
+    "trustedIdentityClockSkewSeconds": 30
+  },
+  "agentSandbox": {
+    "version": "v0.5.2",
+    "releaseManifest": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.2/sandbox-with-extensions.yaml",
+    "template": "openhands-agent-server",
+    "warmPool": "openhands-pool",
+    "agentServerImage": "ghcr.io/openhands/agent-server:1.37.1-python"
+  },
   "environments": {
     "candidate": {
       "namespace": "openhands-halo-ppe",
       "release": "openhands-halo",
       "serviceAccount": "openhands-halo",
       "runtimeIdentity": "openhands-halo-ppe-runtime-mi",
+      "database": "openhands_halo_ppe",
       "conversationPvc": "openhands-halo-conversations",
       "federatedCredential": "halo-ppe-runtime",
       "frontDoorEndpoint": "openhands-ppe",
@@ -99,7 +139,8 @@
         "cookieSecret": "halo-ppe-cookie-secret",
         "sessionApiKey": "halo-ppe-session-api-key",
         "ohSecretKey": "halo-ppe-oh-secret-key",
-        "automationKvSecret": "halo-ppe-automation-kv-secret"
+        "automationKvSecret": "halo-ppe-automation-kv-secret",
+        "trustedIdentityAssertion": "halo-ppe-trusted-identity-assertion"
       }
     },
     "primary": {
@@ -107,6 +148,7 @@
       "release": "openhands-halo",
       "serviceAccount": "openhands-halo",
       "runtimeIdentity": "openhands-halo-primary-runtime-mi",
+      "database": "openhands_halo_primary",
       "conversationPvc": "openhands-halo-conversations",
       "federatedCredential": "halo-primary-runtime",
       "frontDoorEndpoint": "openhands",
@@ -121,7 +163,8 @@
         "cookieSecret": "halo-primary-cookie-secret",
         "sessionApiKey": "halo-primary-session-api-key",
         "ohSecretKey": "halo-primary-oh-secret-key",
-        "automationKvSecret": "halo-primary-automation-kv-secret"
+        "automationKvSecret": "halo-primary-automation-kv-secret",
+        "trustedIdentityAssertion": "halo-primary-trusted-identity-assertion"
       }
     }
   }

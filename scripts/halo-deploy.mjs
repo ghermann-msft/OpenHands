@@ -381,6 +381,61 @@ export function buildNodePoolCreateArgs() {
   ];
 }
 
+export function postgresServerCreateArgs(
+  bootstrapIdentity,
+  subnetId,
+  privateDnsZoneId,
+) {
+  const postgres = config.postgres;
+  return [
+    "postgres",
+    "flexible-server",
+    "create",
+    "--resource-group",
+    postgres.resourceGroup,
+    "--name",
+    postgres.serverName,
+    "--location",
+    config.azure.location,
+    "--sku-name",
+    postgres.skuName,
+    "--tier",
+    postgres.tier,
+    "--version",
+    postgres.version,
+    "--storage-size",
+    String(postgres.storageSizeGb),
+    "--storage-auto-grow",
+    "Enabled",
+    "--backup-retention",
+    "7",
+    "--zonal-resiliency",
+    "Disabled",
+    "--geo-redundant-backup",
+    "Disabled",
+    "--microsoft-entra-auth",
+    "Enabled",
+    "--password-auth",
+    "Disabled",
+    "--admin-object-id",
+    bootstrapIdentity.principalId,
+    "--admin-display-name",
+    bootstrapIdentity.name,
+    "--admin-type",
+    "ServicePrincipal",
+    "--subnet",
+    subnetId,
+    "--private-dns-zone",
+    privateDnsZoneId,
+    "--tags",
+    "workload=openhands-halo",
+    "environment=shared",
+    "--yes",
+    "--output",
+    "none",
+  ];
+}
+
 export function validateBuildNodePool(nodePool) {
   const build = config.build;
   const expectedLabel = build.nodeTaintValue;
@@ -614,9 +669,12 @@ function ensureEntraApplication(environment) {
 
 export function renderBuildJob({ commit }) {
   const short = commit.slice(0, 9);
+  const sandboxShort = config.source.sandboxServerRef.slice(0, 9);
   const build = config.build;
   const image = `${config.azure.acrLoginServer}/${build.repository}:${short}`;
   const cache = `${config.azure.acrLoginServer}/${build.repository}:${build.cacheTag}`;
+  const sandboxImage = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${sandboxShort}`;
+  const sandboxCache = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${build.sandboxServerCacheTag}`;
   return `apiVersion: batch/v1
 kind: Job
 metadata:
@@ -663,6 +721,22 @@ spec:
           volumeMounts:
             - name: source
               mountPath: /workspace
+        - name: sandbox-source
+          image: ${build.gitImage}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              git clone --filter=blob:none --no-checkout ${config.source.sandboxServerRepository} /sandbox-server
+              cd /sandbox-server
+              git checkout --detach ${config.source.sandboxServerRef}
+              test "$(git rev-parse HEAD)" = "${config.source.sandboxServerRef}"
+              chown -R 1000:1000 /sandbox-server
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: sandbox-source
+              mountPath: /sandbox-server
         - name: acr-auth
           image: ${build.azureCliImage}
           command: ["/bin/sh", "-ec"]
@@ -686,7 +760,8 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              metadata=/tmp/build-metadata.json
+              canvas_metadata=/tmp/canvas-build-metadata.json
+              sandbox_metadata=/tmp/sandbox-build-metadata.json
               buildkitd \\
                 --addr unix:///run/buildkit/buildkitd.sock &
               buildkitd_pid="$!"
@@ -718,16 +793,35 @@ spec:
                 --opt build-arg:AGENT_CANVAS_VERSION=halo-${short} \\
                 --import-cache type=registry,ref=${cache} \\
                 --export-cache type=registry,ref=${cache},mode=max,compression=zstd,ignore-error=true \\
-                --metadata-file "$metadata" \\
+                --metadata-file "$canvas_metadata" \\
                 --output type=image,name=${image},push=true
-              digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$metadata")"
-              if ! printf '%s' "$digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
-                echo "BuildKit did not report an immutable image digest" >&2
-                cat "$metadata" >&2
+              canvas_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$canvas_metadata")"
+              if ! printf '%s' "$canvas_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                echo "BuildKit did not report an immutable Canvas image digest" >&2
+                cat "$canvas_metadata" >&2
                 exit 1
               fi
-              printf '%s' "$digest" > /dev/termination-log
-              printf 'IMAGE_DIGEST=%s\\n' "$digest"
+              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
+                --frontend dockerfile.v0 \\
+                --local context=/sandbox-server \\
+                --local dockerfile=/sandbox-server \\
+                --opt filename=containers/app/Dockerfile \\
+                --opt target=openhands-sandbox-server \\
+                --opt platform=linux/amd64 \\
+                --opt build-arg:OPENHANDS_BUILD_VERSION=halo-${sandboxShort} \\
+                --import-cache type=registry,ref=${sandboxCache} \\
+                --export-cache type=registry,ref=${sandboxCache},mode=max,compression=zstd,ignore-error=true \\
+                --metadata-file "$sandbox_metadata" \\
+                --output type=image,name=${sandboxImage},push=true
+              sandbox_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$sandbox_metadata")"
+              if ! printf '%s' "$sandbox_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                echo "BuildKit did not report an immutable Sandbox Server image digest" >&2
+                cat "$sandbox_metadata" >&2
+                exit 1
+              fi
+              printf '{"canvas":"%s","sandboxServer":"%s"}' "$canvas_digest" "$sandbox_digest" > /dev/termination-log
+              printf 'CANVAS_IMAGE_DIGEST=%s\\n' "$canvas_digest"
+              printf 'SANDBOX_SERVER_IMAGE_DIGEST=%s\\n' "$sandbox_digest"
           env:
             - name: DOCKER_CONFIG
               value: /docker
@@ -746,6 +840,9 @@ spec:
             - name: source
               mountPath: /workspace
               readOnly: true
+            - name: sandbox-source
+              mountPath: /sandbox-server
+              readOnly: true
             - name: docker-config
               mountPath: /docker
               readOnly: true
@@ -753,22 +850,31 @@ spec:
         - name: source
           emptyDir:
             sizeLimit: 8Gi
+        - name: sandbox-source
+          emptyDir:
+            sizeLimit: 8Gi
         - name: docker-config
           emptyDir: {}
 `;
 }
 
-export function buildDigestFromPodList(podList) {
+export function buildDigestsFromPodList(podList) {
   for (const pod of podList?.items ?? []) {
     const status = (pod.status?.containerStatuses ?? []).find(
       (container) => container.name === "buildkit",
     );
     const message = status?.state?.terminated?.message?.trim();
-    if (/^sha256:[a-f0-9]{64}$/.test(message ?? "")) {
-      return message;
+    try {
+      const digests = JSON.parse(message ?? "");
+      return {
+        canvas: normalizeDigest(digests.canvas),
+        sandboxServer: normalizeDigest(digests.sandboxServer),
+      };
+    } catch {
+      // Check other pods before reporting the missing build result.
     }
   }
-  throw new Error("Build Job did not publish an immutable image digest");
+  throw new Error("Build Job did not publish immutable image digests");
 }
 
 export function renderArcControllerValues() {
@@ -979,6 +1085,7 @@ export function renderSecretProviderClass(environment, runtimeClientId) {
     ["sessionApiKey", env.secrets.sessionApiKey],
     ["ohSecretKey", env.secrets.ohSecretKey],
     ["automationKvSecret", env.secrets.automationKvSecret],
+    ["trustedIdentityAssertion", env.secrets.trustedIdentityAssertion],
   ];
   return `apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
@@ -1076,6 +1183,23 @@ config:
       value: "1"
     - name: AGENT_CANVAS_DISABLE_TELEMETRY
       value: "1"
+    - name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: openhands-halo-secrets
+          key: trustedIdentityAssertion
+    - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
+      value: ${config.sandboxServer.trustedIdentityIssuer}
+    - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
+      value: ${config.sandboxServer.trustedIdentityAudience}
+    - name: SANDBOX_SERVER_URL
+      value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
+    - name: AGENT_CANVAS_CLOUD_URL
+      value: https://${env.frontDoorHost}
+    - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE
+      value: ${env.namespace}
+    - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX
+      value: ${config.sandboxServer.claimNamePrefix}
     - name: LLM_MODEL
       value: azure/${config.azureOpenAI.deployment}
     - name: LLM_BASE_URL
@@ -1084,34 +1208,6 @@ config:
       value: ${config.azureOpenAI.apiVersion}
     - name: LLM_AUTH_TYPE
       value: azure_workload_identity
-    - name: AGENT_CANVAS_WORKSPACE_LLM_MODEL
-      value: azure/${config.azureOpenAI.deployment}
-    - name: AGENT_CANVAS_WORKSPACE_LLM_BASE_URL
-      value: ${config.azureOpenAI.endpoint}
-    - name: AGENT_CANVAS_WORKSPACE_LLM_API_VERSION
-      value: ${config.azureOpenAI.apiVersion}
-    - name: AGENT_CANVAS_WORKSPACE_LLM_AUTH_TYPE
-      value: azure_workload_identity
-    - name: AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE
-      value: ${env.namespace}
-    - name: AGENT_CANVAS_WORKSPACE_RUNTIME_IMAGE
-      value: ${image}
-    - name: AGENT_CANVAS_WORKSPACE_STORAGE_CLASS
-      value: ${config.workspaceStorage.storageClass}
-    - name: AGENT_CANVAS_WORKSPACE_STORAGE_SIZE
-      value: ${config.workspaceStorage.size}
-    - name: AGENT_CANVAS_WORKSPACE_CONVERSATION_PVC
-      value: ${env.conversationPvc}
-    - name: AGENT_CANVAS_WORKSPACE_SHARED_SECRET
-      value: openhands-halo-secrets
-    - name: AGENT_CANVAS_WORKSPACE_SERVICE_ACCOUNT
-      value: ${env.serviceAccount}
-    - name: AGENT_CANVAS_WORKSPACE_NODE_POOL
-      value: ${config.runtime.nodePool}
-    - name: AGENT_CANVAS_WORKSPACE_TAINT_KEY
-      value: ${config.runtime.nodeTaintKey}
-    - name: AGENT_CANVAS_WORKSPACE_TAINT_VALUE
-      value: ${config.runtime.nodeTaintValue}
     - name: AUTOMATION_KV_SECRET
       valueFrom:
         secretKeyRef:
@@ -1154,6 +1250,421 @@ extraVolumeMounts:
     mountPath: /mnt/secrets-store
     readOnly: true
 `;
+}
+
+export function renderSandboxServerResources(
+  environment,
+  digest,
+  runtimeClientId,
+) {
+  const env = config.environments[environment];
+  const sandbox = config.sandboxServer;
+  const image = imageReference(
+    config.azure.acrLoginServer,
+    config.build.sandboxServerRepository,
+    digest,
+  );
+  return `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${sandbox.serviceName}
+  namespace: ${env.namespace}
+spec:
+  replicas: ${sandbox.replicas}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${sandbox.serviceName}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${sandbox.serviceName}
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: ${env.serviceAccount}
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        agentpool: ${config.runtime.nodePool}
+      tolerations:
+        - key: ${config.runtime.nodeTaintKey}
+          operator: Equal
+          value: ${config.runtime.nodeTaintValue}
+          effect: NoSchedule
+      containers:
+        - name: sandbox-server
+          image: ${image}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: ${sandbox.port}
+          env:
+            - name: AZURE_CLIENT_ID
+              value: ${runtimeClientId}
+            - name: RUNTIME
+              value: kubernetes
+            - name: SERVE_FRONTEND
+              value: "false"
+            - name: DB_AZURE_IDENTITY
+              value: "true"
+            - name: DB_HOST
+              value: ${config.postgres.fqdn}
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: ${env.database}
+            - name: DB_USER
+              value: ${env.runtimeIdentity}
+            - name: DB_SSL_MODE
+              value: require
+            - name: LLM_MODEL
+              value: azure/${config.azureOpenAI.deployment}
+            - name: LLM_BASE_URL
+              value: ${config.azureOpenAI.endpoint}
+            - name: LLM_API_VERSION
+              value: ${config.azureOpenAI.apiVersion}
+            - name: LLM_AUTH_TYPE
+              value: azure_workload_identity
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-halo-secrets
+                  key: trustedIdentityAssertion
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
+              value: ${sandbox.trustedIdentityIssuer}
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
+              value: ${sandbox.trustedIdentityAudience}
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_HEADER
+              value: ${sandbox.trustedIdentityHeader}
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_MAX_LIFETIME_SECONDS
+              value: "${sandbox.trustedIdentityMaxLifetimeSeconds}"
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_CLOCK_SKEW_SECONDS
+              value: "${sandbox.trustedIdentityClockSkewSeconds}"
+            - name: OH_SANDBOX_KIND
+              value: openhands.app_server.sandbox.kubernetes_sandbox_service.KubernetesSandboxServiceInjector
+            - name: OH_SANDBOX_SPEC_KIND
+              value: openhands.app_server.sandbox.kubernetes_sandbox_spec_service.KubernetesSandboxSpecServiceInjector
+            - name: OH_SANDBOX_NAMESPACE
+              value: ${env.namespace}
+            - name: OH_SANDBOX_WARM_POOL
+              value: ${config.agentSandbox.warmPool}
+            - name: OH_SANDBOX_CLAIM_NAME_PREFIX
+              value: ${sandbox.claimNamePrefix}
+            - name: OH_SANDBOX_WEBHOOK_BASE_URL
+              value: http://${sandbox.serviceName}:${sandbox.port}
+            - name: OH_SANDBOX_SANDBOX_URL_PATTERN
+              value: https://${env.frontDoorHost}/sandboxes/{sandbox_name}
+            - name: OH_WEB_URL
+              value: https://${env.frontDoorHost}
+            - name: OH_PERMITTED_CORS_ORIGINS_0
+              value: https://${env.frontDoorHost}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${sandbox.serviceName}
+  namespace: ${env.namespace}
+spec:
+  selector:
+    app.kubernetes.io/name: ${sandbox.serviceName}
+  ports:
+    - name: http
+      port: ${sandbox.port}
+      targetPort: http
+`;
+}
+
+export function renderAgentSandboxResources(environment) {
+  const env = config.environments[environment];
+  const agentSandbox = config.agentSandbox;
+  return `apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: ${agentSandbox.template}
+  namespace: ${env.namespace}
+spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicy:
+    ingress:
+      - from:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: ${config.sandboxServer.serviceName}
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: agent-canvas
+        ports:
+          - protocol: TCP
+            port: 8000
+    egress:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: kube-system
+        ports:
+          - protocol: UDP
+            port: 53
+          - protocol: TCP
+            port: 53
+      - to:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: ${config.sandboxServer.serviceName}
+        ports:
+          - protocol: TCP
+            port: ${config.sandboxServer.port}
+      - ports:
+          - protocol: TCP
+            port: 443
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: ${config.workspaceStorage.storageClass}
+        resources:
+          requests:
+            storage: ${config.workspaceStorage.size}
+  podTemplate:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: ${env.serviceAccount}
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        agentpool: ${config.runtime.nodePool}
+      tolerations:
+        - key: ${config.runtime.nodeTaintKey}
+          operator: Equal
+          value: ${config.runtime.nodeTaintValue}
+          effect: NoSchedule
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: agent-server
+          image: ${agentSandbox.agentServerImage}
+          args: ["--host", "0.0.0.0", "--port", "8000"]
+          workingDir: /workspace
+          ports:
+            - containerPort: 8000
+              name: agent-server
+            - containerPort: 8001
+              name: vscode
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 60
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: ${agentSandbox.warmPool}
+  namespace: ${env.namespace}
+spec:
+  replicas: 0
+  sandboxTemplateRef:
+    name: ${agentSandbox.template}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openhands-sandbox-server
+  namespace: ${env.namespace}
+rules:
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openhands-sandbox-server
+  namespace: ${env.namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openhands-sandbox-server
+subjects:
+  - kind: ServiceAccount
+    name: ${env.serviceAccount}
+    namespace: ${env.namespace}
+`;
+}
+
+export function renderPostgresBootstrapJob(runtimeIdentities) {
+  const postgres = config.postgres;
+  const roles = Object.entries(config.environments)
+    .map(([environment, env]) => {
+      const principalId = runtimeIdentities[environment]?.principalId;
+      if (!principalId) {
+        throw new Error(
+          `Missing PostgreSQL runtime identity for ${environment}`,
+        );
+      }
+      return `              if ! psql --tuples-only --no-align --command \\
+                "SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${env.runtimeIdentity}'" |
+                grep -qx 1; then
+                psql --set ON_ERROR_STOP=1 --command \\
+                  "SELECT pg_catalog.pgaadauth_create_principal_with_oid('${env.runtimeIdentity}', '${principalId}', 'service', false, false)"
+              fi
+              psql --set ON_ERROR_STOP=1 --command \\
+                'ALTER DATABASE ${env.database} OWNER TO "${env.runtimeIdentity}"'`;
+    })
+    .join("\n");
+  return `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: halo-postgres-bootstrap
+  namespace: ${config.build.namespace}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: ${postgres.bootstrapServiceAccount}
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        agentpool: ${config.runtime.nodePool}
+      tolerations:
+        - key: ${config.runtime.nodeTaintKey}
+          operator: Equal
+          value: ${config.runtime.nodeTaintValue}
+          effect: NoSchedule
+      initContainers:
+        - name: azure-token
+          image: ${config.build.azureCliImage}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              token="$(cat "$AZURE_FEDERATED_TOKEN_FILE")"
+              az login \\
+                --service-principal \\
+                --username "$AZURE_CLIENT_ID" \\
+                --tenant "$AZURE_TENANT_ID" \\
+                --federated-token "$token" \\
+                --allow-no-subscriptions \\
+                --output none
+              az account get-access-token \\
+                --resource-type oss-rdbms \\
+                --query accessToken \\
+                --output tsv > /auth/token
+              chmod 0400 /auth/token
+          volumeMounts:
+            - name: auth
+              mountPath: /auth
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              export PGPASSWORD="$(cat /auth/token)"
+${roles}
+          env:
+            - name: PGHOST
+              value: ${postgres.fqdn}
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: postgres
+            - name: PGUSER
+              value: ${config.identities.postgresBootstrap}
+            - name: PGSSLMODE
+              value: require
+          volumeMounts:
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+      volumes:
+        - name: auth
+          emptyDir:
+            medium: Memory
+`;
+}
+
+function ensureAgentSandbox() {
+  kubectl(["apply", "-f", config.agentSandbox.releaseManifest]);
+  kubectl([
+    "-n",
+    "agent-sandbox-system",
+    "patch",
+    "deployment",
+    "agent-sandbox-controller",
+    "--type=merge",
+    "-p",
+    JSON.stringify({
+      spec: {
+        template: {
+          spec: {
+            nodeSelector: {
+              "kubernetes.io/os": "linux",
+              "kubernetes.io/arch": "amd64",
+              agentpool: config.runtime.nodePool,
+            },
+            tolerations: [
+              {
+                key: config.runtime.nodeTaintKey,
+                operator: "Equal",
+                value: config.runtime.nodeTaintValue,
+                effect: "NoSchedule",
+              },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+  kubectl([
+    "-n",
+    "agent-sandbox-system",
+    "rollout",
+    "status",
+    "deployment/agent-sandbox-controller",
+    "--timeout=240s",
+  ]);
 }
 
 export function renderConversationStorageClass() {
@@ -1212,35 +1723,16 @@ volumeBindingMode: WaitForFirstConsumer
 `;
 }
 
-export function renderWorkspaceRuntimeRbac(environment) {
+function removeLegacyWorkspaceRuntimeRbac(environment) {
   const env = config.environments[environment];
-  return `apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: openhands-halo-workspace-controller
-  namespace: ${env.namespace}
-rules:
-  - apiGroups: [""]
-    resources: ["configmaps", "persistentvolumeclaims", "services"]
-    verbs: ["create", "delete", "get", "list", "patch"]
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["create", "delete", "get", "list", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: openhands-halo-workspace-controller
-  namespace: ${env.namespace}
-subjects:
-  - kind: ServiceAccount
-    name: ${env.serviceAccount}
-    namespace: ${env.namespace}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: openhands-halo-workspace-controller
-`;
+  kubectl([
+    "-n",
+    env.namespace,
+    "delete",
+    "role/openhands-halo-workspace-controller",
+    "rolebinding/openhands-halo-workspace-controller",
+    "--ignore-not-found",
+  ]);
 }
 
 function frontDoorCommonArgs() {
@@ -1596,18 +2088,301 @@ function bootstrapEnvironment(environment) {
     input: renderConversationPvc(environment),
   });
   kubectl(["apply", "-f", "-"], {
-    input: renderWorkspaceRuntimeRbac(environment),
+    input: renderAgentSandboxResources(environment),
   });
   ensureFrontDoor(environment);
 }
 
-function bootstrap() {
+function ensurePostgresNetwork() {
+  const postgres = config.postgres;
+  const subnet = tryRun("az", [
+    "network",
+    "vnet",
+    "subnet",
+    "show",
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--vnet-name",
+    postgres.vnet,
+    "--name",
+    postgres.subnet,
+    "--output",
+    "json",
+  ]);
+  if (subnet.status !== 0) {
+    az([
+      "network",
+      "vnet",
+      "subnet",
+      "create",
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--vnet-name",
+      postgres.vnet,
+      "--name",
+      postgres.subnet,
+      "--address-prefixes",
+      postgres.subnetPrefix,
+      "--delegations",
+      "Microsoft.DBforPostgreSQL/flexibleServers",
+      "--output",
+      "none",
+    ]);
+  }
+  const zone = tryRun("az", [
+    "network",
+    "private-dns",
+    "zone",
+    "show",
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    postgres.privateDnsZone,
+    "--output",
+    "json",
+  ]);
+  if (zone.status !== 0) {
+    az([
+      "network",
+      "private-dns",
+      "zone",
+      "create",
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--name",
+      postgres.privateDnsZone,
+      "--output",
+      "none",
+    ]);
+  }
+  const link = tryRun("az", [
+    "network",
+    "private-dns",
+    "link",
+    "vnet",
+    "show",
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--zone-name",
+    postgres.privateDnsZone,
+    "--name",
+    postgres.privateDnsLink,
+    "--output",
+    "json",
+  ]);
+  if (link.status !== 0) {
+    az([
+      "network",
+      "private-dns",
+      "link",
+      "vnet",
+      "create",
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--zone-name",
+      postgres.privateDnsZone,
+      "--name",
+      postgres.privateDnsLink,
+      "--virtual-network",
+      postgres.vnet,
+      "--registration-enabled",
+      "false",
+      "--output",
+      "none",
+    ]);
+  }
+  return {
+    subnetId: az(
+      [
+        "network",
+        "vnet",
+        "subnet",
+        "show",
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--vnet-name",
+        postgres.vnet,
+        "--name",
+        postgres.subnet,
+        "--query",
+        "id",
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    ),
+    privateDnsZoneId: az(
+      [
+        "network",
+        "private-dns",
+        "zone",
+        "show",
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--name",
+        postgres.privateDnsZone,
+        "--query",
+        "id",
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    ),
+  };
+}
+
+async function bootstrapPostgres() {
+  const postgres = config.postgres;
+  const bootstrapIdentity = ensureIdentity(config.identities.postgresBootstrap);
+  ensureFederatedCredential({
+    identityName: config.identities.postgresBootstrap,
+    credentialName: postgres.bootstrapFederatedCredential,
+    namespace: config.build.namespace,
+    serviceAccount: postgres.bootstrapServiceAccount,
+  });
+  ensureNamespaceAndServiceAccount(
+    config.build.namespace,
+    postgres.bootstrapServiceAccount,
+    bootstrapIdentity.clientId,
+  );
+  const network = ensurePostgresNetwork();
+  const server = tryRun("az", [
+    "postgres",
+    "flexible-server",
+    "show",
+    "--resource-group",
+    postgres.resourceGroup,
+    "--name",
+    postgres.serverName,
+    "--output",
+    "json",
+  ]);
+  if (server.status !== 0) {
+    az(
+      postgresServerCreateArgs(
+        bootstrapIdentity,
+        network.subnetId,
+        network.privateDnsZoneId,
+      ),
+    );
+  } else {
+    az([
+      "postgres",
+      "flexible-server",
+      "update",
+      "--resource-group",
+      postgres.resourceGroup,
+      "--name",
+      postgres.serverName,
+      "--set",
+      "authConfig.activeDirectoryAuth=Enabled",
+      `authConfig.tenantId=${config.azure.tenantId}`,
+      "--password-auth",
+      "Disabled",
+      "--output",
+      "none",
+    ]);
+    const admin = az(
+      [
+        "postgres",
+        "flexible-server",
+        "microsoft-entra-admin",
+        "list",
+        "--resource-group",
+        postgres.resourceGroup,
+        "--server-name",
+        postgres.serverName,
+        "--query",
+        `[?objectId=='${bootstrapIdentity.principalId}'].objectId | [0]`,
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    );
+    if (!admin) {
+      az([
+        "postgres",
+        "flexible-server",
+        "microsoft-entra-admin",
+        "create",
+        "--resource-group",
+        postgres.resourceGroup,
+        "--server-name",
+        postgres.serverName,
+        "--display-name",
+        bootstrapIdentity.name,
+        "--object-id",
+        bootstrapIdentity.principalId,
+        "--type",
+        "ServicePrincipal",
+        "--output",
+        "none",
+      ]);
+    }
+  }
+  for (const env of Object.values(config.environments)) {
+    const database = az(
+      [
+        "postgres",
+        "flexible-server",
+        "db",
+        "list",
+        "--resource-group",
+        postgres.resourceGroup,
+        "--server-name",
+        postgres.serverName,
+        "--query",
+        `[?name=='${env.database}'].name | [0]`,
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    );
+    if (!database) {
+      az([
+        "postgres",
+        "flexible-server",
+        "db",
+        "create",
+        "--resource-group",
+        postgres.resourceGroup,
+        "--server-name",
+        postgres.serverName,
+        "--name",
+        env.database,
+        "--output",
+        "none",
+      ]);
+    }
+  }
+  const job = "halo-postgres-bootstrap";
+  kubectl([
+    "-n",
+    config.build.namespace,
+    "delete",
+    "job",
+    job,
+    "--ignore-not-found",
+    "--wait=true",
+  ]);
+  kubectl(["apply", "-f", "-"], {
+    input: renderPostgresBootstrapJob({
+      candidate: identity(config.environments.candidate.runtimeIdentity),
+      primary: identity(config.environments.primary.runtimeIdentity),
+    }),
+  });
+  await waitForJob(config.build.namespace, job, 10 * 60 * 1000);
+}
+
+async function bootstrap() {
   bootstrapBuild();
   ensureRuntimeNodePool();
+  ensureAgentSandbox();
   ensureFrontDoorAccess();
   validateAzureOpenAi();
   bootstrapEnvironment("candidate");
   bootstrapEnvironment("primary");
+  await bootstrapPostgres();
 }
 
 function arcGithubAppCredentials(args) {
@@ -1849,8 +2624,9 @@ async function build(args) {
       { capture: true },
     ),
   );
-  const digest = buildDigestFromPodList(pods);
-  console.log(`IMAGE_DIGEST=${normalizeDigest(digest)}`);
+  const digests = buildDigestsFromPodList(pods);
+  console.log(`CANVAS_IMAGE_DIGEST=${digests.canvas}`);
+  console.log(`SANDBOX_SERVER_IMAGE_DIGEST=${digests.sandboxServer}`);
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
 
@@ -1902,15 +2678,29 @@ function runtimeClientId(environment) {
   return clientId;
 }
 
-async function deploy(environment, digest) {
+async function deploy(environment, canvasDigest, sandboxServerDigest) {
   const env = config.environments[environment];
+  const clientId = runtimeClientId(environment);
+  kubectl(["apply", "-f", "-"], {
+    input: renderSecretProviderClass(environment, clientId),
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderAgentSandboxResources(environment),
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderSandboxServerResources(
+      environment,
+      sandboxServerDigest,
+      clientId,
+    ),
+  });
   const valuesPath = join(
     tmpdir(),
     `openhands-halo-${environment}-${process.pid}.yaml`,
   );
   writeFileSync(
     valuesPath,
-    renderHelmValues(environment, digest, runtimeClientId(environment)),
+    renderHelmValues(environment, canvasDigest, clientId),
     "utf8",
   );
   try {
@@ -1938,15 +2728,27 @@ async function deploy(environment, digest) {
     "statefulset/openhands-halo",
     "--timeout=15m",
   ]);
+  kubectl([
+    "-n",
+    env.namespace,
+    "rollout",
+    "status",
+    `deployment/${config.sandboxServer.serviceName}`,
+    "--timeout=15m",
+  ]);
+  removeLegacyWorkspaceRuntimeRbac(environment);
   await waitForReady(environment);
   console.log(
-    `${environment.toUpperCase()}_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.repository, digest)}`,
+    `${environment.toUpperCase()}_CANVAS_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.repository, canvasDigest)}`,
+  );
+  console.log(
+    `${environment.toUpperCase()}_SANDBOX_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.sandboxServerRepository, sandboxServerDigest)}`,
   );
 }
 
-function candidateDigest() {
+function candidateDigests() {
   const env = config.environments.candidate;
-  const image = kubectl(
+  const canvasImage = kubectl(
     [
       "-n",
       env.namespace,
@@ -1958,11 +2760,36 @@ function candidateDigest() {
     ],
     { capture: true },
   );
-  const expectedPrefix = `${config.azure.acrLoginServer}/${config.build.repository}@`;
-  if (!image.startsWith(expectedPrefix)) {
-    throw new Error(`Candidate is not deployed by immutable digest: ${image}`);
+  const sandboxServerImage = kubectl(
+    [
+      "-n",
+      env.namespace,
+      "get",
+      "deployment",
+      config.sandboxServer.serviceName,
+      "-o",
+      "jsonpath={.spec.template.spec.containers[0].image}",
+    ],
+    { capture: true },
+  );
+  const canvasPrefix = `${config.azure.acrLoginServer}/${config.build.repository}@`;
+  const sandboxServerPrefix = `${config.azure.acrLoginServer}/${config.build.sandboxServerRepository}@`;
+  if (!canvasImage.startsWith(canvasPrefix)) {
+    throw new Error(
+      `Candidate Canvas is not deployed by immutable digest: ${canvasImage}`,
+    );
   }
-  return normalizeDigest(image.slice(expectedPrefix.length));
+  if (!sandboxServerImage.startsWith(sandboxServerPrefix)) {
+    throw new Error(
+      `Candidate Sandbox Server is not deployed by immutable digest: ${sandboxServerImage}`,
+    );
+  }
+  return {
+    canvas: normalizeDigest(canvasImage.slice(canvasPrefix.length)),
+    sandboxServer: normalizeDigest(
+      sandboxServerImage.slice(sandboxServerPrefix.length),
+    ),
+  };
 }
 
 async function promote(args) {
@@ -1976,15 +2803,29 @@ async function promote(args) {
     "--timeout=5m",
   ]);
   await waitForReady("candidate");
-  const digest = candidateDigest();
-  const expectedDigest = option(args, "--digest");
-  if (expectedDigest && normalizeDigest(expectedDigest) !== digest) {
+  const digests = candidateDigests();
+  const expectedCanvasDigest = option(args, "--canvas-digest");
+  const expectedSandboxServerDigest = option(args, "--sandbox-server-digest");
+  if (
+    expectedCanvasDigest &&
+    normalizeDigest(expectedCanvasDigest) !== digests.canvas
+  ) {
     throw new Error(
-      `Candidate digest changed while promotion awaited approval: expected ${expectedDigest}, found ${digest}`,
+      `Candidate Canvas digest changed while promotion awaited approval: expected ${expectedCanvasDigest}, found ${digests.canvas}`,
     );
   }
-  console.log(`Promoting candidate digest ${digest}`);
-  await deploy("primary", digest);
+  if (
+    expectedSandboxServerDigest &&
+    normalizeDigest(expectedSandboxServerDigest) !== digests.sandboxServer
+  ) {
+    throw new Error(
+      `Candidate Sandbox Server digest changed while promotion awaited approval: expected ${expectedSandboxServerDigest}, found ${digests.sandboxServer}`,
+    );
+  }
+  console.log(
+    `Promoting candidate digests ${digests.canvas} and ${digests.sandboxServer}`,
+  );
+  await deploy("primary", digests.canvas, digests.sandboxServer);
 }
 
 function status() {
@@ -2009,8 +2850,8 @@ function usage() {
   npm run halo -- bootstrap
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
-  npm run halo -- deploy-candidate --digest sha256:<digest>
-  npm run halo -- promote [--digest sha256:<candidate-digest>]
+  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
+  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest>]
   npm run halo -- status`);
 }
 
@@ -2018,7 +2859,7 @@ async function main(args = process.argv.slice(2)) {
   const [command] = args;
   switch (command) {
     case "bootstrap":
-      bootstrap();
+      await bootstrap();
       break;
     case "bootstrap-ci":
       bootstrapCi(args.slice(1));
@@ -2027,7 +2868,11 @@ async function main(args = process.argv.slice(2)) {
       await build(args.slice(1));
       break;
     case "deploy-candidate":
-      await deploy("candidate", normalizeDigest(option(args, "--digest")));
+      await deploy(
+        "candidate",
+        normalizeDigest(option(args, "--canvas-digest")),
+        normalizeDigest(option(args, "--sandbox-server-digest")),
+      );
       break;
     case "promote":
       await promote(args.slice(1));

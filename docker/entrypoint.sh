@@ -67,6 +67,15 @@
 #                          Override in production when the external URL differs.
 #   AUTOMATION_WORKSPACE_BASE – Directory for automation run workspaces
 #                          (default: ~/.openhands/workspaces)
+#   SANDBOX_SERVER_URL    – Internal Sandbox Server base URL. When set, /api/v1
+#                          is routed there and AGENT_CANVAS_CLOUD_URL is required.
+#   AGENT_CANVAS_CLOUD_URL – Public Halo origin used to lock Canvas to the
+#                          Sandbox Server control plane.
+#   AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE – Kubernetes namespace containing
+#                          SandboxClaim Services. When set, authenticated
+#                          /sandboxes/<name> traffic is proxied to agent-server.
+#   AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX – Required SandboxClaim Service
+#                          name prefix used to constrain runtime proxy targets.
 #   Any agent-server or automation env vars are passed through.
 # ═══════════════════════════════════════════════════════════════════════════════
 set -uo pipefail
@@ -555,6 +564,17 @@ if [ "${AGENT_CANVAS_ALLOW_LAN_SESSION_KEY:-false}" = "true" ]; then
   STATIC_SERVER_SESSION_KEY_ARGS+=(--allow-lan-session-key)
 fi
 # <<< docker-session-key-policy
+SANDBOX_SERVER_URL="${SANDBOX_SERVER_URL:-}"
+AGENT_CANVAS_CLOUD_URL="${AGENT_CANVAS_CLOUD_URL:-}"
+STATIC_SERVER_CLOUD_ARGS=()
+if [ -n "$SANDBOX_SERVER_URL" ]; then
+  if [ -z "$AGENT_CANVAS_CLOUD_URL" ]; then
+    log_error "AGENT_CANVAS_CLOUD_URL is required when SANDBOX_SERVER_URL is set."
+    exit 1
+  fi
+  STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1=${SANDBOX_SERVER_URL}")
+  STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")
+fi
 # Pass the key in the child environment, not its process arguments.
 SESSION_API_KEY="$EFFECTIVE_SESSION_KEY" node /opt/agent-canvas/static-server.mjs \
   --port "$PORT" \
@@ -563,6 +583,7 @@ SESSION_API_KEY="$EFFECTIVE_SESSION_KEY" node /opt/agent-canvas/static-server.mj
   --dir /opt/agent-canvas/frontend \
   --base-path "$AGENT_CANVAS_BASE_PATH" \
   --runtime-services-info "$RUNTIME_SERVICES_INFO" \
+  "${STATIC_SERVER_CLOUD_ARGS[@]}" \
   --route "/api/automation=http://127.0.0.1:${AUTOMATION_PORT}" \
   --route "/api=http://127.0.0.1:${AGENT_SERVER_PORT}" \
   --route "/server_info=http://127.0.0.1:${AGENT_SERVER_PORT}" \

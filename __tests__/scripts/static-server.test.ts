@@ -11,6 +11,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createSandboxRuntimeProxy,
   parseArgs,
   serializeForInlineScript,
   startStaticServer,
@@ -95,6 +96,39 @@ describe("static-server.mjs", () => {
       req.end();
     });
   }
+
+  it("resolves same-origin SandboxClaim runtime paths", () => {
+    const runtimeProxy = createSandboxRuntimeProxy({
+      AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE: "openhands-halo-ppe",
+      AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX: "openhands-sandbox",
+    });
+
+    expect(
+      runtimeProxy?.resolveProxyRequest(
+        "/sandboxes/openhands-sandbox-123/api/conversations/abc?x=1",
+      ),
+    ).toEqual({
+      target:
+        "http://openhands-sandbox-123.openhands-halo-ppe.svc.cluster.local:8000",
+      upstreamPath: "/api/conversations/abc?x=1",
+    });
+    expect(
+      runtimeProxy?.resolveProxyRequest("/sandboxes/not_valid/api"),
+    ).toBeNull();
+    expect(
+      runtimeProxy?.resolveProxyRequest("/sandboxes/unrelated-service/api"),
+    ).toBeNull();
+  });
+
+  it("requires a constrained SandboxClaim service name prefix", () => {
+    expect(() =>
+      createSandboxRuntimeProxy({
+        AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE: "openhands-halo-ppe",
+      }),
+    ).toThrow(
+      "AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX must be a Kubernetes DNS label",
+    );
+  });
 
   async function getText(url: string) {
     return new Promise<{ status: number; body: string }>((resolve, reject) => {

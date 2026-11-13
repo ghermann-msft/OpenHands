@@ -76,6 +76,41 @@ const ASSET_LIKE_EXTENSIONS = new Set([
   ".woff2",
   ".xml",
 ]);
+const SANDBOX_RUNTIME_PREFIX = "/sandboxes";
+const KUBERNETES_DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
+
+export function createSandboxRuntimeProxy(env = process.env) {
+  const namespace = env.AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE?.trim() || null;
+  if (!namespace) return null;
+  const namePrefix =
+    env.AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX?.trim() || null;
+  if (!KUBERNETES_DNS_LABEL.test(namespace)) {
+    throw new Error(
+      "AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE must be a Kubernetes DNS label",
+    );
+  }
+  if (!namePrefix || !KUBERNETES_DNS_LABEL.test(namePrefix)) {
+    throw new Error(
+      "AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX must be a Kubernetes DNS label",
+    );
+  }
+  return {
+    resolveProxyRequest(url) {
+      const requestUrl = new URL(url ?? "/", "http://localhost");
+      if (!requestUrl.pathname.startsWith(`${SANDBOX_RUNTIME_PREFIX}/`)) {
+        return null;
+      }
+      const parts = requestUrl.pathname.split("/").filter(Boolean);
+      const sandboxName = parts[1];
+      if (!KUBERNETES_DNS_LABEL.test(sandboxName ?? "")) return null;
+      if (!sandboxName.startsWith(`${namePrefix}-`)) return null;
+      return {
+        target: `http://${sandboxName}.${namespace}.svc.cluster.local:8000`,
+        upstreamPath: `/${parts.slice(2).join("/")}${requestUrl.search}`,
+      };
+    },
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Args
@@ -727,6 +762,12 @@ export function startStaticServer(config) {
       "Workspace runtime provisioning requires Microsoft Entra BFF authentication",
     );
   }
+  const sandboxRuntimes = createSandboxRuntimeProxy(config.env ?? process.env);
+  if (sandboxRuntimes && !entraBff) {
+    throw new Error(
+      "Sandbox runtime proxying requires Microsoft Entra BFF authentication",
+    );
+  }
   injectionOpts.workspaceRuntimes = Boolean(workspaceRuntimes);
   const internalAuthHeaders = config.entraBff
     ? { "X-Session-API-Key": config.sessionApiKey }
@@ -759,6 +800,7 @@ export function startStaticServer(config) {
 
   async function handleRequest(req, res) {
     const url = req.url ?? "/";
+    const clientSessionApiKey = req.headers["x-session-api-key"];
     if (entraBff) {
       if (await entraBff.handleHttp(req, res)) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
@@ -771,6 +813,21 @@ export function startStaticServer(config) {
         req.url = runtimeProxy.upstreamPath;
         proxy.proxyHttp(req, res, runtimeProxy.target, {
           headers: { ...internalAuthHeaders, ...identityHeaders },
+        });
+        return;
+      }
+    }
+    if (sandboxRuntimes) {
+      const runtimeProxy = sandboxRuntimes.resolveProxyRequest(url);
+      if (runtimeProxy) {
+        if (clientSessionApiKey) {
+          req.headers["x-session-api-key"] = clientSessionApiKey;
+        } else {
+          delete req.headers["x-session-api-key"];
+        }
+        req.url = runtimeProxy.upstreamPath;
+        proxy.proxyHttp(req, res, runtimeProxy.target, {
+          headers: identityHeaders,
         });
         return;
       }
@@ -826,10 +883,12 @@ export function startStaticServer(config) {
   });
 
   async function handleUpgrade(req, socket, head) {
+    let identityHeaders = {};
+    const clientSessionApiKey = req.headers["x-session-api-key"];
     if (entraBff) {
       if (!(await entraBff.authorizeWebSocket(req, socket))) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
-      await entraBff.prepareUpstreamRequest(req);
+      identityHeaders = await entraBff.prepareUpstreamRequest(req);
     }
     if (workspaceRuntimes) {
       const runtimeProxy = workspaceRuntimes.resolveProxyRequest(req.url);
@@ -837,6 +896,21 @@ export function startStaticServer(config) {
         req.url = runtimeProxy.upstreamPath;
         proxy.proxyWebSocket(req, socket, head, runtimeProxy.target, {
           headers: internalAuthHeaders,
+        });
+        return;
+      }
+    }
+    if (sandboxRuntimes) {
+      const runtimeProxy = sandboxRuntimes.resolveProxyRequest(req.url);
+      if (runtimeProxy) {
+        if (clientSessionApiKey) {
+          req.headers["x-session-api-key"] = clientSessionApiKey;
+        } else {
+          delete req.headers["x-session-api-key"];
+        }
+        req.url = runtimeProxy.upstreamPath;
+        proxy.proxyWebSocket(req, socket, head, runtimeProxy.target, {
+          headers: identityHeaders,
         });
         return;
       }

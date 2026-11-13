@@ -3,24 +3,27 @@ import { describe, expect, it } from "vitest";
 
 import {
   appGatewayNsgRuleArgs,
-  buildDigestFromPodList,
+  buildDigestsFromPodList,
   buildNodePoolCreateArgs,
   entraIdentifierUri,
   frontDoorOriginCreateArgs,
   frontDoorOriginGroupCreateArgs,
   imageReference,
   normalizeDigest,
+  postgresServerCreateArgs,
   renderArcControllerValues,
   renderArcRunnerRbac,
   renderArcRunnerValues,
+  renderAgentSandboxResources,
   renderBuildJob,
   renderConversationPvc,
   renderConversationStorageClass,
   renderFrontDoorSecurityPolicy,
   renderFrontDoorWafPolicy,
   renderHelmValues,
+  renderPostgresBootstrapJob,
+  renderSandboxServerResources,
   renderSecretProviderClass,
-  renderWorkspaceRuntimeRbac,
   renderWorkspaceStorageClass,
   runtimeNodePoolAutoscalerArgs,
   validateBuildNodePool,
@@ -42,7 +45,15 @@ describe("Halo deployment automation", () => {
     const job = renderBuildJob({ commit });
 
     expect(job).toContain(`git checkout --detach ${commit}`);
+    expect(job).toContain(
+      "git checkout --detach 688bd21dadbfdf52ec5505cf1f56aa06a5bcd8ff",
+    );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
+    expect(job).toContain("containers/app/Dockerfile");
+    expect(job).toContain("--opt target=openhands-sandbox-server");
+    expect(job).toContain(
+      "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-server:",
+    );
     expect(job).toContain(
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
@@ -64,25 +75,35 @@ describe("Halo deployment automation", () => {
     expect(job).toContain("> /dev/termination-log");
   });
 
-  it("reads the immutable digest reported by the completed build container", () => {
+  it("reads both immutable digests reported by the completed build container", () => {
     expect(
-      buildDigestFromPodList({
+      buildDigestsFromPodList({
         items: [
           {
             status: {
               containerStatuses: [
                 {
                   name: "buildkit",
-                  state: { terminated: { message: digest } },
+                  state: {
+                    terminated: {
+                      message: JSON.stringify({
+                        canvas: digest,
+                        sandboxServer: `sha256:${"b".repeat(64)}`,
+                      }),
+                    },
+                  },
                 },
               ],
             },
           },
         ],
       }),
-    ).toBe(digest);
-    expect(() => buildDigestFromPodList({ items: [] })).toThrow(
-      /did not publish an immutable image digest/,
+    ).toEqual({
+      canvas: digest,
+      sandboxServer: `sha256:${"b".repeat(64)}`,
+    });
+    expect(() => buildDigestsFromPodList({ items: [] })).toThrow(
+      /did not publish immutable image digests/,
     );
   });
 
@@ -220,6 +241,7 @@ describe("Halo deployment automation", () => {
 
     expect(spc).toContain("halo-ppe-entra-client-secret");
     expect(spc).toContain("halo-ppe-session-api-key");
+    expect(spc).toContain("halo-ppe-trusted-identity-assertion");
     expect(values).toContain(`digest: ${digest}`);
     expect(values).toContain("serviceAccount:\n  create: false");
     expect(values).toContain("value: azure/gpt-5.6-sol");
@@ -251,16 +273,136 @@ describe("Halo deployment automation", () => {
       'name: AGENT_CANVAS_DISABLE_TELEMETRY\n      value: "1"',
     );
     expect(values).toContain("automountServiceAccountToken: true");
+    expect(values).toContain("name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET");
     expect(values).toContain(
-      "name: AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE\n      value: openhands-halo-ppe",
+      "name: SANDBOX_SERVER_URL\n      value: http://openhands-sandbox-server:3000",
     );
     expect(values).toContain(
-      `name: AGENT_CANVAS_WORKSPACE_RUNTIME_IMAGE\n      value: uhunrealhaacukmdbkacr.azurecr.io/openhands-halo@${digest}`,
+      "name: AGENT_CANVAS_CLOUD_URL\n      value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
     );
     expect(values).toContain(
-      "name: AGENT_CANVAS_WORKSPACE_STORAGE_CLASS\n      value: openhands-halo-workspace-disk",
+      "name: AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE\n      value: openhands-halo-ppe",
     );
+    expect(values).toContain(
+      "name: AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX\n      value: openhands-sandbox",
+    );
+    expect(values).not.toContain("AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE");
     expect(values).not.toContain("halo-primary-entra-client-secret");
+  });
+
+  it("renders a passwordless workload-identity Sandbox Server", () => {
+    const resources = renderSandboxServerResources(
+      "candidate",
+      `sha256:${"b".repeat(64)}`,
+      "runtime-client-id",
+    );
+
+    expect(resources).toContain("kind: Deployment");
+    expect(resources).toContain("name: openhands-sandbox-server");
+    expect(resources).toContain(
+      "image: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-server@sha256:",
+    );
+    expect(resources).toContain('azure.workload.identity/use: "true"');
+    expect(resources).toContain("serviceAccountName: openhands-halo");
+    expect(resources).toContain(
+      "name: AZURE_CLIENT_ID\n              value: runtime-client-id",
+    );
+    expect(resources).toContain(
+      'name: DB_AZURE_IDENTITY\n              value: "true"',
+    );
+    expect(resources).toContain(
+      "name: DB_HOST\n              value: uh-halo-pg-acukmdbk.postgres.database.azure.com",
+    );
+    expect(resources).toContain(
+      "name: DB_NAME\n              value: openhands_halo_ppe",
+    );
+    expect(resources).toContain(
+      "name: DB_USER\n              value: openhands-halo-ppe-runtime-mi",
+    );
+    expect(resources).toContain(
+      "name: DB_SSL_MODE\n              value: require",
+    );
+    expect(resources).toContain(
+      "name: LLM_AUTH_TYPE\n              value: azure_workload_identity",
+    );
+    expect(resources).toContain(
+      "name: OH_SANDBOX_SANDBOX_URL_PATTERN\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/sandboxes/{sandbox_name}",
+    );
+    expect(resources).toContain(
+      "name: OH_SANDBOX_CLAIM_NAME_PREFIX\n              value: openhands-sandbox",
+    );
+    expect(resources).not.toContain("DB_PASS");
+    expect(resources).toContain(
+      "name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER\n              value: openhands-halo-bff",
+    );
+    expect(resources).toContain("containerPort: 3000");
+    expect(resources).toContain("path: /ready");
+    expect(resources).toContain("kind: Service");
+  });
+
+  it("renders isolated agent-sandbox resources for each environment", () => {
+    const resources = renderAgentSandboxResources("candidate");
+
+    expect(resources).toContain(
+      "apiVersion: extensions.agents.x-k8s.io/v1beta1",
+    );
+    expect(resources).toContain("kind: SandboxTemplate");
+    expect(resources).toContain("namespace: openhands-halo-ppe");
+    expect(resources).toContain("envVarsInjectionPolicy: Allowed");
+    expect(resources).toContain(
+      "image: ghcr.io/openhands/agent-server:1.37.1-python",
+    );
+    expect(resources).toContain(
+      "storageClassName: openhands-halo-workspace-disk",
+    );
+    expect(resources).toContain("storage: 50Gi");
+    expect(resources).toContain("kind: SandboxWarmPool");
+    expect(resources).toContain("replicas: 0");
+    expect(resources).toContain("name: openhands-pool");
+    expect(resources).toContain(
+      "app.kubernetes.io/name: openhands-sandbox-server",
+    );
+    expect(resources).toContain("app.kubernetes.io/name: agent-canvas");
+    expect(resources).toContain('resources: ["sandboxclaims"]');
+    expect(resources).toContain('verbs: ["get", "list", "watch", "patch"]');
+    expect(resources).toContain("name: openhands-halo");
+  });
+
+  it("creates private Entra-only PostgreSQL and bootstraps runtime roles", () => {
+    const bootstrapIdentity = {
+      name: "openhands-halo-postgres-bootstrap-mi",
+      principalId: "bootstrap-object-id",
+    };
+    const args = postgresServerCreateArgs(
+      bootstrapIdentity,
+      "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet/subnets/postgres",
+      "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/privateDnsZones/halo.private.postgres.database.azure.com",
+    );
+    const job = renderPostgresBootstrapJob({
+      candidate: { principalId: "candidate-object-id" },
+      primary: { principalId: "primary-object-id" },
+    });
+
+    expect(args).toContain("Standard_D2ads_v5");
+    expect(args).toContain("--microsoft-entra-auth");
+    expect(args).toContain("Enabled");
+    expect(args).toContain("--password-auth");
+    expect(args).toContain("Disabled");
+    expect(args).toContain("bootstrap-object-id");
+    expect(args).toContain("--subnet");
+    expect(args).toContain("--private-dns-zone");
+    expect(job).toContain("serviceAccountName: halo-postgres-bootstrap");
+    expect(job).toContain("--resource-type oss-rdbms");
+    expect(job).toContain(
+      "pgaadauth_create_principal_with_oid('openhands-halo-ppe-runtime-mi', 'candidate-object-id', 'service', false, false)",
+    );
+    expect(job).toContain(
+      "pgaadauth_create_principal_with_oid('openhands-halo-primary-runtime-mi', 'primary-object-id', 'service', false, false)",
+    );
+    expect(job).toContain(
+      'ALTER DATABASE openhands_halo_ppe OWNER TO "openhands-halo-ppe-runtime-mi"',
+    );
+    expect(job).not.toContain("DB_PASS");
   });
 
   it("uses retained Azure Files storage for conversation state", () => {
@@ -276,22 +418,12 @@ describe("Halo deployment automation", () => {
     expect(pvc).toContain("storage: 5Gi");
   });
 
-  it("uses retained Azure Disks and namespace-scoped runtime permissions", () => {
+  it("uses retained Azure Disks for sandbox workspaces", () => {
     const storageClass = renderWorkspaceStorageClass();
-    const rbac = renderWorkspaceRuntimeRbac("candidate");
 
     expect(storageClass).toContain("provisioner: disk.csi.azure.com");
     expect(storageClass).toContain("reclaimPolicy: Retain");
     expect(storageClass).toContain("skuName: StandardSSD_LRS");
     expect(storageClass).toContain("volumeBindingMode: WaitForFirstConsumer");
-    expect(rbac).toContain("namespace: openhands-halo-ppe");
-    expect(rbac).toContain(
-      'resources: ["configmaps", "persistentvolumeclaims", "services"]',
-    );
-    expect(rbac).toContain('resources: ["deployments"]');
-    expect(rbac).toContain(
-      'verbs: ["create", "delete", "get", "list", "patch"]',
-    );
-    expect(rbac).not.toContain("ClusterRole");
   });
 });
