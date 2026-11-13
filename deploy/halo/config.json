@@ -29,7 +29,7 @@
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
     "agentServerSdkRef": "23fba4b2b914d87f191a92aed2c41cb86545ab43",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "1bc64fb7830ecff064fdec95e9bf2c23be3eacff"
+    "sandboxServerRef": "42ed603924d48c47612ce6dd19c23a15f261633a"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
