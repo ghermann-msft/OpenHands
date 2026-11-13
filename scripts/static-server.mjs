@@ -78,6 +78,16 @@ const ASSET_LIKE_EXTENSIONS = new Set([
 ]);
 const SANDBOX_RUNTIME_PREFIX = "/sandboxes";
 const KUBERNETES_DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
+const SANDBOX_RUNTIME_NAME_SUFFIX =
+  /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?-[0-9a-f]{6}$/;
+
+function isSandboxRuntimeName(name, prefix) {
+  return (
+    KUBERNETES_DNS_LABEL.test(name) &&
+    name.startsWith(prefix) &&
+    SANDBOX_RUNTIME_NAME_SUFFIX.test(name.slice(prefix.length))
+  );
+}
 
 export function createSandboxRuntimeProxy(env = process.env) {
   const namespace = env.AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE?.trim() || null;
@@ -102,8 +112,7 @@ export function createSandboxRuntimeProxy(env = process.env) {
       }
       const parts = requestUrl.pathname.split("/").filter(Boolean);
       const sandboxName = parts[1];
-      if (!KUBERNETES_DNS_LABEL.test(sandboxName ?? "")) return null;
-      if (!sandboxName.startsWith(`${namePrefix}-`)) return null;
+      if (!isSandboxRuntimeName(sandboxName ?? "", namePrefix)) return null;
       return {
         target: `http://${sandboxName}.${namespace}.svc.cluster.local:8000`,
         upstreamPath: `/${parts.slice(2).join("/")}${requestUrl.search}`,

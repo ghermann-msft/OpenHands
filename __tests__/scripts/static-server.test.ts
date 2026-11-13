@@ -105,13 +105,18 @@ describe("static-server.mjs", () => {
 
     expect(
       runtimeProxy?.resolveProxyRequest(
-        "/sandboxes/openhands-sandbox-123/api/conversations/abc?x=1",
+        "/sandboxes/openhands-sandbox6rmul4tbrugkzsljmszrmf-7637e0/api/conversations/abc?x=1",
       ),
     ).toEqual({
       target:
-        "http://openhands-sandbox-123.openhands-halo-ppe.svc.cluster.local:8000",
+        "http://openhands-sandbox6rmul4tbrugkzsljmszrmf-7637e0.openhands-halo-ppe.svc.cluster.local:8000",
       upstreamPath: "/api/conversations/abc?x=1",
     });
+    expect(
+      runtimeProxy?.resolveProxyRequest(
+        "/sandboxes/openhands-sandbox-server/api/conversations/abc",
+      ),
+    ).toBeNull();
     expect(
       runtimeProxy?.resolveProxyRequest("/sandboxes/not_valid/api"),
     ).toBeNull();
