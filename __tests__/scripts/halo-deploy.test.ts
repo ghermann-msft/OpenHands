@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 6214d63812f5d70a27c4ba6577c11c3d1d482d6d",
+      "git checkout --detach 18f76fadb09c3886775f72bea013984517963ade",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain("containers/app/Dockerfile");
@@ -378,6 +378,8 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("app.kubernetes.io/name: agent-canvas");
     expect(resources).toContain('resources: ["sandboxclaims"]');
     expect(resources).toContain('verbs: ["get", "list", "watch", "patch"]');
+    expect(resources).toContain('resources: ["pods"]');
+    expect(resources).toContain('verbs: ["get"]');
     expect(resources).toContain("name: openhands-halo");
   });
 
