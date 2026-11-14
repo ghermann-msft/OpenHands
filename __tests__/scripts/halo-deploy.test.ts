@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 406e61292cb485f19ba7f8f94558a4f1fa5b652b",
+      "git checkout --detach c7d18a03236c3431127fd66b768b8e0a1bbdece8",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain("containers/app/Dockerfile");
@@ -392,21 +392,16 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${agentServerDigest}`,
     );
-    expect(resources).toContain(
-      "name: AGENT_CANVAS_BACKEND\n              value: http://localhost:8000",
-    );
-    expect(resources).toContain(
-      "mountPath: /home/openhands/.openhands/agent-canvas",
-    );
+    expect(resources).not.toContain("AGENT_CANVAS_BACKEND");
+    expect(resources).not.toContain("agent-canvas-session-key");
     expect(resources).toContain(
       "name: openhands-state\n          emptyDir: {}",
     );
     expect(resources).toContain(
       "name: openhands-state\n              mountPath: /home/openhands/.openhands",
     );
-    expect(resources).toContain("secretName: openhands-halo-secrets");
-    expect(resources).toContain(
-      "key: sessionApiKey\n                path: api-key.txt",
+    expect(resources).not.toContain(
+      "mountPath: /home/openhands/.openhands/agent-canvas",
     );
     expect(resources).toContain(
       "storageClassName: openhands-halo-workspace-disk",

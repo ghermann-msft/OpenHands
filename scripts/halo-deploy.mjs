@@ -1554,21 +1554,11 @@ spec:
       volumes:
         - name: openhands-state
           emptyDir: {}
-        - name: agent-canvas-session-key
-          secret:
-            secretName: openhands-halo-secrets
-            defaultMode: 0440
-            items:
-              - key: sessionApiKey
-                path: api-key.txt
       containers:
         - name: agent-server
           image: ${agentServerImage}
           args: ["--host", "0.0.0.0", "--port", "8000"]
           workingDir: /workspace
-          env:
-            - name: AGENT_CANVAS_BACKEND
-              value: http://localhost:8000
           ports:
             - containerPort: 8000
               name: agent-server
@@ -1593,9 +1583,6 @@ spec:
               mountPath: /workspace
             - name: openhands-state
               mountPath: /home/openhands/.openhands
-            - name: agent-canvas-session-key
-              mountPath: /home/openhands/.openhands/agent-canvas
-              readOnly: true
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
