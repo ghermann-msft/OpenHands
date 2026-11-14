@@ -292,6 +292,20 @@ describe("resolveConversationLaunch", () => {
     await expect(launch({ isCloud: true })).resolves.toEqual({});
   });
 
+  it("keeps the hosted profile when its selection owns public skills", async () => {
+    vi.stubEnv("VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST", "true");
+    arrange({ activeId: "profile-1" });
+    migrateHostedSkills.mockResolvedValue(true);
+    listLlmProfiles.mockResolvedValue({
+      profiles: [{ name: "fast" }],
+      active_profile: "fast",
+    });
+
+    await expect(launch({ isCloud: true })).resolves.toMatchObject({
+      agentProfileId: "profile-1",
+    });
+  });
+
   it("keeps a secret-restricted profile on Cloud even when its LLM profile is gone", async () => {
     arrange({ activeId: "profile-1", detail: { secret_refs: [] } });
     listLlmProfiles.mockResolvedValue({

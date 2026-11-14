@@ -171,6 +171,9 @@ async function cloudFallsBackToDefault(
   { queryClient, backendId, orgId }: ResolveConversationLaunchOptions,
   profile: AgentProfileSummary | undefined,
 ): Promise<boolean> {
+  if (usesProfileSkillAllowList(true)) {
+    return false;
+  }
   if (profile?.agent_kind !== "openhands" || !profile.llm_profile_ref) {
     return false;
   }
