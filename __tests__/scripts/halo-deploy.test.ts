@@ -28,7 +28,9 @@ import {
   renderPostgresBootstrapJob,
   renderSandboxServerResources,
   renderSecretProviderClass,
+  renderSecretSyncPod,
   renderWorkspaceStorageClass,
+  requiredSyncedSecretKeys,
   runtimeNodePoolAutoscalerArgs,
   validateDistinctAppServerSecrets,
   validateAppServerDeploymentConfig,
@@ -522,6 +524,45 @@ describe("Halo deployment automation", () => {
     expect(values).not.toContain("halo-primary-entra-client-secret");
   });
 
+  it("renders environment-specific workload identity pods for deterministic secret sync", () => {
+    const appDigest = `sha256:${"d".repeat(64)}`;
+    const candidate = renderSecretSyncPod("candidate", appDigest);
+    const primary = renderSecretSyncPod("primary", appDigest);
+
+    expect(candidate).toContain("name: openhands-halo-secret-sync");
+    expect(candidate).toContain("namespace: openhands-halo-ppe");
+    expect(candidate).toContain("serviceAccountName: openhands-halo");
+    expect(candidate).toContain('azure.workload.identity/use: "true"');
+    expect(candidate).toContain(
+      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-enterprise-server@${appDigest}`,
+    );
+    expect(candidate).toContain(
+      "for key in clientSecret cookieSecret sessionApiKey ohSecretKey jwtSecret automationKvSecret trustedIdentityAssertion trustedIdentityMappings githubAppId githubAppClientId githubAppClientSecret githubAppPrivateKey githubAppWebhookSecret",
+    );
+    expect(candidate).toContain("secretProviderClass: openhands-halo-secrets");
+    expect(primary).toContain("namespace: openhands-halo-primary");
+    expect(primary).toContain("serviceAccountName: openhands-halo");
+    expect(requiredSyncedSecretKeys("candidate")).toEqual([
+      "clientSecret",
+      "cookieSecret",
+      "sessionApiKey",
+      "ohSecretKey",
+      "jwtSecret",
+      "automationKvSecret",
+      "trustedIdentityAssertion",
+      "trustedIdentityMappings",
+      "githubAppId",
+      "githubAppClientId",
+      "githubAppClientSecret",
+      "githubAppPrivateKey",
+      "githubAppWebhookSecret",
+    ]);
+    expect(requiredSyncedSecretKeys("primary")).not.toContain("jwtSecret");
+    expect(requiredSyncedSecretKeys("primary")).not.toContain(
+      "githubAppClientSecret",
+    );
+  });
+
   it("renders Enterprise app API and migration ownership", () => {
     const appDigest = `sha256:${"d".repeat(64)}`;
     const migration = renderAppServerMigrationJob(
@@ -658,17 +699,21 @@ describe("Halo deployment automation", () => {
       "input: renderAppServerMigrationJob(",
     );
     const migrationWait = deployScript.indexOf("await waitForJob(", migration);
+    const secretSync = deployScript.indexOf(
+      "await prepareSyncedSecret(",
+      migrationWait,
+    );
     const appServer = deployScript.indexOf(
       "input: renderAppServerResources(",
-      migrationWait,
+      secretSync,
     );
     const agentSandbox = deployScript.indexOf(
       "input: renderAgentSandboxResources(",
-      migrationWait,
+      secretSync,
     );
     const sandboxServer = deployScript.indexOf(
       "input: renderSandboxServerResources(",
-      migrationWait,
+      secretSync,
     );
     const canvasValues = deployScript.indexOf(
       "renderHelmValues(environment, canvasDigest, clientId)",
@@ -677,9 +722,10 @@ describe("Halo deployment automation", () => {
 
     expect(migration).toBeGreaterThan(0);
     expect(migrationWait).toBeGreaterThan(migration);
-    expect(agentSandbox).toBeGreaterThan(migrationWait);
-    expect(sandboxServer).toBeGreaterThan(migrationWait);
-    expect(appServer).toBeGreaterThan(migrationWait);
+    expect(secretSync).toBeGreaterThan(migrationWait);
+    expect(agentSandbox).toBeGreaterThan(secretSync);
+    expect(sandboxServer).toBeGreaterThan(secretSync);
+    expect(appServer).toBeGreaterThan(secretSync);
     expect(canvasValues).toBeGreaterThan(appServer);
   });
 
@@ -693,6 +739,32 @@ describe("Halo deployment automation", () => {
     expect(deployScript).toContain('"Migration",');
     expect(deployScript).not.toContain(
       '"--for=condition=complete",\n    `job/${config.appServer.migrationJob}`',
+    );
+  });
+
+  it("replaces only the stale Kubernetes Secret and verifies every configured key", () => {
+    const start = deployScript.indexOf("async function prepareSyncedSecret(");
+    const end = deployScript.indexOf("\nasync function build(", start);
+    const sync = deployScript.slice(start, end);
+    const deleteSecret = sync.indexOf('"delete",\n    "secret",\n    secret,');
+    const applyPod = sync.indexOf(
+      "input: renderSecretSyncPod(environment, appServerDigest)",
+    );
+    const verifyKeys = sync.indexOf("requiredSyncedSecretKeys(environment)");
+
+    expect(deleteSecret).toBeGreaterThan(0);
+    expect(applyPod).toBeGreaterThan(deleteSecret);
+    expect(verifyKeys).toBeGreaterThan(applyPod);
+    expect(sync).toContain("cleanupSecretSyncPod(environment)");
+    expect(sync).not.toContain("az(");
+    expect(deployScript).toContain(
+      "const data = JSON.parse(secretResult.stdout).data ?? {};",
+    );
+    expect(deployScript).toContain(
+      "missingKeys = requiredKeys.filter((key) => !data[key]);",
+    );
+    expect(deployScript).not.toContain(
+      '"keyvault",\n        "secret",\n        "delete"',
     );
   });
 

@@ -31,7 +31,12 @@ not repeat the Azure, Entra, Key Vault, or Front Door bootstrap.
 mounting Key Vault secrets through the Azure Secrets Store CSI driver, and
 waits for the StatefulSet and PPE endpoint to become ready. Enterprise
 migration failures print the Job logs and Kubernetes diagnostics as soon as
-the Job fails instead of waiting for the deployment timeout.
+the Job fails instead of waiting for the deployment timeout. After migration,
+deployment replaces only the namespace-local CSI-synced Kubernetes Secret,
+mounts the current SecretProviderClass in a short-lived workload-identity pod,
+and verifies every configured key before applying runtime changes. Key Vault
+secrets are never deleted, and the existing runtime remains running until
+synchronization succeeds.
 
 `promote` reads the image digest actually running in PPE and deploys that exact
 reference to primary. It refuses mutable tags and does not rebuild. Candidate

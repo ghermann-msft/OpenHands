@@ -1245,9 +1245,9 @@ function bootstrapBuild() {
   return builder;
 }
 
-export function renderSecretProviderClass(environment, runtimeClientId) {
+function secretProviderEntries(environment) {
   const env = config.environments[environment];
-  const entries = [
+  return [
     ["clientSecret", env.secrets.clientSecret],
     ["cookieSecret", env.secrets.cookieSecret],
     ["sessionApiKey", env.secrets.sessionApiKey],
@@ -1262,6 +1262,15 @@ export function renderSecretProviderClass(environment, runtimeClientId) {
     ["githubAppPrivateKey", env.githubApp.secrets.privateKey],
     ["githubAppWebhookSecret", env.githubApp.secrets.webhookSecret],
   ].filter(([, name]) => Boolean(name));
+}
+
+export function requiredSyncedSecretKeys(environment) {
+  return secretProviderEntries(environment).map(([alias]) => alias);
+}
+
+export function renderSecretProviderClass(environment, runtimeClientId) {
+  const env = config.environments[environment];
+  const entries = secretProviderEntries(environment);
   return `apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
@@ -1282,6 +1291,68 @@ ${entries.map(([alias]) => `        - objectName: ${alias}\n          key: ${ali
     objects: |
       array:
 ${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n          objectAlias: ${alias}\n          objectType: secret`).join("\n")}
+`;
+}
+
+export function renderSecretSyncPod(environment, digest) {
+  const env = config.environments[environment];
+  const image = imageReference(
+    config.azure.acrLoginServer,
+    config.build.appServerRepository,
+    digest,
+  );
+  const requiredKeys = requiredSyncedSecretKeys(environment).join(" ");
+  return `apiVersion: v1
+kind: Pod
+metadata:
+  name: openhands-halo-secret-sync
+  namespace: ${env.namespace}
+  labels:
+    app.kubernetes.io/name: openhands-halo
+    app.kubernetes.io/component: secret-sync
+    azure.workload.identity/use: "true"
+spec:
+  restartPolicy: Never
+  serviceAccountName: ${env.serviceAccount}
+  automountServiceAccountToken: true
+  nodeSelector:
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    agentpool: ${config.runtime.nodePool}
+  tolerations:
+    - key: ${config.runtime.nodeTaintKey}
+      operator: Equal
+      value: ${config.runtime.nodeTaintValue}
+      effect: NoSchedule
+  containers:
+    - name: secret-sync
+      image: ${image}
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          for key in ${requiredKeys}; do
+            test -s "/mnt/secrets-store/$key"
+          done
+          sleep 3600
+      volumeMounts:
+        - name: halo-secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+  volumes:
+    - name: halo-secrets-store
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: openhands-halo-secrets
 `;
 }
 
@@ -3027,6 +3098,20 @@ function printJobDiagnostics(namespace, job) {
   printResult(tryRun("kubectl", ["-n", namespace, "describe", "job", job]));
 }
 
+function printPodDiagnostics(namespace, pod) {
+  printResult(
+    tryRun("kubectl", [
+      "-n",
+      namespace,
+      "logs",
+      pod,
+      "--all-containers=true",
+      "--prefix=true",
+    ]),
+  );
+  printResult(tryRun("kubectl", ["-n", namespace, "describe", "pod", pod]));
+}
+
 async function waitForJob(namespace, job, timeoutMs, purpose = "Build") {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -3062,6 +3147,109 @@ async function waitForJob(namespace, job, timeoutMs, purpose = "Build") {
   }
   printJobDiagnostics(namespace, job);
   throw new Error(`Timed out waiting for ${purpose.toLowerCase()} Job ${job}`);
+}
+
+async function waitForSyncedSecret(
+  namespace,
+  pod,
+  secret,
+  requiredKeys,
+  timeoutMs,
+) {
+  const deadline = Date.now() + timeoutMs;
+  let missingKeys = requiredKeys;
+  while (Date.now() < deadline) {
+    const podResult = tryRun("kubectl", [
+      "-n",
+      namespace,
+      "get",
+      "pod",
+      pod,
+      "-o",
+      "json",
+    ]);
+    if (podResult.status === 0) {
+      const state = JSON.parse(podResult.stdout);
+      if (state.status?.phase === "Failed") {
+        printPodDiagnostics(namespace, pod);
+        throw new Error(
+          `Secret sync Pod ${namespace}/${pod} failed before ${secret} was synchronized`,
+        );
+      }
+    }
+
+    const secretResult = tryRun("kubectl", [
+      "-n",
+      namespace,
+      "get",
+      "secret",
+      secret,
+      "-o",
+      "json",
+    ]);
+    if (secretResult.status === 0) {
+      const data = JSON.parse(secretResult.stdout).data ?? {};
+      missingKeys = requiredKeys.filter((key) => !data[key]);
+      if (missingKeys.length === 0) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  printPodDiagnostics(namespace, pod);
+  throw new Error(
+    `Timed out waiting for ${namespace}/${secret} keys to synchronize: ${missingKeys.join(", ")}`,
+  );
+}
+
+async function prepareSyncedSecret(environment, appServerDigest) {
+  const env = config.environments[environment];
+  const pod = "openhands-halo-secret-sync";
+  const secret = "openhands-halo-secrets";
+  kubectl([
+    "-n",
+    env.namespace,
+    "delete",
+    "pod",
+    pod,
+    "--ignore-not-found",
+    "--wait=true",
+  ]);
+  kubectl([
+    "-n",
+    env.namespace,
+    "delete",
+    "secret",
+    secret,
+    "--ignore-not-found",
+    "--wait=true",
+  ]);
+  kubectl(["apply", "-f", "-"], {
+    input: renderSecretSyncPod(environment, appServerDigest),
+  });
+  try {
+    await waitForSyncedSecret(
+      env.namespace,
+      pod,
+      secret,
+      requiredSyncedSecretKeys(environment),
+      5 * 60_000,
+    );
+  } catch (error) {
+    cleanupSecretSyncPod(environment);
+    throw error;
+  }
+}
+
+function cleanupSecretSyncPod(environment) {
+  const env = config.environments[environment];
+  kubectl([
+    "-n",
+    env.namespace,
+    "delete",
+    "pod",
+    "openhands-halo-secret-sync",
+    "--ignore-not-found",
+    "--wait=true",
+  ]);
 }
 
 async function build(args) {
@@ -3152,26 +3340,6 @@ async function waitForReady(environment) {
   );
 }
 
-async function waitForSecretKey(namespace, secret, key) {
-  const deadline = Date.now() + 5 * 60 * 1000;
-  while (Date.now() < deadline) {
-    const result = tryRun("kubectl", [
-      "-n",
-      namespace,
-      "get",
-      "secret",
-      secret,
-      "-o",
-      `jsonpath={.data.${key}}`,
-    ]);
-    if (result.status === 0 && result.stdout.trim()) return;
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-  }
-  throw new Error(
-    `Timed out waiting for ${namespace}/${secret} key ${key} to synchronize`,
-  );
-}
-
 function runtimeClientId(environment) {
   const env = config.environments[environment];
   const serviceAccount = JSON.parse(
@@ -3230,44 +3398,40 @@ async function deploy(
     15 * 60_000,
     "Migration",
   );
-  for (const key of [
-    "jwtSecret",
-    "trustedIdentityAssertion",
-    "trustedIdentityMappings",
-    "githubAppClientId",
-    "githubAppClientSecret",
-  ]) {
-    await waitForSecretKey(env.namespace, "openhands-halo-secrets", key);
+  await prepareSyncedSecret(environment, appServerDigest);
+  try {
+    kubectl(["apply", "-f", "-"], {
+      input: renderAgentSandboxResources(environment, agentServerDigest),
+    });
+    kubectl(["apply", "-f", "-"], {
+      input: renderSandboxServerResources(
+        environment,
+        sandboxServerDigest,
+        clientId,
+      ),
+    });
+    kubectl([
+      "-n",
+      env.namespace,
+      "rollout",
+      "status",
+      `deployment/${config.sandboxServer.serviceName}`,
+      "--timeout=15m",
+    ]);
+    kubectl(["apply", "-f", "-"], {
+      input: renderAppServerResources(environment, appServerDigest, clientId),
+    });
+    kubectl([
+      "-n",
+      env.namespace,
+      "rollout",
+      "status",
+      `deployment/${config.appServer.serviceName}`,
+      "--timeout=15m",
+    ]);
+  } finally {
+    cleanupSecretSyncPod(environment);
   }
-  kubectl(["apply", "-f", "-"], {
-    input: renderAgentSandboxResources(environment, agentServerDigest),
-  });
-  kubectl(["apply", "-f", "-"], {
-    input: renderSandboxServerResources(
-      environment,
-      sandboxServerDigest,
-      clientId,
-    ),
-  });
-  kubectl([
-    "-n",
-    env.namespace,
-    "rollout",
-    "status",
-    `deployment/${config.sandboxServer.serviceName}`,
-    "--timeout=15m",
-  ]);
-  kubectl(["apply", "-f", "-"], {
-    input: renderAppServerResources(environment, appServerDigest, clientId),
-  });
-  kubectl([
-    "-n",
-    env.namespace,
-    "rollout",
-    "status",
-    `deployment/${config.appServer.serviceName}`,
-    "--timeout=15m",
-  ]);
   const valuesPath = join(
     tmpdir(),
     `openhands-halo-${environment}-${process.pid}.yaml`,
