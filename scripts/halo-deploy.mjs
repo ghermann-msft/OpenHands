@@ -789,6 +789,9 @@ spec:
               grep -q "RemoteSandboxSpecServiceInjector" openhands/app_server/config.py
               test -f tests/unit/app_server/test_remote_sandbox_config.py
               grep -q "test_sandbox_server_url_selects_remote_sandbox_services" tests/unit/app_server/test_remote_sandbox_config.py
+              grep -Fq "explicit = os.getenv('OH_DEPLOYMENT_MODE', '').strip().lower()" server/constants.py
+              grep -Fq "if DEPLOYMENT_MODE != 'self_hosted' and not self.posthog_client_key:" server/config.py
+              grep -Fq "raise ValueError('Missing posthog client key in env')" server/config.py
               test -f server/auth/trusted_identity.py
               grep -q "saas_user_auth_from_trusted_identity" server/auth/saas_user_auth.py
               grep -q "public_skills = tuple(load_public_skills())" storage/agent_profile_resolution.py
@@ -1370,6 +1373,11 @@ export function validateDistinctAppServerSecrets(environment, secrets) {
 export function validateAppServerDeploymentConfig(environment) {
   const env = config.environments[environment];
   const blockers = [];
+  if (config.appServer.deploymentMode !== "self_hosted") {
+    blockers.push(
+      "OH_DEPLOYMENT_MODE=self_hosted so Halo does not claim cloud telemetry behavior",
+    );
+  }
   if (!env.secrets.jwtSecret) {
     blockers.push(
       "a dedicated Enterprise JWT_SECRET Key Vault alias before Halo can deploy the app server",
@@ -1741,6 +1749,8 @@ spec:
               value: "true"
             - name: OPENHANDS_CONFIG_CLS
               value: ${app.configClass}
+            - name: OH_DEPLOYMENT_MODE
+              value: ${app.deploymentMode}
             - name: RUN_MIGRATIONS_ON_STARTUP
               value: "false"
 ${renderAppServerDatabaseEnv(environment, runtimeClientId, "            ")}

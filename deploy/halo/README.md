@@ -36,7 +36,10 @@ deployment replaces only the namespace-local CSI-synced Kubernetes Secret,
 mounts the current SecretProviderClass in a short-lived workload-identity pod,
 and verifies every configured key before applying runtime changes. Key Vault
 secrets are never deleted, and the existing runtime remains running until
-synchronization succeeds.
+synchronization succeeds. The Enterprise runtime explicitly sets
+`OH_DEPLOYMENT_MODE=self_hosted`; this keeps SaaS storage/auth composition
+while disabling cloud-only telemetry requirements such as
+`POSTHOG_CLIENT_KEY`.
 
 `promote` reads the image digest actually running in PPE and deploys that exact
 reference to primary. It refuses mutable tags and does not rebuild. Candidate

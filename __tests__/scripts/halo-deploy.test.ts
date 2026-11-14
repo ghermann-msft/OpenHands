@@ -48,6 +48,9 @@ const haloConfig = JSON.parse(
     enterpriseRef: string;
     enterpriseRevisionValidated: boolean;
   };
+  appServer: {
+    deploymentMode: string;
+  };
   environments: Record<
     "candidate" | "primary",
     {
@@ -210,6 +213,15 @@ describe("Halo deployment automation", () => {
     );
     expect(job).toContain(
       'grep -q "test_sandbox_server_url_selects_remote_sandbox_services" tests/unit/app_server/test_remote_sandbox_config.py',
+    );
+    expect(job).toContain(
+      `grep -Fq "explicit = os.getenv('OH_DEPLOYMENT_MODE', '').strip().lower()" server/constants.py`,
+    );
+    expect(job).toContain(
+      `grep -Fq "if DEPLOYMENT_MODE != 'self_hosted' and not self.posthog_client_key:" server/config.py`,
+    );
+    expect(job).toContain(
+      `grep -Fq "raise ValueError('Missing posthog client key in env')" server/config.py`,
     );
     expect(job).toContain("test -f server/auth/trusted_identity.py");
     expect(job).toContain(
@@ -613,6 +625,15 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "name: OPENHANDS_CONFIG_CLS\n              value: server.config.SaaSServerConfig",
     );
+    expect(haloConfig.appServer.deploymentMode).toBe("self_hosted");
+    expect(resources).toContain(
+      "name: OH_DEPLOYMENT_MODE\n              value: self_hosted",
+    );
+    expect(resources).not.toContain("name: POSTHOG_CLIENT_KEY");
+    expect(resources).not.toContain(
+      "name: OH_DEPLOYMENT_MODE\n              value: cloud",
+    );
+    expect(resources).not.toContain("name: DEPLOYMENT_MODE");
     expect(resources).toContain(
       'name: RUN_MIGRATIONS_ON_STARTUP\n              value: "false"',
     );

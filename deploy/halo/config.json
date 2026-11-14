@@ -123,6 +123,7 @@
     "port": 3000,
     "replicas": 1,
     "configClass": "server.config.SaaSServerConfig",
+    "deploymentMode": "self_hosted",
     "trustedIdentityIssuer": "openhands-halo-bff",
     "trustedIdentityAudience": "openhands-sandbox-server",
     "trustedIdentityHeader": "X-OpenHands-Identity-Assertion",
