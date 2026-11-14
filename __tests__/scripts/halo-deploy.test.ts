@@ -396,6 +396,13 @@ describe("Halo deployment automation", () => {
       "name: AGENT_CANVAS_BACKEND\n              value: http://localhost:8000",
     );
     expect(resources).toContain(
+      "mountPath: /home/openhands/.openhands/agent-canvas",
+    );
+    expect(resources).toContain("secretName: openhands-halo-secrets");
+    expect(resources).toContain(
+      "key: sessionApiKey\n                path: api-key.txt",
+    );
+    expect(resources).toContain(
       "storageClassName: openhands-halo-workspace-disk",
     );
     expect(resources).toContain("storage: 50Gi");

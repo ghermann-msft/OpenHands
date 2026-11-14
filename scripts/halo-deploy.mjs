@@ -1551,6 +1551,14 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      volumes:
+        - name: agent-canvas-session-key
+          secret:
+            secretName: openhands-halo-secrets
+            defaultMode: 0440
+            items:
+              - key: sessionApiKey
+                path: api-key.txt
       containers:
         - name: agent-server
           image: ${agentServerImage}
@@ -1581,6 +1589,9 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
+            - name: agent-canvas-session-key
+              mountPath: /home/openhands/.openhands/agent-canvas
+              readOnly: true
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
