@@ -23,7 +23,7 @@
     "@heroui/react": "2.8.10",
     "@microlink/react-json-view": "1.31.25",
     "@monaco-editor/react": "4.7.0",
-    "@openhands/extensions": "https://github.com/ghermann-msft/extensions/archive/40cfb779515c6cebd34ecd4df0117a436387b3ee.tar.gz",
+    "@openhands/extensions": "https://github.com/ghermann-msft/extensions/archive/54ca59291fb9e88b79c3e23de9a3d407c4ec0a89.tar.gz",
     "@openhands/typescript-client": "1.60.1",
     "@react-router/node": "8.5.0",
     "@tailwindcss/vite": "4.3.3",

@@ -28,6 +28,9 @@
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
     "agentServerSdkRef": "b1d818a6078691cd765e05adbc60cd5fecb4c671",
+    "enterpriseRepository": "https://github.com/ghermann-msft/enterprise.git",
+    "enterpriseRef": "e7fa6b6524a1028efc02023eb6814c85ccf18dfe",
+    "enterpriseRevisionValidated": true,
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
     "sandboxServerRef": "705616fe2fd01dbe5fda92a5b31d24d4f29c1b79"
   },
@@ -43,6 +46,8 @@
     "cacheTag": "buildcache-amd64",
     "agentServerRepository": "openhands-agent-server",
     "agentServerCacheTag": "agent-server-buildcache-amd64",
+    "appServerRepository": "openhands-enterprise-server",
+    "appServerCacheTag": "enterprise-server-buildcache-amd64",
     "sandboxServerRepository": "openhands-sandbox-server",
     "sandboxServerCacheTag": "sandbox-server-buildcache-amd64",
     "gitImage": "alpine/git:2.49.1",
@@ -113,6 +118,19 @@
     "trustedIdentityMaxLifetimeSeconds": 300,
     "trustedIdentityClockSkewSeconds": 30
   },
+  "appServer": {
+    "serviceName": "openhands-app-server",
+    "port": 3000,
+    "replicas": 1,
+    "configClass": "server.config.SaaSServerConfig",
+    "trustedIdentityIssuer": "openhands-halo-bff",
+    "trustedIdentityAudience": "openhands-sandbox-server",
+    "trustedIdentityHeader": "X-OpenHands-Identity-Assertion",
+    "trustedIdentityMaxLifetimeSeconds": 300,
+    "trustedIdentityClockSkewSeconds": 30,
+    "healthPath": "/health",
+    "migrationJob": "openhands-app-server-migrate"
+  },
   "agentSandbox": {
     "version": "v0.5.2",
     "releaseManifest": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.2/sandbox-with-extensions.yaml",
@@ -135,13 +153,25 @@
       "entraDisplayName": "OpenHands Halo PPE",
       "entraClientId": "9071e6b8-c981-4a11-b975-256cc4b7b841",
       "entraScopeId": "0f36915e-4e16-46ac-b602-50058fd6559b",
+      "githubApp": {
+        "slug": "openhands-halo-ppe",
+        "secrets": {
+          "appId": "halo-ppe-github-app-id",
+          "clientId": "halo-ppe-github-app-client-id",
+          "clientSecret": "halo-ppe-github-app-client-secret",
+          "privateKey": "halo-ppe-github-app-private-key",
+          "webhookSecret": "halo-ppe-github-app-webhook-secret"
+        }
+      },
       "secrets": {
         "clientSecret": "halo-ppe-entra-client-secret",
         "cookieSecret": "halo-ppe-cookie-secret",
         "sessionApiKey": "halo-ppe-session-api-key",
         "ohSecretKey": "halo-ppe-oh-secret-key",
+        "jwtSecret": "halo-ppe-enterprise-jwt-secret",
         "automationKvSecret": "halo-ppe-automation-kv-secret",
-        "trustedIdentityAssertion": "halo-ppe-trusted-identity-assertion"
+        "trustedIdentityAssertion": "halo-ppe-trusted-identity-assertion",
+        "trustedIdentityMappings": "halo-ppe-trusted-identity-mappings"
       }
     },
     "primary": {
@@ -159,13 +189,25 @@
       "entraDisplayName": "OpenHands Halo",
       "entraClientId": "a43e0aee-2f24-4b80-91e5-b6eb3db972c0",
       "entraScopeId": "bc5dd6b6-9ba7-4e36-98c5-ec9f11e2adcd",
+      "githubApp": {
+        "slug": null,
+        "secrets": {
+          "appId": null,
+          "clientId": null,
+          "clientSecret": null,
+          "privateKey": null,
+          "webhookSecret": null
+        }
+      },
       "secrets": {
         "clientSecret": "halo-primary-entra-client-secret",
         "cookieSecret": "halo-primary-cookie-secret",
         "sessionApiKey": "halo-primary-session-api-key",
         "ohSecretKey": "halo-primary-oh-secret-key",
+        "jwtSecret": null,
         "automationKvSecret": "halo-primary-automation-kv-secret",
-        "trustedIdentityAssertion": "halo-primary-trusted-identity-assertion"
+        "trustedIdentityAssertion": "halo-primary-trusted-identity-assertion",
+        "trustedIdentityMappings": null
       }
     }
   }

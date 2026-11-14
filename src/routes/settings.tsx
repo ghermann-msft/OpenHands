@@ -20,6 +20,7 @@ import {
 } from "#/hooks/use-breakpoint";
 import { useSettingsNavItems } from "#/hooks/use-settings-nav-items";
 import {
+  INTEGRATIONS_SETTINGS_NAV_ITEM,
   LOCKED_CLOUD_SETTINGS_NAV_PATH,
   OSS_NAV_ITEMS,
 } from "#/constants/settings-nav";
@@ -29,6 +30,7 @@ import {
 } from "#/utils/settings-utils";
 import { SettingsSectionHeaderProvider } from "#/contexts/settings-section-header-context";
 import { getLockedCloudHost } from "#/api/agent-server-config";
+import { CANVAS_INTEGRATIONS_SETTINGS_PATH } from "#/utils/cloud-integrations-url";
 
 export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
   const url = new URL(request.url);
@@ -63,7 +65,7 @@ function SettingsScreen() {
   const { currentSectionTitle, currentSectionSubtitle } = useMemo(() => {
     // Resolve from the full list, not the listed subset, so a page that is
     // reachable but unlisted still gets its own title.
-    const currentItem = OSS_NAV_ITEMS.find(
+    const currentItem = [...OSS_NAV_ITEMS, INTEGRATIONS_SETTINGS_NAV_ITEM].find(
       (item) =>
         item.to === location.pathname ||
         location.pathname.startsWith(`${item.to}/`),
@@ -99,7 +101,8 @@ function SettingsScreen() {
   if (
     getLockedCloudHost() !== null &&
     location.pathname !== "/settings" &&
-    location.pathname !== LOCKED_CLOUD_SETTINGS_NAV_PATH
+    location.pathname !== LOCKED_CLOUD_SETTINGS_NAV_PATH &&
+    location.pathname !== CANVAS_INTEGRATIONS_SETTINGS_PATH
   ) {
     return <Navigate to={LOCKED_CLOUD_SETTINGS_NAV_PATH} replace />;
   }

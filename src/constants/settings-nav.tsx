@@ -2,9 +2,11 @@ import {
   AppWindow,
   Brain,
   Container,
+  Puzzle,
   Route as RouteIcon,
   Shield,
 } from "lucide-react";
+import { CANVAS_INTEGRATIONS_SETTINGS_PATH } from "#/utils/cloud-integrations-url";
 import KeyIcon from "#/icons/key.svg?react";
 import MemoryIcon from "#/icons/memory_icon.svg?react";
 import CircuitIcon from "#/icons/u-circuit.svg?react";
@@ -91,3 +93,10 @@ export const OSS_NAV_ITEMS: SettingsNavItem[] = [
  * layout redirects them here (OHE-3457).
  */
 export const LOCKED_CLOUD_SETTINGS_NAV_PATH = "/settings/app";
+
+export const INTEGRATIONS_SETTINGS_NAV_ITEM: SettingsNavItem = {
+  icon: <Puzzle className="size-4" strokeWidth={2} aria-hidden />,
+  to: CANVAS_INTEGRATIONS_SETTINGS_PATH,
+  text: "SETTINGS$INTEGRATIONS_SETTINGS_LINK",
+  subtitle: "SETTINGS$INTEGRATIONS_SUBLINE",
+};
