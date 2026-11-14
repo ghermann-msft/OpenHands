@@ -1296,23 +1296,9 @@ export function validateDistinctAppServerSecrets(environment, secrets) {
   }
 }
 
-export function validateEnterpriseDatabaseConfig(environment, env) {
-  if (!env.enterpriseDatabase) {
-    throw new Error(
-      `${environment} requires a dedicated Enterprise database name`,
-    );
-  }
-  if (env.enterpriseDatabase === env.legacyDatabase) {
-    throw new Error(
-      `${environment} Enterprise database must be distinct from the preserved legacy database`,
-    );
-  }
-}
-
 export function validateAppServerDeploymentConfig(environment) {
   const env = config.environments[environment];
   const blockers = [];
-  validateEnterpriseDatabaseConfig(environment, env);
   if (!env.secrets.jwtSecret) {
     blockers.push(
       "a dedicated Enterprise JWT_SECRET Key Vault alias before Halo can deploy the app server",
@@ -1490,13 +1476,12 @@ extraVolumeMounts:
 
 function renderAppServerDatabaseEnv(environment, runtimeClientId, indent) {
   const env = config.environments[environment];
-  validateEnterpriseDatabaseConfig(environment, env);
   const entries = [
     ["AZURE_CLIENT_ID", runtimeClientId],
     ["DB_AZURE_IDENTITY", "true"],
     ["DB_HOST", config.postgres.fqdn],
     ["DB_PORT", "5432"],
-    ["DB_NAME", env.enterpriseDatabase],
+    ["DB_NAME", env.database],
     ["DB_USER", env.runtimeIdentity],
     ["DB_SSL_MODE", "require"],
   ];
@@ -1550,7 +1535,7 @@ function renderGithubAppRuntimeEnv(environment, indent) {
 
 export function githubOAuthCallbackInstructions(environment) {
   const env = config.environments[environment];
-  return `After migration 216, query ${env.enterpriseDatabase} without selecting auth_providers.details:
+  return `After migration 168, query ${env.database} without selecting auth_providers.details:
 SELECT id, title, enabled, is_idp
 FROM auth_providers
 WHERE kind = 'OAuthProviderDetails'
@@ -2027,7 +2012,6 @@ export function renderPostgresBootstrapJob(runtimeIdentities) {
   const postgres = config.postgres;
   const roles = Object.entries(config.environments)
     .map(([environment, env]) => {
-      validateEnterpriseDatabaseConfig(environment, env);
       const principalId = runtimeIdentities[environment]?.principalId;
       if (!principalId) {
         throw new Error(
@@ -2040,14 +2024,9 @@ export function renderPostgresBootstrapJob(runtimeIdentities) {
                 psql --set ON_ERROR_STOP=1 --command \\
                   "SELECT pg_catalog.pgaadauth_create_principal_with_oid('${env.runtimeIdentity}', '${principalId}', 'service', false, false)"
               fi
-              if ! psql --tuples-only --no-align --command \\
-                "SELECT 1 FROM pg_catalog.pg_database WHERE datname = '${env.enterpriseDatabase}'" |
-                grep -qx 1; then
-                createdb --owner="${env.runtimeIdentity}" ${env.enterpriseDatabase}
-              fi
               psql --set ON_ERROR_STOP=1 --command \\
-                'ALTER DATABASE ${env.enterpriseDatabase} OWNER TO "${env.runtimeIdentity}"'
-              psql --set ON_ERROR_STOP=1 --dbname ${env.enterpriseDatabase} --command \\
+                'ALTER DATABASE ${env.database} OWNER TO "${env.runtimeIdentity}"'
+              psql --set ON_ERROR_STOP=1 --dbname ${env.database} --command \\
                 'GRANT USAGE, CREATE ON SCHEMA public TO "${env.runtimeIdentity}"'`;
     })
     .join("\n");
@@ -2822,6 +2801,41 @@ async function bootstrapPostgres() {
       ]);
     }
   }
+  for (const env of Object.values(config.environments)) {
+    const database = az(
+      [
+        "postgres",
+        "flexible-server",
+        "db",
+        "list",
+        "--resource-group",
+        postgres.resourceGroup,
+        "--server-name",
+        postgres.serverName,
+        "--query",
+        `[?name=='${env.database}'].name | [0]`,
+        "--output",
+        "tsv",
+      ],
+      { capture: true },
+    );
+    if (!database) {
+      az([
+        "postgres",
+        "flexible-server",
+        "db",
+        "create",
+        "--resource-group",
+        postgres.resourceGroup,
+        "--server-name",
+        postgres.serverName,
+        "--name",
+        env.database,
+        "--output",
+        "none",
+      ]);
+    }
+  }
   const job = "halo-postgres-bootstrap";
   kubectl([
     "-n",
@@ -3479,7 +3493,7 @@ function status() {
       "jsonpath={.spec.template.spec.containers[0].image}",
     ]);
     console.log(
-      `${name}: ${result.status === 0 ? result.stdout.trim() : "not deployed"}; Enterprise database=${env.enterpriseDatabase}; legacy database preserved=${env.legacyDatabase}`,
+      `${name}: ${result.status === 0 ? result.stdout.trim() : "not deployed"}`,
     );
   }
 }
