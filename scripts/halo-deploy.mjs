@@ -1552,6 +1552,8 @@ spec:
         runAsGroup: 10001
         fsGroup: 10001
       volumes:
+        - name: openhands-state
+          emptyDir: {}
         - name: agent-canvas-session-key
           secret:
             secretName: openhands-halo-secrets
@@ -1589,6 +1591,8 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /workspace
+            - name: openhands-state
+              mountPath: /home/openhands/.openhands
             - name: agent-canvas-session-key
               mountPath: /home/openhands/.openhands/agent-canvas
               readOnly: true

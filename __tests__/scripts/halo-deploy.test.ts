@@ -398,6 +398,12 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "mountPath: /home/openhands/.openhands/agent-canvas",
     );
+    expect(resources).toContain(
+      "name: openhands-state\n          emptyDir: {}",
+    );
+    expect(resources).toContain(
+      "name: openhands-state\n              mountPath: /home/openhands/.openhands",
+    );
     expect(resources).toContain("secretName: openhands-halo-secrets");
     expect(resources).toContain(
       "key: sessionApiKey\n                path: api-key.txt",
