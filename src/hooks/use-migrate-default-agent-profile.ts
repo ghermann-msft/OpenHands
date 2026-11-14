@@ -22,6 +22,8 @@ import {
   resolveEnabledCatalogSkills,
   toSkillEnablement,
 } from "#/utils/skill-enablement";
+import { DEFAULT_ENABLED_SKILL_NAMES } from "@openhands/extensions/skills";
+import { usesProfileSkillAllowList } from "#/utils/profile-skill-selection";
 
 const PROFILE_VERIFICATION_FIELDS = [
   "critic_enabled",
@@ -140,6 +142,34 @@ async function migrateDefaultAgentProfile(): Promise<true> {
   return true;
 }
 
+async function migrateHostedDefaultProfileSkills(): Promise<true> {
+  const { profiles } = await AgentProfilesService.listProfiles();
+  const summary = profiles.find(
+    (profile) =>
+      profile.name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME &&
+      profile.agent_kind === "openhands",
+  );
+  if (!summary) return true;
+
+  const { profile } = await AgentProfilesService.getProfile(
+    WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME,
+  );
+  if (
+    profile.agent_kind !== "openhands" ||
+    Array.isArray(profile.public_skills)
+  ) {
+    return true;
+  }
+  await AgentProfilesService.saveProfile(
+    WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME,
+    mergeAgentProfileSaveInput(profile, {
+      agent_kind: "openhands",
+      public_skills: [...DEFAULT_ENABLED_SKILL_NAMES],
+    }),
+  );
+  return true;
+}
+
 function migrationQuery(queryClient: QueryClient, backendId: string) {
   return {
     queryKey: ["default-profile-migration", backendId] as const,
@@ -159,6 +189,25 @@ function migrationQuery(queryClient: QueryClient, backendId: string) {
   };
 }
 
+function hostedSkillMigrationQuery(
+  queryClient: QueryClient,
+  backendId: string,
+) {
+  return {
+    queryKey: ["hosted-default-profile-skill-migration", backendId] as const,
+    queryFn: async () => {
+      await migrateHostedDefaultProfileSkills();
+      await queryClient.invalidateQueries({
+        queryKey: AGENT_PROFILES_QUERY_KEYS.all,
+      });
+      return true as const;
+    },
+    staleTime: Infinity,
+    retry: false,
+    meta: { disableToast: true },
+  };
+}
+
 /**
  * Resolve once the local backend's `default` profile carries its migrated
  * settings. A failure is left for the next caller to retry.
@@ -168,6 +217,15 @@ export function ensureDefaultAgentProfileMigrated(
   backendId: string,
 ): Promise<true> {
   return queryClient.ensureQueryData(migrationQuery(queryClient, backendId));
+}
+
+export function ensureHostedDefaultProfileSkillsMigrated(
+  queryClient: QueryClient,
+  backendId: string,
+): Promise<true> {
+  return queryClient.ensureQueryData(
+    hostedSkillMigrationQuery(queryClient, backendId),
+  );
 }
 
 /** Wait for a migration already in flight; never start one. */
@@ -187,8 +245,39 @@ export async function settleRunningDefaultAgentProfileMigration(
 export function useMigrateDefaultAgentProfile() {
   const queryClient = useQueryClient();
   const { backend } = useActiveBackend();
+  const isHostedSkillMigration =
+    backend.kind === "cloud" && usesProfileSkillAllowList(true);
   return useQuery({
-    ...migrationQuery(queryClient, backend.id),
-    enabled: backend.kind === "local" && !isNoBackend(backend),
+    queryKey: [
+      isHostedSkillMigration
+        ? "hosted-default-profile-skill-migration"
+        : "default-profile-migration",
+      backend.id,
+    ],
+    queryFn: async () => {
+      if (isHostedSkillMigration) {
+        await migrateHostedDefaultProfileSkills();
+        await queryClient.invalidateQueries({
+          queryKey: AGENT_PROFILES_QUERY_KEYS.all,
+        });
+      } else {
+        await migrateDefaultAgentProfile();
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: AGENT_PROFILES_QUERY_KEYS.all,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: SETTINGS_QUERY_KEYS.all,
+          }),
+        ]);
+      }
+      return true as const;
+    },
+    staleTime: Infinity,
+    retry: false,
+    meta: { disableToast: true },
+    enabled:
+      !isNoBackend(backend) &&
+      (backend.kind === "local" || isHostedSkillMigration),
   });
 }

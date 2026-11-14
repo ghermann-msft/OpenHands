@@ -7,6 +7,7 @@ import SettingsService from "#/api/settings-service/settings-service.api";
 import {
   buildDefaultProfileMigration,
   ensureDefaultAgentProfileMigrated,
+  ensureHostedDefaultProfileSkillsMigrated,
   settleRunningDefaultAgentProfileMigration,
 } from "#/hooks/use-migrate-default-agent-profile";
 import { DEFAULT_SETTINGS } from "#/services/settings";
@@ -156,6 +157,48 @@ describe("ensureDefaultAgentProfileMigrated", () => {
       profiles: [],
       active_profile: "active-llm",
     } as never);
+  });
+
+  describe("ensureHostedDefaultProfileSkillsMigrated", () => {
+    beforeEach(() => {
+      vi.resetAllMocks();
+      vi.mocked(AgentProfilesService.listProfiles).mockResolvedValue({
+        profiles: [STORED_DEFAULT],
+        active_agent_profile_id: STORED_DEFAULT.id,
+      } as never);
+      vi.mocked(AgentProfilesService.getProfile).mockResolvedValue({
+        name: "default",
+        profile: { ...STORED_DEFAULT, public_skills: null },
+      } as never);
+    });
+
+    it("replaces an unrestricted hosted default with the recommended skills", async () => {
+      await ensureHostedDefaultProfileSkillsMigrated(
+        new QueryClient(),
+        "cloud-1",
+      );
+
+      expect(AgentProfilesService.saveProfile).toHaveBeenCalledWith(
+        "default",
+        expect.objectContaining({
+          public_skills: [...DEFAULT_ENABLED_SKILL_NAMES],
+        }),
+      );
+    });
+
+    it("preserves an existing hosted selection", async () => {
+      vi.mocked(AgentProfilesService.getProfile).mockResolvedValue({
+        name: "default",
+        profile: { ...STORED_DEFAULT, public_skills: ["github"] },
+      } as never);
+
+      await ensureHostedDefaultProfileSkillsMigrated(
+        new QueryClient(),
+        "cloud-1",
+      );
+
+      expect(AgentProfilesService.saveProfile).not.toHaveBeenCalled();
+    });
   });
 
   it("merges the global behavior into `default` and records it once", async () => {

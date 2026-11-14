@@ -33,6 +33,7 @@ import {
   resolveEnabledCatalogSkills,
   type SkillEnablement,
 } from "#/utils/skill-enablement";
+import { usesProfileSkillAllowList } from "#/utils/profile-skill-selection";
 
 /**
  * Settings → the two lists. Cloud creates conversations from its own
@@ -52,13 +53,14 @@ function readSkillEnablement(
 }
 
 /** The stored OpenHands profile with this id, read only on a local backend. */
-function useLocalOpenHandsProfile(
+function useOpenHandsProfile(
   agentProfileId: string | null | undefined,
 ): StoredOpenHandsProfile | null {
   const { backend, orgId } = useActiveBackend();
-  const isLocal = backend.kind !== "cloud" && !!agentProfileId;
-  const { data: list } = useAgentProfiles({ enabled: isLocal });
-  const name = isLocal
+  const usesProfileSelection =
+    usesProfileSkillAllowList(backend.kind === "cloud") && !!agentProfileId;
+  const { data: list } = useAgentProfiles({ enabled: usesProfileSelection });
+  const name = usesProfileSelection
     ? (list?.profiles?.find((profile) => profile.id === agentProfileId)?.name ??
       null)
     : null;
@@ -85,7 +87,9 @@ function useDefaultProfileSkills(): {
   selection: SkillEnablement | null;
 } {
   const { backend, orgId } = useActiveBackend();
-  const isLocal = backend.kind === "local" && !isNoBackend(backend);
+  const usesProfileSelection =
+    usesProfileSkillAllowList(backend.kind === "cloud") &&
+    !isNoBackend(backend);
   const migration = useMigrateDefaultAgentProfile();
   const { data, isLoading, error } = useQuery({
     queryKey: AGENT_PROFILES_QUERY_KEYS.detail(
@@ -95,7 +99,7 @@ function useDefaultProfileSkills(): {
     ),
     queryFn: () =>
       AgentProfilesService.getProfile(WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME),
-    enabled: isLocal && migration.isSuccess,
+    enabled: usesProfileSelection && migration.isSuccess,
     ...CONFIG_CACHE_OPTIONS,
     ...AGENT_PROFILES_RETRY_OPTIONS,
     meta: { disableToast: true },
@@ -112,7 +116,7 @@ function useDefaultProfileSkills(): {
   // Without `default`'s lists the page would show and write settings, which
   // no launch reads; only a missing `default` falls back to them.
   const failure =
-    (isLocal && migration.error) ||
+    (usesProfileSelection && migration.error) ||
     (error && !(error instanceof HttpError && error.status === 404)
       ? error
       : null);
@@ -124,7 +128,8 @@ function useDefaultProfileSkills(): {
     }
   }, [failure]);
   return {
-    ready: !isLocal || (migration.isSuccess && !isLoading && !failure),
+    ready:
+      !usesProfileSelection || (migration.isSuccess && !isLoading && !failure),
     failed: !!failure,
     selection,
   };
@@ -140,8 +145,10 @@ export function useSkillEnabledFilter(
 ): (skill: SkillInfo) => boolean {
   const { backend } = useActiveBackend();
   const { data: settings } = useSettings();
-  const usesCatalogAllowList = backend.kind !== "cloud";
-  const profile = useLocalOpenHandsProfile(agentProfileId);
+  const usesCatalogAllowList = usesProfileSkillAllowList(
+    backend.kind === "cloud",
+  );
+  const profile = useOpenHandsProfile(agentProfileId);
 
   return React.useMemo(() => {
     const isEnabled = buildSkillEnablementFilter(
@@ -191,7 +198,9 @@ function withMembership(
  */
 export function useSkillEnablement(): SkillEnablementController {
   const { backend } = useActiveBackend();
-  const usesCatalogAllowList = backend.kind !== "cloud";
+  const usesCatalogAllowList = usesProfileSkillAllowList(
+    backend.kind === "cloud",
+  );
   const queryClient = useQueryClient();
   const { data: settings, isLoading: settingsLoading } = useSettings();
   const { mutateAsync: saveSettings } = useSaveSettings();

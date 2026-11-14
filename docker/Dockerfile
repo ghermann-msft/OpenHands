@@ -42,7 +42,9 @@ COPY . .
 # VITE_BASE_PATH is baked into React Router/Vite so the Docker image serves
 # Canvas under the Cloud subpath instead of a dedicated hostname.
 ARG VITE_BASE_PATH="/canvas"
+ARG VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST="false"
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+ENV VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=${VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST}
 RUN npm run build
 
 # ── Stage 1b: Generate shell-sourceable defaults from config/defaults.json ──

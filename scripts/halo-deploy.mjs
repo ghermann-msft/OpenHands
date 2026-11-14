@@ -808,6 +808,7 @@ spec:
                 --opt build-arg:AGENT_SERVER_SDK_GIT_REF=${config.source.agentServerSdkRef} \\
                 --opt build-arg:AUTOMATION_VERSION=${defaults.versions.automation} \\
                 --opt build-arg:VITE_BASE_PATH=${defaults.paths.canvasBasePath} \\
+                --opt build-arg:VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=true \\
                 --opt build-arg:OPENHANDS_BUILD_GIT_SHA=${commit} \\
                 --opt build-arg:OPENHANDS_BUILD_GIT_REF=${config.source.branch} \\
                 --opt build-arg:AGENT_CANVAS_VERSION=halo-${short} \\

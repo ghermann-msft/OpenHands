@@ -49,6 +49,9 @@ describe("Halo deployment automation", () => {
       "git checkout --detach 705616fe2fd01dbe5fda92a5b31d24d4f29c1b79",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
+    expect(job).toContain(
+      "--opt build-arg:VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=true",
+    );
     expect(job).toContain("containers/app/Dockerfile");
     expect(job).toContain("--opt target=openhands-sandbox-server");
     expect(job).toContain(

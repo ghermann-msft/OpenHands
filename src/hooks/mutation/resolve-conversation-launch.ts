@@ -23,9 +23,13 @@ import {
   SETUP_QUERY_KEYS,
 } from "#/hooks/query/query-keys";
 import type { DeploymentCapabilities } from "#/manifests/types";
-import { ensureDefaultAgentProfileMigrated } from "#/hooks/use-migrate-default-agent-profile";
+import {
+  ensureDefaultAgentProfileMigrated,
+  ensureHostedDefaultProfileSkillsMigrated,
+} from "#/hooks/use-migrate-default-agent-profile";
 import i18n from "#/i18n";
 import { I18nKey } from "#/i18n/declaration";
+import { usesProfileSkillAllowList } from "#/utils/profile-skill-selection";
 
 export interface ConversationLaunch {
   /** Unset only on cloud, which launches its own default without one. */
@@ -62,6 +66,8 @@ export async function resolveConversationLaunch(
     // `default` must carry the global settings it used to launch from before
     // it launches by id; a failed migration fails the launch and retries next time.
     await ensureDefaultAgentProfileMigrated(queryClient, backendId);
+  } else if (usesProfileSkillAllowList(true)) {
+    await ensureHostedDefaultProfileSkillsMigrated(queryClient, backendId);
   }
   // Await the list from the shared query cache: a send fired before the home
   // query resolves must still launch from the active profile.

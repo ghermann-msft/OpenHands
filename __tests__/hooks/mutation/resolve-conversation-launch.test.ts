@@ -16,6 +16,7 @@ const {
   getLlmProfile,
   getOpenAIStatus,
   migrate,
+  migrateHostedSkills,
 } = vi.hoisted(() => ({
   listAgentProfiles: vi.fn(),
   getAgentProfile: vi.fn(),
@@ -23,10 +24,12 @@ const {
   getLlmProfile: vi.fn(),
   getOpenAIStatus: vi.fn(),
   migrate: vi.fn(),
+  migrateHostedSkills: vi.fn(),
 }));
 
 vi.mock("#/hooks/use-migrate-default-agent-profile", () => ({
   ensureDefaultAgentProfileMigrated: migrate,
+  ensureHostedDefaultProfileSkillsMigrated: migrateHostedSkills,
 }));
 
 vi.mock("#/api/agent-profiles-service/agent-profiles-service.api", () => ({
@@ -108,7 +111,10 @@ function launch(
 }
 
 describe("resolveConversationLaunch", () => {
-  afterEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetAllMocks();
+  });
 
   it("runs the requested LLM on the picked profile", async () => {
     arrange();
@@ -248,6 +254,22 @@ describe("resolveConversationLaunch", () => {
     migrate.mockClear();
     await launch({ isCloud: true });
     expect(migrate).not.toHaveBeenCalled();
+  });
+
+  it("migrates hosted profile skills before reading profiles when configured", async () => {
+    vi.stubEnv("VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST", "true");
+    arrange({ activeId: "profile-1" });
+    migrateHostedSkills.mockResolvedValue(true);
+
+    await launch({ isCloud: true });
+
+    expect(migrateHostedSkills).toHaveBeenCalledWith(
+      expect.any(QueryClient),
+      "local-1",
+    );
+    expect(migrateHostedSkills.mock.invocationCallOrder[0]).toBeLessThan(
+      listAgentProfiles.mock.invocationCallOrder[0],
+    );
   });
 
   it("still launches the profile when its detail cannot be read", async () => {
