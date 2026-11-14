@@ -144,6 +144,7 @@ export function useGitRepositories(options: UseGitRepositoriesOptions) {
     hasNextPage: repos.hasNextPage,
     isFetchingNextPage: repos.isFetchingNextPage,
     fetchNextPage: repos.fetchNextPage,
+    refetch: repos.refetch,
     onLoadMore,
   };
 }

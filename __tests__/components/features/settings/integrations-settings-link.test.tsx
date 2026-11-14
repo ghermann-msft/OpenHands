@@ -9,6 +9,9 @@ import {
 import type { Backend } from "#/api/backend-registry/types";
 import { ActiveBackendProvider } from "#/contexts/active-backend-context";
 import { IntegrationsSettingsLink } from "#/components/features/settings/integrations-settings-link";
+import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
+
+vi.mock("#/hooks/query/use-cloud-integrations-config");
 
 const cloudBackend: Backend = {
   id: "cloud-1",
@@ -34,6 +37,21 @@ function renderWithProviders() {
 beforeEach(() => {
   window.localStorage.clear();
   __resetActiveStoreForTests();
+  vi.mocked(useCloudIntegrationsConfig).mockReturnValue({
+    data: {
+      providersConfigured: ["github"],
+      isJiraEnabled: false,
+      isJiraDcEnabled: false,
+      isLinearEnabled: false,
+      isSlackEnabled: false,
+      deploymentMode: "cloud",
+      isOrgMcpServersEnabled: false,
+      isServiceAccountsEnabled: false,
+      isCanvasIntegrationsEnabled: false,
+      githubAppInstallUrl: null,
+    },
+    isLoading: false,
+  } as ReturnType<typeof useCloudIntegrationsConfig>);
 });
 
 afterEach(() => {
@@ -90,5 +108,52 @@ describe("IntegrationsSettingsLink", () => {
       "href",
       "https://app.all-hands.dev/settings/integrations",
     );
+  });
+
+  it("uses the Canvas settings route when the backend advertises ownership", () => {
+    // Arrange
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+    vi.mocked(useCloudIntegrationsConfig).mockReturnValue({
+      data: {
+        providersConfigured: ["github"],
+        isJiraEnabled: false,
+        isJiraDcEnabled: false,
+        isLinearEnabled: false,
+        isSlackEnabled: false,
+        deploymentMode: "self_hosted",
+        isOrgMcpServersEnabled: false,
+        isServiceAccountsEnabled: false,
+        isCanvasIntegrationsEnabled: true,
+        githubAppInstallUrl:
+          "https://github.example.com/apps/halo/installations/new",
+      },
+      isLoading: false,
+    } as ReturnType<typeof useCloudIntegrationsConfig>);
+
+    // Act
+    renderWithProviders();
+
+    // Assert
+    const link = screen.getByTestId("settings-integrations-link");
+    expect(link).toHaveAttribute("href", "/settings/integrations");
+    expect(link).not.toHaveAttribute("target");
+  });
+
+  it("hides the shortcut while deployment ownership is loading", () => {
+    // Arrange
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+    vi.mocked(useCloudIntegrationsConfig).mockReturnValue({
+      isLoading: true,
+    } as ReturnType<typeof useCloudIntegrationsConfig>);
+
+    // Act
+    renderWithProviders();
+
+    // Assert
+    expect(
+      screen.queryByTestId("settings-integrations-link"),
+    ).not.toBeInTheDocument();
   });
 });
