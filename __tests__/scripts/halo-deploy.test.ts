@@ -31,6 +31,7 @@ import {
   renderWorkspaceStorageClass,
   runtimeNodePoolAutoscalerArgs,
   validateDistinctAppServerSecrets,
+  validateEnterpriseDatabaseConfig,
   validateAppServerDeploymentConfig,
   validateBuildNodePool,
   validateEnterpriseSourcePin,
@@ -49,6 +50,8 @@ const haloConfig = JSON.parse(
   environments: Record<
     "candidate" | "primary",
     {
+      legacyDatabase: string;
+      enterpriseDatabase: string;
       githubApp: {
         slug: string | null;
         secrets: Record<
@@ -557,6 +560,9 @@ describe("Halo deployment automation", () => {
       'name: DB_AZURE_IDENTITY\n              value: "true"',
     );
     expect(migration).toContain(
+      'name: DB_NAME\n              value: "openhands_halo_enterprise_ppe"',
+    );
+    expect(migration).not.toContain(
       'name: DB_NAME\n              value: "openhands_halo_ppe"',
     );
     expect(migration).not.toContain("DB_PASS");
@@ -638,6 +644,8 @@ describe("Halo deployment automation", () => {
     const primary = githubOAuthCallbackInstructions("primary");
 
     expect(candidate).toContain("FROM auth_providers");
+    expect(candidate).toContain("openhands_halo_enterprise_ppe");
+    expect(candidate).not.toContain("query openhands_halo_ppe");
     expect(candidate).toContain("details->>'provider_type' = 'github'");
     expect(candidate).not.toContain("SELECT details");
     expect(candidate).toContain(
@@ -657,10 +665,7 @@ describe("Halo deployment automation", () => {
     const migration = deployScript.indexOf(
       "input: renderAppServerMigrationJob(",
     );
-    const migrationWait = deployScript.indexOf(
-      "`job/${config.appServer.migrationJob}`",
-      migration,
-    );
+    const migrationWait = deployScript.indexOf("await waitForJob(", migration);
     const appServer = deployScript.indexOf(
       "input: renderAppServerResources(",
       migrationWait,
@@ -684,6 +689,19 @@ describe("Halo deployment automation", () => {
     expect(sandboxServer).toBeGreaterThan(migrationWait);
     expect(appServer).toBeGreaterThan(migrationWait);
     expect(canvasValues).toBeGreaterThan(appServer);
+  });
+
+  it("emits migration logs and Job diagnostics immediately on migration failure", () => {
+    expect(deployScript).toContain(
+      '"logs",\n        `job/${job}`,\n        "--all-containers=true"',
+    );
+    expect(deployScript).toContain(
+      "await waitForJob(\n    env.namespace,\n    config.appServer.migrationJob",
+    );
+    expect(deployScript).toContain('"Migration",');
+    expect(deployScript).not.toContain(
+      '"--for=condition=complete",\n    `job/${config.appServer.migrationJob}`',
+    );
   });
 
   it("renders a separated Kubernetes Sandbox Server control plane", () => {
@@ -802,7 +820,13 @@ describe("Halo deployment automation", () => {
       "pgaadauth_create_principal_with_oid('openhands-halo-primary-runtime-mi', 'primary-object-id', 'service', false, false)",
     );
     expect(job).toContain(
-      'ALTER DATABASE openhands_halo_ppe OWNER TO "openhands-halo-ppe-runtime-mi"',
+      "SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'openhands_halo_enterprise_ppe'",
+    );
+    expect(job).toContain(
+      'createdb --owner="openhands-halo-ppe-runtime-mi" openhands_halo_enterprise_ppe',
+    );
+    expect(job).toContain(
+      'ALTER DATABASE openhands_halo_enterprise_ppe OWNER TO "openhands-halo-ppe-runtime-mi"',
     );
     expect(job).toContain(
       'GRANT USAGE, CREATE ON SCHEMA public TO "openhands-halo-ppe-runtime-mi"',
@@ -811,6 +835,32 @@ describe("Halo deployment automation", () => {
       'GRANT USAGE, CREATE ON SCHEMA public TO "openhands-halo-primary-runtime-mi"',
     );
     expect(job).not.toContain("DB_PASS");
+    expect(job).not.toContain("openhands_halo_ppe ");
+    expect(job).not.toContain("openhands_halo_primary ");
+  });
+
+  it("assigns Enterprise dedicated databases while retaining legacy names only as metadata", () => {
+    expect(haloConfig.environments.candidate.enterpriseDatabase).toBe(
+      "openhands_halo_enterprise_ppe",
+    );
+    expect(haloConfig.environments.candidate.legacyDatabase).toBe(
+      "openhands_halo_ppe",
+    );
+    expect(haloConfig.environments.primary.enterpriseDatabase).toBe(
+      "openhands_halo_enterprise_primary",
+    );
+    expect(haloConfig.environments.primary.legacyDatabase).toBe(
+      "openhands_halo_primary",
+    );
+    expect(() =>
+      validateEnterpriseDatabaseConfig("candidate", {
+        enterpriseDatabase: "openhands_halo_ppe",
+        legacyDatabase: "openhands_halo_ppe",
+      }),
+    ).toThrow(/must be distinct from the preserved legacy database/);
+    expect(deployScript).toContain(
+      "Enterprise database=${env.enterpriseDatabase}; legacy database preserved=${env.legacyDatabase}",
+    );
   });
 
   it("uses retained Azure Files storage for conversation state", () => {

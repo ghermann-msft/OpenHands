@@ -7,7 +7,7 @@ candidate-to-primary promotion:
 npm run halo -- bootstrap
 npm run halo -- bootstrap-ci --github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path-to-pem>
 npm run halo -- build --ref HEAD
-npm run halo -- deploy-candidate --digest sha256:<digest>
+npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --app-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
 npm run halo -- promote
 npm run halo -- status
 ```
@@ -27,14 +27,32 @@ does not match the configured isolation boundary. Routine `build`,
 `deploy-candidate`, and `promote` commands use only Kubernetes access and do
 not repeat the Azure, Entra, Key Vault, or Front Door bootstrap.
 
-`deploy-candidate` installs that digest into the isolated PPE namespace,
+`deploy-candidate` installs the four immutable image digests into the isolated PPE namespace,
 mounting Key Vault secrets through the Azure Secrets Store CSI driver, and
-waits for the StatefulSet and PPE endpoint to become ready.
+runs the Enterprise database migration before changing any runtime component.
+Migration failures print the Job logs and Kubernetes diagnostics as soon as
+the Job fails instead of waiting for the deployment timeout.
 
-`promote` reads the image digest actually running in PPE and deploys that exact
-reference to primary. It refuses mutable tags and does not rebuild. Candidate
+`promote` reads the four image digests actually running in PPE and deploys
+those exact references to primary. It refuses mutable tags and does not rebuild. Candidate
 and primary use separate namespaces, PVCs, Entra credentials, cookie keys,
 internal API keys, settings encryption keys, and Automation KV keys.
+
+## Enterprise database ownership
+
+The Enterprise app server and its migration Job exclusively use the dedicated
+database named by each environment's `enterpriseDatabase` setting. PPE uses
+`openhands_halo_enterprise_ppe`; primary is configured analogously but remains
+fail-closed until all production secrets and application metadata are
+provisioned. PostgreSQL bootstrap idempotently creates each configured
+Enterprise database and grants its environment-specific workload identity
+ownership and schema access.
+
+The former standalone composition databases are recorded only as
+`legacyDatabase` metadata. Deployment, migration, and bootstrap paths never
+connect to, stamp, alter, or grant against those databases. They remain
+untouched for rollback and data recovery; incompatible Alembic lineages are
+not repaired with conditional migration logic.
 
 ## GitHub Actions deployment loop
 
