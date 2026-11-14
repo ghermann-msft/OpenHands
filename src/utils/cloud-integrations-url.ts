@@ -1,7 +1,5 @@
 import type { Backend } from "#/api/backend-registry/types";
 
-export const CANVAS_INTEGRATIONS_SETTINGS_PATH = "/settings/integrations";
-
 /**
  * The cloud instance's Settings > Integrations page. `org` is consumed by the
  * cloud settings loader so the page opens on the org that is active here

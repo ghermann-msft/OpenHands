@@ -104,19 +104,6 @@ export function imageReference(loginServer, repository, digest) {
   return `${loginServer}/${repository}@${normalizeDigest(digest)}`;
 }
 
-export function validateEnterpriseSourcePin() {
-  if (!/^[a-f0-9]{40}$/.test(config.source.enterpriseRef)) {
-    throw new Error(
-      `Enterprise source must use an immutable 40-character commit SHA, received: ${config.source.enterpriseRef}`,
-    );
-  }
-  if (!config.source.enterpriseRevisionValidated) {
-    throw new Error(
-      "Enterprise source pin is blocked until one reviewed commit contains Halo Azure identity, trusted identity, remote Sandbox Server composition, GitHub OAuth reconciliation, and profile-resolution fixes",
-    );
-  }
-}
-
 function resolveCommit(ref) {
   return run("git", ["rev-parse", `${ref}^{commit}`], { capture: true });
 }
@@ -683,15 +670,12 @@ function ensureEntraApplication(environment) {
 export function renderBuildJob({ commit }) {
   const short = commit.slice(0, 9);
   const agentServerShort = config.source.agentServerSdkRef.slice(0, 9);
-  const enterpriseShort = config.source.enterpriseRef.slice(0, 9);
   const sandboxShort = config.source.sandboxServerRef.slice(0, 9);
   const build = config.build;
   const image = `${config.azure.acrLoginServer}/${build.repository}:${short}`;
   const cache = `${config.azure.acrLoginServer}/${build.repository}:${build.cacheTag}`;
   const agentServerImage = `${config.azure.acrLoginServer}/${build.agentServerRepository}:${agentServerShort}`;
   const agentServerCache = `${config.azure.acrLoginServer}/${build.agentServerRepository}:${build.agentServerCacheTag}`;
-  const appServerImage = `${config.azure.acrLoginServer}/${build.appServerRepository}:${enterpriseShort}`;
-  const appServerCache = `${config.azure.acrLoginServer}/${build.appServerRepository}:${build.appServerCacheTag}`;
   const sandboxImage = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${sandboxShort}`;
   const sandboxCache = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${build.sandboxServerCacheTag}`;
   return `apiVersion: batch/v1
@@ -756,55 +740,6 @@ spec:
           volumeMounts:
             - name: sandbox-source
               mountPath: /sandbox-server
-        - name: enterprise-source
-          image: ${build.gitImage}
-          command: ["/bin/sh", "-ec"]
-          args:
-            - |
-              git clone --filter=blob:none --no-checkout ${config.source.enterpriseRepository} /enterprise
-              cd /enterprise
-              git checkout --detach ${config.source.enterpriseRef}
-              test "$(git rev-parse HEAD)" = "${config.source.enterpriseRef}"
-              grep -q "azure-identity==1.25.2" pyproject.toml
-              grep -q "AZURE_POSTGRES_SCOPE" openhands/app_server/services/db_session_injector.py
-              grep -q "_get_azure_postgres_token" openhands/app_server/services/db_session_injector.py
-              grep -q "_create_async_azure_db_connection" openhands/app_server/services/db_session_injector.py
-              grep -q "DB_AZURE_IDENTITY" migrations/env.py
-              test -f migrations/versions/216_reconcile_github_oauth_provider.py
-              grep -Eq "revision(: str)? = '216'" migrations/versions/216_reconcile_github_oauth_provider.py
-              grep -Eq "down_revision(: str.*)? = '215'" migrations/versions/216_reconcile_github_oauth_provider.py
-              grep -q "reconcile_github_oauth_provider" migrations/versions/216_reconcile_github_oauth_provider.py
-              test -f tests/unit/test_migration_216_reconcile_github_oauth_provider.py
-              test -f migrations/versions/217_add_trusted_identity_mappings.py
-              grep -Eq "revision(: str)? = '217'" migrations/versions/217_add_trusted_identity_mappings.py
-              grep -Eq "down_revision(: str.*)? = '216'" migrations/versions/217_add_trusted_identity_mappings.py
-              test -f storage/trusted_identity_mapping_store.py
-              grep -q "OH_TRUSTED_IDENTITY_MAPPINGS" storage/trusted_identity_mapping_store.py
-              grep -q "reconcile_trusted_identity_mappings_from_env" storage/trusted_identity_mapping_store.py
-              test -f tests/unit/storage/test_trusted_identity_mapping_store.py
-              grep -q "_reconcile_trusted_identity_mappings" server/app_lifespan/saas_app_lifespan_service.py
-              grep -q "OH_WEB_CLIENT_FEATURE_FLAGS_ENABLE_OAUTH_V2_LOGIN" server/auth/constants.py
-              grep -q "SANDBOX_SERVER_URL" openhands/app_server/config.py
-              grep -q "RemoteSandboxServiceInjector" openhands/app_server/config.py
-              grep -q "RemoteSandboxSpecServiceInjector" openhands/app_server/config.py
-              test -f tests/unit/app_server/test_remote_sandbox_config.py
-              grep -q "test_sandbox_server_url_selects_remote_sandbox_services" tests/unit/app_server/test_remote_sandbox_config.py
-              grep -Fq "explicit = os.getenv('OH_DEPLOYMENT_MODE', '').strip().lower()" server/constants.py
-              grep -Fq "if DEPLOYMENT_MODE != 'self_hosted' and not self.posthog_client_key:" server/config.py
-              grep -Fq "raise ValueError('Missing posthog client key in env')" server/config.py
-              test -f server/auth/trusted_identity.py
-              grep -q "saas_user_auth_from_trusted_identity" server/auth/saas_user_auth.py
-              grep -q "public_skills = tuple(load_public_skills())" storage/agent_profile_resolution.py
-              grep -q "skills=lambda: list(public_skills)" storage/agent_profile_resolution.py
-              grep -q "public_skill_names=lambda:" storage/agent_profile_resolution.py
-              ! grep -q "discover_profile_skills" storage/agent_profile_resolution.py
-              chown -R 1000:1000 /enterprise
-          securityContext:
-            runAsUser: 0
-            runAsGroup: 0
-          volumeMounts:
-            - name: enterprise-source
-              mountPath: /enterprise
         - name: agent-server-source
           image: ${build.gitImage}
           command: ["/bin/sh", "-ec"]
@@ -846,7 +781,6 @@ spec:
             - |
               canvas_metadata=/tmp/canvas-build-metadata.json
               agent_server_metadata=/tmp/agent-server-build-metadata.json
-              app_server_metadata=/tmp/app-server-build-metadata.json
               sandbox_metadata=/tmp/sandbox-build-metadata.json
               buildkitd \\
                 --addr unix:///run/buildkit/buildkitd.sock &
@@ -907,23 +841,6 @@ spec:
               fi
               buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
                 --frontend dockerfile.v0 \\
-                --local context=/enterprise \\
-                --local dockerfile=/enterprise \\
-                --opt filename=containers/app/Dockerfile \\
-                --opt target=enterprise-server \\
-                --opt platform=linux/amd64 \\
-                --import-cache type=registry,ref=${appServerCache} \\
-                --export-cache type=registry,ref=${appServerCache},mode=max,compression=zstd,ignore-error=true \\
-                --metadata-file "$app_server_metadata" \\
-                --output type=image,name=${appServerImage},push=true
-              app_server_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$app_server_metadata")"
-              if ! printf '%s' "$app_server_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
-                echo "BuildKit did not report an immutable Enterprise App Server image digest" >&2
-                cat "$app_server_metadata" >&2
-                exit 1
-              fi
-              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
-                --frontend dockerfile.v0 \\
                 --local context=/sandbox-server \\
                 --local dockerfile=/sandbox-server \\
                 --opt filename=containers/app/Dockerfile \\
@@ -942,10 +859,9 @@ spec:
                 cat "$sandbox_metadata" >&2
                 exit 1
               fi
-              printf '{"canvas":"%s","agentServer":"%s","appServer":"%s","sandboxServer":"%s"}' "$canvas_digest" "$agent_server_digest" "$app_server_digest" "$sandbox_digest" > /dev/termination-log
+              printf '{"canvas":"%s","agentServer":"%s","sandboxServer":"%s"}' "$canvas_digest" "$agent_server_digest" "$sandbox_digest" > /dev/termination-log
               printf 'CANVAS_IMAGE_DIGEST=%s\\n' "$canvas_digest"
               printf 'AGENT_SERVER_IMAGE_DIGEST=%s\\n' "$agent_server_digest"
-              printf 'APP_SERVER_IMAGE_DIGEST=%s\\n' "$app_server_digest"
               printf 'SANDBOX_SERVER_IMAGE_DIGEST=%s\\n' "$sandbox_digest"
           env:
             - name: DOCKER_CONFIG
@@ -968,9 +884,6 @@ spec:
             - name: sandbox-source
               mountPath: /sandbox-server
               readOnly: true
-            - name: enterprise-source
-              mountPath: /enterprise
-              readOnly: true
             - name: agent-server-source
               mountPath: /agent-server
               readOnly: true
@@ -982,9 +895,6 @@ spec:
           emptyDir:
             sizeLimit: 8Gi
         - name: sandbox-source
-          emptyDir:
-            sizeLimit: 8Gi
-        - name: enterprise-source
           emptyDir:
             sizeLimit: 8Gi
         - name: agent-server-source
@@ -1006,7 +916,6 @@ export function buildDigestsFromPodList(podList) {
       return {
         canvas: normalizeDigest(digests.canvas),
         agentServer: normalizeDigest(digests.agentServer),
-        appServer: normalizeDigest(digests.appServer),
         sandboxServer: normalizeDigest(digests.sandboxServer),
       };
     } catch {
@@ -1248,32 +1157,16 @@ function bootstrapBuild() {
   return builder;
 }
 
-function secretProviderEntries(environment) {
+export function renderSecretProviderClass(environment, runtimeClientId) {
   const env = config.environments[environment];
-  return [
+  const entries = [
     ["clientSecret", env.secrets.clientSecret],
     ["cookieSecret", env.secrets.cookieSecret],
     ["sessionApiKey", env.secrets.sessionApiKey],
     ["ohSecretKey", env.secrets.ohSecretKey],
-    ["jwtSecret", env.secrets.jwtSecret],
     ["automationKvSecret", env.secrets.automationKvSecret],
     ["trustedIdentityAssertion", env.secrets.trustedIdentityAssertion],
-    ["trustedIdentityMappings", env.secrets.trustedIdentityMappings],
-    ["githubAppId", env.githubApp.secrets.appId],
-    ["githubAppClientId", env.githubApp.secrets.clientId],
-    ["githubAppClientSecret", env.githubApp.secrets.clientSecret],
-    ["githubAppPrivateKey", env.githubApp.secrets.privateKey],
-    ["githubAppWebhookSecret", env.githubApp.secrets.webhookSecret],
-  ].filter(([, name]) => Boolean(name));
-}
-
-export function requiredSyncedSecretKeys(environment) {
-  return secretProviderEntries(environment).map(([alias]) => alias);
-}
-
-export function renderSecretProviderClass(environment, runtimeClientId) {
-  const env = config.environments[environment];
-  const entries = secretProviderEntries(environment);
+  ];
   return `apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
@@ -1295,118 +1188,6 @@ ${entries.map(([alias]) => `        - objectName: ${alias}\n          key: ${ali
       array:
 ${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n          objectAlias: ${alias}\n          objectType: secret`).join("\n")}
 `;
-}
-
-export function renderSecretSyncPod(environment, digest) {
-  const env = config.environments[environment];
-  const image = imageReference(
-    config.azure.acrLoginServer,
-    config.build.appServerRepository,
-    digest,
-  );
-  const requiredKeys = requiredSyncedSecretKeys(environment).join(" ");
-  return `apiVersion: v1
-kind: Pod
-metadata:
-  name: openhands-halo-secret-sync
-  namespace: ${env.namespace}
-  labels:
-    app.kubernetes.io/name: openhands-halo
-    app.kubernetes.io/component: secret-sync
-    azure.workload.identity/use: "true"
-spec:
-  restartPolicy: Never
-  serviceAccountName: ${env.serviceAccount}
-  automountServiceAccountToken: true
-  nodeSelector:
-    kubernetes.io/os: linux
-    kubernetes.io/arch: amd64
-    agentpool: ${config.runtime.nodePool}
-  tolerations:
-    - key: ${config.runtime.nodeTaintKey}
-      operator: Equal
-      value: ${config.runtime.nodeTaintValue}
-      effect: NoSchedule
-  containers:
-    - name: secret-sync
-      image: ${image}
-      imagePullPolicy: IfNotPresent
-      command: ["/bin/sh", "-ec"]
-      args:
-        - |
-          for key in ${requiredKeys}; do
-            test -s "/mnt/secrets-store/$key"
-          done
-          sleep 3600
-      volumeMounts:
-        - name: halo-secrets-store
-          mountPath: /mnt/secrets-store
-          readOnly: true
-      resources:
-        requests:
-          cpu: 10m
-          memory: 32Mi
-        limits:
-          cpu: 100m
-          memory: 128Mi
-  volumes:
-    - name: halo-secrets-store
-      csi:
-        driver: secrets-store.csi.k8s.io
-        readOnly: true
-        volumeAttributes:
-          secretProviderClass: openhands-halo-secrets
-`;
-}
-
-export function validateDistinctAppServerSecrets(environment, secrets) {
-  if (
-    secrets.jwtSecret &&
-    secrets.jwtSecret === secrets.trustedIdentityAssertion
-  ) {
-    throw new Error(
-      `${environment} requires distinct JWT_SECRET and trusted identity assertion Key Vault aliases`,
-    );
-  }
-}
-
-export function validateAppServerDeploymentConfig(environment) {
-  const env = config.environments[environment];
-  const blockers = [];
-  if (config.appServer.deploymentMode !== "self_hosted") {
-    blockers.push(
-      "OH_DEPLOYMENT_MODE=self_hosted so Halo does not claim cloud telemetry behavior",
-    );
-  }
-  if (!env.secrets.jwtSecret) {
-    blockers.push(
-      "a dedicated Enterprise JWT_SECRET Key Vault alias before Halo can deploy the app server",
-    );
-  }
-  if (!env.secrets.trustedIdentityMappings) {
-    blockers.push(
-      "a dedicated OH_TRUSTED_IDENTITY_MAPPINGS Key Vault alias before Halo can bootstrap trusted identities",
-    );
-  }
-  validateDistinctAppServerSecrets(environment, env.secrets);
-  const missingGithubAppFields = [
-    ["slug", env.githubApp.slug],
-    ["appId", env.githubApp.secrets.appId],
-    ["clientId", env.githubApp.secrets.clientId],
-    ["clientSecret", env.githubApp.secrets.clientSecret],
-    ["privateKey", env.githubApp.secrets.privateKey],
-    ["webhookSecret", env.githubApp.secrets.webhookSecret],
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
-  if (missingGithubAppFields.length > 0) {
-    blockers.push(
-      `a dedicated GitHub App before Halo can enable OAuth v2 and Canvas integrations; missing: ${missingGithubAppFields.join(", ")}`,
-    );
-  }
-  if (blockers.length > 0) {
-    throw new Error(`${environment} requires ${blockers.join("; and ")}`);
-  }
 }
 
 export function renderHelmValues(environment, digest, runtimeClientId) {
@@ -1488,11 +1269,9 @@ config:
           name: openhands-halo-secrets
           key: trustedIdentityAssertion
     - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
-      value: ${config.appServer.trustedIdentityIssuer}
+      value: ${config.sandboxServer.trustedIdentityIssuer}
     - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
-      value: ${config.appServer.trustedIdentityAudience}
-    - name: APP_SERVER_URL
-      value: http://${config.appServer.serviceName}:${config.appServer.port}
+      value: ${config.sandboxServer.trustedIdentityAudience}
     - name: SANDBOX_SERVER_URL
       value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
     - name: AGENT_CANVAS_CLOUD_URL
@@ -1553,286 +1332,6 @@ extraVolumeMounts:
 `;
 }
 
-function renderAppServerDatabaseEnv(environment, runtimeClientId, indent) {
-  const env = config.environments[environment];
-  const entries = [
-    ["AZURE_CLIENT_ID", runtimeClientId],
-    ["DB_AZURE_IDENTITY", "true"],
-    ["DB_HOST", config.postgres.fqdn],
-    ["DB_PORT", "5432"],
-    ["DB_NAME", env.database],
-    ["DB_USER", env.runtimeIdentity],
-    ["DB_SSL_MODE", "require"],
-  ];
-  return entries
-    .map(
-      ([name, value]) =>
-        `${indent}- name: ${name}\n${indent}  value: ${quote(value)}`,
-    )
-    .join("\n");
-}
-
-function renderSecretEnv(name, key, indent) {
-  return `${indent}- name: ${name}
-${indent}  valueFrom:
-${indent}    secretKeyRef:
-${indent}      name: openhands-halo-secrets
-${indent}      key: ${key}`;
-}
-
-function renderAppServerMigrationSecretExports(indent) {
-  return [
-    'export JWT_SECRET="$(cat /mnt/secrets-store/jwtSecret)"',
-    'export GITHUB_APP_CLIENT_ID="$(cat /mnt/secrets-store/githubAppClientId)"',
-    'export GITHUB_APP_CLIENT_SECRET="$(cat /mnt/secrets-store/githubAppClientSecret)"',
-  ]
-    .map((line) => `${indent}${line}`)
-    .join("\n");
-}
-
-function renderGithubAppRuntimeEnv(environment, indent) {
-  const env = config.environments[environment];
-  return [
-    `${indent}- name: OH_WEB_CLIENT_FEATURE_FLAGS_ENABLE_OAUTH_V2_LOGIN\n${indent}  value: "true"`,
-    `${indent}- name: OH_WEB_CLIENT_FEATURE_FLAGS_ENABLE_CANVAS_INTEGRATIONS\n${indent}  value: "true"`,
-    `${indent}- name: GITHUB_APP_SLUG\n${indent}  value: ${quote(env.githubApp.slug ?? "")}`,
-    renderSecretEnv("GITHUB_APP_ID", "githubAppId", indent),
-    renderSecretEnv("GITHUB_APP_CLIENT_ID", "githubAppClientId", indent),
-    renderSecretEnv(
-      "GITHUB_APP_CLIENT_SECRET",
-      "githubAppClientSecret",
-      indent,
-    ),
-    renderSecretEnv("GITHUB_APP_PRIVATE_KEY", "githubAppPrivateKey", indent),
-    renderSecretEnv(
-      "GITHUB_APP_WEBHOOK_SECRET",
-      "githubAppWebhookSecret",
-      indent,
-    ),
-  ].join("\n");
-}
-
-export function githubOAuthCallbackInstructions(environment) {
-  const env = config.environments[environment];
-  return `After migration 168, query ${env.database} without selecting auth_providers.details:
-SELECT id, title, enabled, is_idp
-FROM auth_providers
-WHERE kind = 'OAuthProviderDetails'
-  AND details->>'provider_type' = 'github'
-ORDER BY id;
-Register https://${env.frontDoorHost}/oauth/<id>/callback in the dedicated ${environment} GitHub App, replacing <id> with that environment's returned row ID.
-The webhook URL for that same app is https://${env.frontDoorHost}/integration/github/events.`;
-}
-
-export function renderAppServerMigrationJob(
-  environment,
-  digest,
-  runtimeClientId,
-) {
-  const env = config.environments[environment];
-  const app = config.appServer;
-  const image = imageReference(
-    config.azure.acrLoginServer,
-    config.build.appServerRepository,
-    digest,
-  );
-  return `apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ${app.migrationJob}
-  namespace: ${env.namespace}
-  labels:
-    app.kubernetes.io/name: ${app.serviceName}
-    app.kubernetes.io/component: migration
-spec:
-  backoffLimit: 2
-  activeDeadlineSeconds: 900
-  ttlSecondsAfterFinished: 600
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: ${app.serviceName}
-        app.kubernetes.io/component: migration
-        azure.workload.identity/use: "true"
-    spec:
-      restartPolicy: Never
-      serviceAccountName: ${env.serviceAccount}
-      automountServiceAccountToken: true
-      nodeSelector:
-        kubernetes.io/os: linux
-        kubernetes.io/arch: amd64
-        agentpool: ${config.runtime.nodePool}
-      tolerations:
-        - key: ${config.runtime.nodeTaintKey}
-          operator: Equal
-          value: ${config.runtime.nodeTaintValue}
-          effect: NoSchedule
-      containers:
-        - name: migrate
-          image: ${image}
-          imagePullPolicy: IfNotPresent
-          command: ["/bin/sh", "-ec"]
-          args:
-            - |
-${renderAppServerMigrationSecretExports("              ")}
-              cd /app
-              exec alembic upgrade head
-          env:
-${renderAppServerDatabaseEnv(environment, runtimeClientId, "            ")}
-          volumeMounts:
-            - name: app-server-secrets
-              mountPath: /mnt/secrets-store
-              readOnly: true
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 1Gi
-      volumes:
-        - name: app-server-secrets
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: openhands-halo-secrets
-`;
-}
-
-export function renderAppServerResources(environment, digest, runtimeClientId) {
-  const env = config.environments[environment];
-  const app = config.appServer;
-  const image = imageReference(
-    config.azure.acrLoginServer,
-    config.build.appServerRepository,
-    digest,
-  );
-  return `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${app.serviceName}
-  namespace: ${env.namespace}
-spec:
-  replicas: ${app.replicas}
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: ${app.serviceName}
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: ${app.serviceName}
-        azure.workload.identity/use: "true"
-    spec:
-      serviceAccountName: ${env.serviceAccount}
-      automountServiceAccountToken: true
-      nodeSelector:
-        kubernetes.io/os: linux
-        kubernetes.io/arch: amd64
-        agentpool: ${config.runtime.nodePool}
-      tolerations:
-        - key: ${config.runtime.nodeTaintKey}
-          operator: Equal
-          value: ${config.runtime.nodeTaintValue}
-          effect: NoSchedule
-      containers:
-        - name: app-server
-          image: ${image}
-          imagePullPolicy: IfNotPresent
-          command: ["/app/entrypoint.sh"]
-          args: ["uvicorn", "saas_server:app", "--host", "0.0.0.0", "--port", "${app.port}"]
-          ports:
-            - name: http
-              containerPort: ${app.port}
-          env:
-            - name: NO_SETUP
-              value: "true"
-            - name: OPENHANDS_CONFIG_CLS
-              value: ${app.configClass}
-            - name: OH_DEPLOYMENT_MODE
-              value: ${app.deploymentMode}
-            - name: RUN_MIGRATIONS_ON_STARTUP
-              value: "false"
-${renderAppServerDatabaseEnv(environment, runtimeClientId, "            ")}
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: openhands-halo-secrets
-                  key: jwtSecret
-            - name: SANDBOX_SERVER_URL
-              value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
-            - name: LLM_MODEL
-              value: azure/${config.azureOpenAI.deployment}
-            - name: LLM_BASE_URL
-              value: ${config.azureOpenAI.endpoint}
-            - name: LLM_API_VERSION
-              value: ${config.azureOpenAI.apiVersion}
-            - name: LLM_AUTH_TYPE
-              value: azure_workload_identity
-            - name: HIDE_LLM_SETTINGS
-              value: "true"
-            - name: OH_ALLOW_USER_LLM_CONFIGURATION
-              value: "false"
-            - name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: openhands-halo-secrets
-                  key: trustedIdentityAssertion
-            - name: OH_TRUSTED_IDENTITY_MAPPINGS
-              valueFrom:
-                secretKeyRef:
-                  name: openhands-halo-secrets
-                  key: trustedIdentityMappings
-            - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
-              value: ${app.trustedIdentityIssuer}
-            - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
-              value: ${app.trustedIdentityAudience}
-            - name: OH_TRUSTED_IDENTITY_ASSERTION_HEADER
-              value: ${app.trustedIdentityHeader}
-            - name: OH_TRUSTED_IDENTITY_ASSERTION_MAX_LIFETIME_SECONDS
-              value: "${app.trustedIdentityMaxLifetimeSeconds}"
-            - name: OH_TRUSTED_IDENTITY_ASSERTION_CLOCK_SKEW_SECONDS
-              value: "${app.trustedIdentityClockSkewSeconds}"
-            - name: OH_WEB_URL
-              value: https://${env.frontDoorHost}
-            - name: OH_PERMITTED_CORS_ORIGINS_0
-              value: https://${env.frontDoorHost}
-${renderGithubAppRuntimeEnv(environment, "            ")}
-          readinessProbe:
-            httpGet:
-              path: ${app.healthPath}
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /alive
-              port: http
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          resources:
-            requests:
-              cpu: 500m
-              memory: 1Gi
-            limits:
-              cpu: "2"
-              memory: 4Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${app.serviceName}
-  namespace: ${env.namespace}
-spec:
-  selector:
-    app.kubernetes.io/name: ${app.serviceName}
-  ports:
-    - name: http
-      port: ${app.port}
-      targetPort: http
-`;
-}
-
 export function renderSandboxServerResources(
   environment,
   digest,
@@ -1885,6 +1384,45 @@ spec:
               value: kubernetes
             - name: SERVE_FRONTEND
               value: "false"
+            - name: DB_AZURE_IDENTITY
+              value: "true"
+            - name: DB_HOST
+              value: ${config.postgres.fqdn}
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: ${env.database}
+            - name: DB_USER
+              value: ${env.runtimeIdentity}
+            - name: DB_SSL_MODE
+              value: require
+            - name: LLM_MODEL
+              value: azure/${config.azureOpenAI.deployment}
+            - name: LLM_BASE_URL
+              value: ${config.azureOpenAI.endpoint}
+            - name: LLM_API_VERSION
+              value: ${config.azureOpenAI.apiVersion}
+            - name: LLM_AUTH_TYPE
+              value: azure_workload_identity
+            - name: HIDE_LLM_SETTINGS
+              value: "true"
+            - name: OH_ALLOW_USER_LLM_CONFIGURATION
+              value: "false"
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-halo-secrets
+                  key: trustedIdentityAssertion
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
+              value: ${sandbox.trustedIdentityIssuer}
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
+              value: ${sandbox.trustedIdentityAudience}
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_HEADER
+              value: ${sandbox.trustedIdentityHeader}
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_MAX_LIFETIME_SECONDS
+              value: "${sandbox.trustedIdentityMaxLifetimeSeconds}"
+            - name: OH_TRUSTED_IDENTITY_ASSERTION_CLOCK_SKEW_SECONDS
+              value: "${sandbox.trustedIdentityClockSkewSeconds}"
             - name: OH_SANDBOX_KIND
               value: openhands.app_server.sandbox.kubernetes_sandbox_service.KubernetesSandboxServiceInjector
             - name: OH_SANDBOX_SPEC_KIND
@@ -3094,35 +2632,7 @@ function printResult(result) {
   if (result.stderr) process.stderr.write(result.stderr);
 }
 
-function printJobDiagnostics(namespace, job) {
-  printResult(
-    tryRun("kubectl", [
-      "-n",
-      namespace,
-      "logs",
-      `job/${job}`,
-      "--all-containers=true",
-      "--prefix=true",
-    ]),
-  );
-  printResult(tryRun("kubectl", ["-n", namespace, "describe", "job", job]));
-}
-
-function printPodDiagnostics(namespace, pod) {
-  printResult(
-    tryRun("kubectl", [
-      "-n",
-      namespace,
-      "logs",
-      pod,
-      "--all-containers=true",
-      "--prefix=true",
-    ]),
-  );
-  printResult(tryRun("kubectl", ["-n", namespace, "describe", "pod", pod]));
-}
-
-async function waitForJob(namespace, job, timeoutMs, purpose = "Build") {
+async function waitForJob(namespace, job, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const state = JSON.parse(
@@ -3145,9 +2655,8 @@ async function waitForJob(namespace, job, timeoutMs, purpose = "Build") {
           condition.type === "Failed" && condition.status === "True",
       )
     ) {
-      printJobDiagnostics(namespace, job);
       throw new Error(
-        `${purpose} Job ${job} failed: ${conditions
+        `Build Job ${job} failed: ${conditions
           .filter((condition) => condition.status === "True")
           .map((condition) => `${condition.reason}: ${condition.message}`)
           .join("; ")}`,
@@ -3155,115 +2664,10 @@ async function waitForJob(namespace, job, timeoutMs, purpose = "Build") {
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
-  printJobDiagnostics(namespace, job);
-  throw new Error(`Timed out waiting for ${purpose.toLowerCase()} Job ${job}`);
-}
-
-async function waitForSyncedSecret(
-  namespace,
-  pod,
-  secret,
-  requiredKeys,
-  timeoutMs,
-) {
-  const deadline = Date.now() + timeoutMs;
-  let missingKeys = requiredKeys;
-  while (Date.now() < deadline) {
-    const podResult = tryRun("kubectl", [
-      "-n",
-      namespace,
-      "get",
-      "pod",
-      pod,
-      "-o",
-      "json",
-    ]);
-    if (podResult.status === 0) {
-      const state = JSON.parse(podResult.stdout);
-      if (state.status?.phase === "Failed") {
-        printPodDiagnostics(namespace, pod);
-        throw new Error(
-          `Secret sync Pod ${namespace}/${pod} failed before ${secret} was synchronized`,
-        );
-      }
-    }
-
-    const secretResult = tryRun("kubectl", [
-      "-n",
-      namespace,
-      "get",
-      "secret",
-      secret,
-      "-o",
-      "json",
-    ]);
-    if (secretResult.status === 0) {
-      const data = JSON.parse(secretResult.stdout).data ?? {};
-      missingKeys = requiredKeys.filter((key) => !data[key]);
-      if (missingKeys.length === 0) return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-  }
-  printPodDiagnostics(namespace, pod);
-  throw new Error(
-    `Timed out waiting for ${namespace}/${secret} keys to synchronize: ${missingKeys.join(", ")}`,
-  );
-}
-
-async function prepareSyncedSecret(environment, appServerDigest) {
-  const env = config.environments[environment];
-  const pod = "openhands-halo-secret-sync";
-  const secret = "openhands-halo-secrets";
-  kubectl([
-    "-n",
-    env.namespace,
-    "delete",
-    "pod",
-    pod,
-    "--ignore-not-found",
-    "--wait=true",
-  ]);
-  kubectl([
-    "-n",
-    env.namespace,
-    "delete",
-    "secret",
-    secret,
-    "--ignore-not-found",
-    "--wait=true",
-  ]);
-  kubectl(["apply", "-f", "-"], {
-    input: renderSecretSyncPod(environment, appServerDigest),
-  });
-  try {
-    await waitForSyncedSecret(
-      env.namespace,
-      pod,
-      secret,
-      requiredSyncedSecretKeys(environment),
-      5 * 60_000,
-    );
-  } catch (error) {
-    cleanupSecretSyncPod(environment);
-    throw error;
-  }
-}
-
-function cleanupSecretSyncPod(environment) {
-  const env = config.environments[environment];
-  kubectl([
-    "-n",
-    env.namespace,
-    "delete",
-    "pod",
-    "openhands-halo-secret-sync",
-    "--ignore-not-found",
-    "--wait=true",
-  ]);
+  throw new Error(`Timed out waiting for build Job ${job}`);
 }
 
 async function build(args) {
-  validateEnterpriseSourcePin();
   const ref = option(args, "--ref", "HEAD");
   const commit = resolveCommit(ref);
   verifyCommitIsPushed(commit);
@@ -3323,7 +2727,6 @@ async function build(args) {
   const digests = buildDigestsFromPodList(pods);
   console.log(`CANVAS_IMAGE_DIGEST=${digests.canvas}`);
   console.log(`AGENT_SERVER_IMAGE_DIGEST=${digests.agentServer}`);
-  console.log(`APP_SERVER_IMAGE_DIGEST=${digests.appServer}`);
   console.log(`SANDBOX_SERVER_IMAGE_DIGEST=${digests.sandboxServer}`);
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
@@ -3347,6 +2750,26 @@ async function waitForReady(environment) {
   }
   throw new Error(
     `Timed out waiting for ${env.namespace}/openhands-halo readiness: ${lastError}`,
+  );
+}
+
+async function waitForSecretKey(namespace, secret, key) {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const result = tryRun("kubectl", [
+      "-n",
+      namespace,
+      "get",
+      "secret",
+      secret,
+      "-o",
+      `jsonpath={.data.${key}}`,
+    ]);
+    if (result.status === 0 && result.stdout.trim()) return;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error(
+    `Timed out waiting for ${namespace}/${secret} key ${key} to synchronize`,
   );
 }
 
@@ -3380,12 +2803,9 @@ async function deploy(
   environment,
   canvasDigest,
   agentServerDigest,
-  appServerDigest,
   sandboxServerDigest,
 ) {
   const env = config.environments[environment];
-  validateEnterpriseSourcePin();
-  validateAppServerDeploymentConfig(environment);
   const clientId = runtimeClientId(environment);
   kubectl(["apply", "-f", "-"], {
     input: renderSecretProviderClass(environment, clientId),
@@ -3394,54 +2814,28 @@ async function deploy(
     "-n",
     env.namespace,
     "delete",
-    "job",
-    config.appServer.migrationJob,
+    "secret",
+    "openhands-halo-secrets",
     "--ignore-not-found",
-    "--wait=true",
   ]);
-  kubectl(["apply", "-f", "-"], {
-    input: renderAppServerMigrationJob(environment, appServerDigest, clientId),
-  });
-  await waitForJob(
+  kubectl([
+    "-n",
     env.namespace,
-    config.appServer.migrationJob,
-    15 * 60_000,
-    "Migration",
+    "delete",
+    "pod",
+    "-l",
+    "app.kubernetes.io/name=agent-canvas",
+    "--ignore-not-found",
+    "--wait=false",
+  ]);
+  await waitForSecretKey(
+    env.namespace,
+    "openhands-halo-secrets",
+    "trustedIdentityAssertion",
   );
-  await prepareSyncedSecret(environment, appServerDigest);
-  try {
-    kubectl(["apply", "-f", "-"], {
-      input: renderAgentSandboxResources(environment, agentServerDigest),
-    });
-    kubectl(["apply", "-f", "-"], {
-      input: renderSandboxServerResources(
-        environment,
-        sandboxServerDigest,
-        clientId,
-      ),
-    });
-    kubectl([
-      "-n",
-      env.namespace,
-      "rollout",
-      "status",
-      `deployment/${config.sandboxServer.serviceName}`,
-      "--timeout=15m",
-    ]);
-    kubectl(["apply", "-f", "-"], {
-      input: renderAppServerResources(environment, appServerDigest, clientId),
-    });
-    kubectl([
-      "-n",
-      env.namespace,
-      "rollout",
-      "status",
-      `deployment/${config.appServer.serviceName}`,
-      "--timeout=15m",
-    ]);
-  } finally {
-    cleanupSecretSyncPod(environment);
-  }
+  kubectl(["apply", "-f", "-"], {
+    input: renderAgentSandboxResources(environment, agentServerDigest),
+  });
   const valuesPath = join(
     tmpdir(),
     `openhands-halo-${environment}-${process.pid}.yaml`,
@@ -3476,6 +2870,21 @@ async function deploy(
     "statefulset/openhands-halo",
     "--timeout=15m",
   ]);
+  kubectl(["apply", "-f", "-"], {
+    input: renderSandboxServerResources(
+      environment,
+      sandboxServerDigest,
+      clientId,
+    ),
+  });
+  kubectl([
+    "-n",
+    env.namespace,
+    "rollout",
+    "status",
+    `deployment/${config.sandboxServer.serviceName}`,
+    "--timeout=15m",
+  ]);
   removeLegacyWorkspaceRuntimeRbac(environment);
   await waitForReady(environment);
   console.log(
@@ -3485,12 +2894,8 @@ async function deploy(
     `${environment.toUpperCase()}_AGENT_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.agentServerRepository, agentServerDigest)}`,
   );
   console.log(
-    `${environment.toUpperCase()}_APP_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.appServerRepository, appServerDigest)}`,
-  );
-  console.log(
     `${environment.toUpperCase()}_SANDBOX_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.sandboxServerRepository, sandboxServerDigest)}`,
   );
-  console.log(githubOAuthCallbackInstructions(environment));
 }
 
 function candidateDigests() {
@@ -3519,18 +2924,6 @@ function candidateDigests() {
     ],
     { capture: true },
   );
-  const appServerImage = kubectl(
-    [
-      "-n",
-      env.namespace,
-      "get",
-      "deployment",
-      config.appServer.serviceName,
-      "-o",
-      "jsonpath={.spec.template.spec.containers[0].image}",
-    ],
-    { capture: true },
-  );
   const agentServerImage = kubectl(
     [
       "-n",
@@ -3545,7 +2938,6 @@ function candidateDigests() {
   );
   const canvasPrefix = `${config.azure.acrLoginServer}/${config.build.repository}@`;
   const agentServerPrefix = `${config.azure.acrLoginServer}/${config.build.agentServerRepository}@`;
-  const appServerPrefix = `${config.azure.acrLoginServer}/${config.build.appServerRepository}@`;
   const sandboxServerPrefix = `${config.azure.acrLoginServer}/${config.build.sandboxServerRepository}@`;
   if (!canvasImage.startsWith(canvasPrefix)) {
     throw new Error(
@@ -3555,11 +2947,6 @@ function candidateDigests() {
   if (!sandboxServerImage.startsWith(sandboxServerPrefix)) {
     throw new Error(
       `Candidate Sandbox Server is not deployed by immutable digest: ${sandboxServerImage}`,
-    );
-  }
-  if (!appServerImage.startsWith(appServerPrefix)) {
-    throw new Error(
-      `Candidate Enterprise App Server is not deployed by immutable digest: ${appServerImage}`,
     );
   }
   if (!agentServerImage.startsWith(agentServerPrefix)) {
@@ -3572,7 +2959,6 @@ function candidateDigests() {
     agentServer: normalizeDigest(
       agentServerImage.slice(agentServerPrefix.length),
     ),
-    appServer: normalizeDigest(appServerImage.slice(appServerPrefix.length)),
     sandboxServer: normalizeDigest(
       sandboxServerImage.slice(sandboxServerPrefix.length),
     ),
@@ -3589,27 +2975,10 @@ async function promote(args) {
     "statefulset/openhands-halo",
     "--timeout=5m",
   ]);
-  kubectl([
-    "-n",
-    env.namespace,
-    "rollout",
-    "status",
-    `deployment/${config.appServer.serviceName}`,
-    "--timeout=5m",
-  ]);
-  kubectl([
-    "-n",
-    env.namespace,
-    "rollout",
-    "status",
-    `deployment/${config.sandboxServer.serviceName}`,
-    "--timeout=5m",
-  ]);
   await waitForReady("candidate");
   const digests = candidateDigests();
   const expectedCanvasDigest = option(args, "--canvas-digest");
   const expectedAgentServerDigest = option(args, "--agent-server-digest");
-  const expectedAppServerDigest = option(args, "--app-server-digest");
   const expectedSandboxServerDigest = option(args, "--sandbox-server-digest");
   if (
     expectedCanvasDigest &&
@@ -3628,14 +2997,6 @@ async function promote(args) {
     );
   }
   if (
-    expectedAppServerDigest &&
-    normalizeDigest(expectedAppServerDigest) !== digests.appServer
-  ) {
-    throw new Error(
-      `Candidate Enterprise App Server digest changed while promotion awaited approval: expected ${expectedAppServerDigest}, found ${digests.appServer}`,
-    );
-  }
-  if (
     expectedSandboxServerDigest &&
     normalizeDigest(expectedSandboxServerDigest) !== digests.sandboxServer
   ) {
@@ -3644,13 +3005,12 @@ async function promote(args) {
     );
   }
   console.log(
-    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, ${digests.appServer}, and ${digests.sandboxServer}`,
+    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, and ${digests.sandboxServer}`,
   );
   await deploy(
     "primary",
     digests.canvas,
     digests.agentServer,
-    digests.appServer,
     digests.sandboxServer,
   );
 }
@@ -3677,8 +3037,8 @@ function usage() {
   npm run halo -- bootstrap
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
-  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --app-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
-  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --app-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest>]
+  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
+  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest>]
   npm run halo -- status`);
 }
 
@@ -3699,7 +3059,6 @@ async function main(args = process.argv.slice(2)) {
         "candidate",
         normalizeDigest(option(args, "--canvas-digest")),
         normalizeDigest(option(args, "--agent-server-digest")),
-        normalizeDigest(option(args, "--app-server-digest")),
         normalizeDigest(option(args, "--sandbox-server-digest")),
       );
       break;

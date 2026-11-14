@@ -67,14 +67,10 @@
 #                          Override in production when the external URL differs.
 #   AUTOMATION_WORKSPACE_BASE – Directory for automation run workspaces
 #                          (default: ~/.openhands/workspaces)
-#   APP_SERVER_URL        – Internal Enterprise app-server base URL. When set,
-#                          Enterprise API, OAuth, integration, SAML, Slack,
-#                          Bitbucket DC proxy, and MCP paths are routed there
-#                          and AGENT_CANVAS_CLOUD_URL is required.
-#   SANDBOX_SERVER_URL    – Internal Sandbox Server control-plane base URL,
-#                          consumed by the Enterprise app server.
+#   SANDBOX_SERVER_URL    – Internal Sandbox Server base URL. When set, /api/v1
+#                          is routed there and AGENT_CANVAS_CLOUD_URL is required.
 #   AGENT_CANVAS_CLOUD_URL – Public Halo origin used to lock Canvas to the
-#                          Enterprise app-server API.
+#                          Sandbox Server control plane.
 #   AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE – Kubernetes namespace containing
 #                          SandboxClaim Services. When set, authenticated
 #                          /sandboxes/<name> traffic is proxied to agent-server.
@@ -169,7 +165,7 @@ case "$VSCODE_PATH_SEGMENT" in
     exit 1
     ;;
 esac
-for reserved in /api /oauth /integration /saml /slack /bitbucket-dc-proxy /mcp /sockets /server_info /alive /health /ready /docs /redoc /openapi.json "${AGENT_CANVAS_BASE_PATH:-}"; do
+for reserved in /api /sockets /server_info /alive /health /ready /docs /redoc /openapi.json "${AGENT_CANVAS_BASE_PATH:-}"; do
   if [ -n "$reserved" ] && [ "$VSCODE_BASE_PATH" = "$reserved" ]; then
     log_error "VSCODE_BASE_PATH '$VSCODE_BASE_PATH' collides with an existing route and would take it over. Set a different prefix, such as /vscode."
     exit 1
@@ -569,23 +565,14 @@ if [ "${AGENT_CANVAS_ALLOW_LAN_SESSION_KEY:-false}" = "true" ]; then
 fi
 # <<< docker-session-key-policy
 SANDBOX_SERVER_URL="${SANDBOX_SERVER_URL:-}"
-APP_SERVER_URL="${APP_SERVER_URL:-}"
 AGENT_CANVAS_CLOUD_URL="${AGENT_CANVAS_CLOUD_URL:-}"
 STATIC_SERVER_CLOUD_ARGS=()
-if [ -n "$APP_SERVER_URL" ]; then
+if [ -n "$SANDBOX_SERVER_URL" ]; then
   if [ -z "$AGENT_CANVAS_CLOUD_URL" ]; then
-    log_error "AGENT_CANVAS_CLOUD_URL is required when APP_SERVER_URL is set."
+    log_error "AGENT_CANVAS_CLOUD_URL is required when SANDBOX_SERVER_URL is set."
     exit 1
   fi
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1=${APP_SERVER_URL}")
-  # Enterprise owns these root-level routes in addition to /api/v1. static-server
-  # applies the same longest-prefix routing to HTTP and WebSocket upgrades.
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/oauth=${APP_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/integration=${APP_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/saml=${APP_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/slack=${APP_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/bitbucket-dc-proxy=${APP_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/mcp=${APP_SERVER_URL}")
+  STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1=${SANDBOX_SERVER_URL}")
   STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")
   STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode none)
 fi

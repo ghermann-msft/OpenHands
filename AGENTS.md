@@ -36,6 +36,18 @@ Before adding code, confirm that the change belongs in this repository.
 
 The normal dependency direction is Agent Server contract → TypeScript client → Agent Canvas. Do not reimplement Agent Server endpoints or contracts in Canvas.
 
+## External Source License Gate
+
+Before copying, forking, building, deploying, or adding a dependency on another repository:
+
+- Read that repository's `LICENSE` and any licensing notice in its README before making changes.
+- Treat source-available code as proprietary unless its license explicitly grants the intended use. Public visibility is not permission to use, modify, distribute, or deploy it.
+- Do not use OpenHands Enterprise or any other commercially licensed component without an explicit commercial license confirmed by the user or maintainer.
+- OpenHands Enterprise may be consulted only to understand high-level product behavior when the user or maintainer explicitly approves it. Reimplement independently in the owning open-source repository; do not copy or adapt its code, structure, tests, migrations, comments, or documentation.
+- Do not create or push a fork when the license prohibits distributing copies.
+- Record the source's license, what was consulted, and the independent implementation provenance in the pull request.
+- If the license, permitted use, or distribution rights are unclear, stop before editing or deploying and ask for legal or maintainer confirmation.
+
 ## Shared Frontend Change Checklist
 
 Before changing a shared adapter, conversation builder, setting, state selector, or presentation helper:
