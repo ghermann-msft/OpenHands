@@ -1556,6 +1556,9 @@ spec:
           image: ${agentServerImage}
           args: ["--host", "0.0.0.0", "--port", "8000"]
           workingDir: /workspace
+          env:
+            - name: AGENT_CANVAS_BACKEND
+              value: http://localhost:8000
           ports:
             - containerPort: 8000
               name: agent-server

@@ -393,6 +393,9 @@ describe("Halo deployment automation", () => {
       `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${agentServerDigest}`,
     );
     expect(resources).toContain(
+      "name: AGENT_CANVAS_BACKEND\n              value: http://localhost:8000",
+    );
+    expect(resources).toContain(
       "storageClassName: openhands-halo-workspace-disk",
     );
     expect(resources).toContain("storage: 50Gi");
