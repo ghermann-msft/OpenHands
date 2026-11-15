@@ -7,6 +7,7 @@ import {
   getAgentServerSessionApiKey,
   getAgentServerWorkingDir,
   getCookieAuthCloudHost,
+  hasExternalSettingsShell,
   getLockedCloudAuthMode,
   getLockedCloudHost,
   isAuthRequired,
@@ -30,6 +31,8 @@ afterEach(() => {
     .__AGENT_CANVAS_SESSION_API_KEY__;
   delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_LOCK_TO_CLOUD__;
+  delete (window as unknown as Record<string, unknown>)
+    .__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__;
   Object.defineProperty(window, "location", {
     configurable: true,
     value: ORIGINAL_LOCATION,
@@ -118,6 +121,23 @@ describe("getLockedCloudHost", () => {
 
     setInjectedCloudHost(12345);
     expect(getLockedCloudHost()).toBeNull();
+  });
+});
+
+describe("hasExternalSettingsShell", () => {
+  it("defaults to delegating settings when Cloud is locked", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://cloud.example.com");
+
+    expect(hasExternalSettingsShell()).toBe(true);
+  });
+
+  it("allows a locked deployment to keep settings in Canvas", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://cloud.example.com");
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__ = false;
+
+    expect(hasExternalSettingsShell()).toBe(false);
   });
 });
 

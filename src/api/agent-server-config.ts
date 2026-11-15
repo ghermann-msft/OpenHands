@@ -15,6 +15,8 @@ export interface AgentServerFormDefaults {
 const LOCK_TO_CLOUD_WINDOW_KEY = "__AGENT_CANVAS_LOCK_TO_CLOUD__";
 const CLOUD_ORGANIZATION_MODE_WINDOW_KEY =
   "__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__";
+const EXTERNAL_SETTINGS_SHELL_WINDOW_KEY =
+  "__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__";
 const LEGACY_CLOUD_DOMAIN = "all-hands.dev";
 const CURRENT_CLOUD_DOMAIN = "openhands.dev";
 const LEGACY_PRODUCTION_APP_HOST = `app.${LEGACY_CLOUD_DOMAIN}`;
@@ -155,6 +157,33 @@ export function getLockedCloudHost(): string | null {
   }
 
   return null;
+}
+
+function parseBooleanFlag(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true") return true;
+  if (normalized === "0" || normalized === "false") return false;
+  return null;
+}
+
+export function hasExternalSettingsShell(): boolean {
+  const envValue = parseBooleanFlag(
+    import.meta.env.VITE_EXTERNAL_SETTINGS_SHELL,
+  );
+  if (envValue !== null) return envValue;
+
+  if (typeof window !== "undefined") {
+    const injected = (window as unknown as Record<string, unknown>)[
+      EXTERNAL_SETTINGS_SHELL_WINDOW_KEY
+    ];
+    const injectedValue = parseBooleanFlag(injected);
+    if (injectedValue !== null) return injectedValue;
+  }
+
+  return true;
 }
 
 export function getLockedCloudOrganizationMode(): LockedCloudOrganizationMode {

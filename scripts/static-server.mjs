@@ -145,6 +145,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     runtimeServicesInfo: null,
     lockToCloud: null,
     cloudOrganizationMode: "required",
+    externalSettingsShell: true,
     basePath: "/",
     vscodeBasePath: null,
     entraBff: loadEntraBffConfig(env),
@@ -201,6 +202,9 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
         config.cloudOrganizationMode = mode;
         break;
       }
+      case "--no-external-settings-shell":
+        config.externalSettingsShell = false;
+        break;
       case "--base-path":
         config.basePath = normalizeBasePath(argv[++i]);
         break;
@@ -348,6 +352,11 @@ OPTIONS:
   --cloud-organization-mode <required|none>
                                Configure whether the locked Cloud control plane
                                implements organization membership APIs.
+  --no-external-settings-shell
+                               Keep settings in Canvas even when the backend is
+                               locked to Cloud. Use for self-hosted control
+                               planes that do not provide a separate /settings
+                               shell.
   --disable-telemetry          Disable all product telemetry (including the
                                anonymous install event) in the pre-built
                                frontend at runtime, without VITE_DO_NOT_TRACK
@@ -424,6 +433,9 @@ ROUTING:
  * - `cloudOrganizationMode`: whether the locked Cloud control plane implements
  *   organization membership APIs. `none` is used by self-hosted Sandbox Server.
  *
+ * - `externalSettingsShell`: when false, Canvas owns settings even though the
+ *   deployment is locked to Cloud.
+ *
  * - `basePath`: the path prefix the SPA is mounted under, exposed as
  *   `window.__AGENT_CANVAS_BASE_PATH__` so runtime static assets like locale
  *   files can resolve through the same subpath as the built bundle.
@@ -455,6 +467,7 @@ function makeConfigInjectionScript(
   runtimeServicesInfo,
   lockToCloud,
   cloudOrganizationMode,
+  externalSettingsShell,
   basePath,
   vscodeBasePath,
   disableTelemetry,
@@ -504,9 +517,11 @@ function makeConfigInjectionScript(
   }
 
   if (cloudOrganizationMode === "none") {
-    parts.push(
-      `window.__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__="none";`,
-    );
+    parts.push(`window.__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__="none";`);
+  }
+
+  if (externalSettingsShell === false) {
+    parts.push(`window.__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__=false;`);
   }
 
   if (basePath && basePath !== "/") {
@@ -550,6 +565,7 @@ async function serveInjectedIndexHtml(
     runtimeServicesInfo,
     lockToCloud,
     cloudOrganizationMode,
+    externalSettingsShell,
     basePath,
     vscodeBasePath,
     disableTelemetry,
@@ -570,6 +586,7 @@ async function serveInjectedIndexHtml(
     runtimeServicesInfo,
     lockToCloud,
     cloudOrganizationMode,
+    externalSettingsShell,
     basePath,
     vscodeBasePath,
     disableTelemetry,
@@ -779,6 +796,7 @@ export function startStaticServer(config) {
     runtimeServicesInfo: config.runtimeServicesInfo || null,
     lockToCloud: config.lockToCloud || null,
     cloudOrganizationMode: config.cloudOrganizationMode || "required",
+    externalSettingsShell: config.externalSettingsShell !== false,
     basePath: normalizeBasePath(config.basePath),
     vscodeBasePath: config.vscodeBasePath || null,
     disableTelemetry: config.disableTelemetry || false,

@@ -34,6 +34,7 @@ describe("settings route", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     window.localStorage.clear();
     __resetActiveStoreForTests();
     queryClient.clear();
@@ -257,6 +258,34 @@ describe("settings route", () => {
   );
 
   describe("backend settings routes", () => {
+    it("keeps Canvas settings reachable when a locked deployment has no external settings shell", () => {
+      vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+      vi.stubEnv("VITE_EXTERNAL_SETTINGS_SHELL", "false");
+
+      const RouterStub = createRoutesStub([
+        {
+          path: "/settings",
+          Component: SettingsScreen,
+          children: [
+            {
+              path: "/settings/agents",
+              Component: () => <div data-testid="agent-profiles-screen" />,
+            },
+          ],
+        },
+      ]);
+
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <ActiveBackendProvider>
+            <RouterStub initialEntries={["/settings/agents"]} />
+          </ActiveBackendProvider>
+        </QueryClientProvider>,
+      );
+
+      expect(screen.getByTestId("agent-profiles-screen")).toBeInTheDocument();
+    });
+
     it.each(["local", "cloud"] as const)(
       "renders /settings normally when the active backend is %s",
       (backendKind) => {

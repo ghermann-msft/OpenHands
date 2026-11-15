@@ -7,7 +7,10 @@ import {
 import { isSettingsPageHidden } from "#/utils/settings-utils";
 import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackend } from "#/contexts/active-backend-context";
-import { getLockedCloudHost } from "#/api/agent-server-config";
+import {
+  getLockedCloudHost,
+  hasExternalSettingsShell,
+} from "#/api/agent-server-config";
 
 export type SettingsNavRenderedItem =
   | {
@@ -24,14 +27,15 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   const { data: config } = useConfig();
   const { backend } = useActiveBackend();
   const featureFlags = config?.feature_flags;
-  // Locked-to-Cloud (SaaS / self-hosted OHE) lists only the Application page;
-  // the OHE settings shell behind "All Cloud Settings" owns the rest (OHE-3168).
+  // Some hosted deployments delegate settings to a same-origin shell. A
+  // locked self-hosted control plane can instead keep settings in Canvas.
   const isLockedToCloud = getLockedCloudHost() !== null;
+  const delegatesSettings = isLockedToCloud && hasExternalSettingsShell();
 
   return OSS_NAV_ITEMS.filter(
     (item) =>
       !isSettingsPageHidden(item.to, featureFlags) &&
-      (!isLockedToCloud || item.to === LOCKED_CLOUD_SETTINGS_NAV_PATH) &&
+      (!delegatesSettings || item.to === LOCKED_CLOUD_SETTINGS_NAV_PATH) &&
       (backend.kind === "cloud" || !PROFILE_OWNED_SETTINGS_PATHS.has(item.to)),
   ).map((item) => {
     const renamedItem =

@@ -97,6 +97,17 @@ describe("CloudSettingsLink", () => {
     expect(link.querySelector("svg.lucide-external-link")).toBeNull();
   });
 
+  it("renders nothing when locked Canvas owns settings", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://app.all-hands.dev");
+    vi.stubEnv("VITE_EXTERNAL_SETTINGS_SHELL", "false");
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+
+    renderWithProviders();
+
+    expect(screen.queryByTestId("settings-cloud-link")).toBeNull();
+  });
+
   it("appends the active org so cloud settings open on the same organization", () => {
     setRegisteredBackends([cloudBackend]);
     setActiveSelection({ backendId: cloudBackend.id, orgId: "org-123" });

@@ -91,4 +91,15 @@ describe("IntegrationsSettingsLink", () => {
       "https://app.all-hands.dev/settings/integrations",
     );
   });
+
+  it("renders nothing when locked Canvas owns settings", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://app.all-hands.dev");
+    vi.stubEnv("VITE_EXTERNAL_SETTINGS_SHELL", "false");
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+
+    renderWithProviders();
+
+    expect(screen.queryByTestId("settings-integrations-link")).toBeNull();
+  });
 });

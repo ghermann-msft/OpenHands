@@ -81,4 +81,15 @@ describe("settings index route", () => {
       await screen.findByTestId("app-settings-screen"),
     ).toBeInTheDocument();
   });
+
+  it("lands on the Agent library when locked Canvas owns settings", async () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+    vi.stubEnv("VITE_EXTERNAL_SETTINGS_SHELL", "false");
+
+    renderSettingsIndex();
+
+    expect(
+      await screen.findByTestId("agent-profiles-screen"),
+    ).toBeInTheDocument();
+  });
 });

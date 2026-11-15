@@ -21,6 +21,9 @@ describe("Docker Sandbox Server routing", () => {
     expect(entrypoint).toContain(
       "STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode none)",
     );
+    expect(entrypoint).toContain(
+      "STATIC_SERVER_CLOUD_ARGS+=(--no-external-settings-shell)",
+    );
     expect(entrypoint).toContain('"${STATIC_SERVER_CLOUD_ARGS[@]}"');
   });
 });

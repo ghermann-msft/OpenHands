@@ -50,6 +50,12 @@ configured client CIDRs. Sandbox runtime URLs use the canonical Front Door
 origin for both browsers and Sandbox Server; the AKS NAT gateway's fixed egress
 address has a separate explicit service allow rule.
 
+Halo locks Canvas to its Sandbox Server backend but does not deploy the
+commercial hosted settings shell. The container therefore runs with
+`AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL=false`: Canvas keeps its open-source
+settings pages, while deployment-owned LLM configuration remains hidden through
+the Sandbox Server feature flag.
+
 `bootstrap-ci` installs Actions Runner Controller and the runner scale set from
 the pinned `0.15.1` Helm charts. The controller and listener run on the warm
 services pool. Ephemeral runners run on the tainted, scale-to-zero build pool

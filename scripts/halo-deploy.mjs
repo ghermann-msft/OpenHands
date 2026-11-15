@@ -1279,6 +1279,8 @@ config:
       value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
     - name: AGENT_CANVAS_CLOUD_URL
       value: https://${env.frontDoorHost}
+    - name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL
+      value: "false"
     - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE
       value: ${env.namespace}
     - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX

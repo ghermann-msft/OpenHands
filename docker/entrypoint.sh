@@ -71,6 +71,8 @@
 #                          is routed there and AGENT_CANVAS_CLOUD_URL is required.
 #   AGENT_CANVAS_CLOUD_URL – Public Halo origin used to lock Canvas to the
 #                          Sandbox Server control plane.
+#   AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL – Set to false when Canvas owns the
+#                          settings UI instead of a separate same-origin shell.
 #   AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE – Kubernetes namespace containing
 #                          SandboxClaim Services. When set, authenticated
 #                          /sandboxes/<name> traffic is proxied to agent-server.
@@ -566,6 +568,7 @@ fi
 # <<< docker-session-key-policy
 SANDBOX_SERVER_URL="${SANDBOX_SERVER_URL:-}"
 AGENT_CANVAS_CLOUD_URL="${AGENT_CANVAS_CLOUD_URL:-}"
+AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL="${AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL:-true}"
 STATIC_SERVER_CLOUD_ARGS=()
 if [ -n "$SANDBOX_SERVER_URL" ]; then
   if [ -z "$AGENT_CANVAS_CLOUD_URL" ]; then
@@ -576,6 +579,9 @@ if [ -n "$SANDBOX_SERVER_URL" ]; then
   STATIC_SERVER_CLOUD_ARGS+=(--route "/oauth=${SANDBOX_SERVER_URL}")
   STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")
   STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode none)
+  if [ "$AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL" = "false" ]; then
+    STATIC_SERVER_CLOUD_ARGS+=(--no-external-settings-shell)
+  fi
 fi
 # Pass the key in the child environment, not its process arguments.
 SESSION_API_KEY="$EFFECTIVE_SESSION_KEY" node /opt/agent-canvas/static-server.mjs \

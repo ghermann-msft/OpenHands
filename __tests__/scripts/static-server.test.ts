@@ -335,6 +335,11 @@ describe("static-server.mjs", () => {
       expect(config.cloudOrganizationMode).toBe("required");
     });
 
+    it("defaults externalSettingsShell to true", () => {
+      const config = parseArgs([]);
+      expect(config.externalSettingsShell).toBe(true);
+    });
+
     it("parses --lock-to-cloud", () => {
       const config = parseArgs([
         "--lock-to-cloud",
@@ -346,6 +351,11 @@ describe("static-server.mjs", () => {
     it("treats empty string as null for lockToCloud", () => {
       const config = parseArgs(["--lock-to-cloud", ""]);
       expect(config.lockToCloud).toBeNull();
+    });
+
+    it("parses --no-external-settings-shell", () => {
+      const config = parseArgs(["--no-external-settings-shell"]);
+      expect(config.externalSettingsShell).toBe(false);
     });
 
     it("parses --cloud-organization-mode", () => {
@@ -739,6 +749,36 @@ describe("static-server.mjs", () => {
 
       expect(response.status).toBe(200);
       expect(body).toContain("__AGENT_CANVAS_LOCK_TO_CLOUD__");
+    });
+
+    it("injects Canvas-owned settings mode", async () => {
+      const buildDir = mkdtempSync(path.join(tmpdir(), "agent-canvas-build-"));
+      tempDirs.push(buildDir);
+      writeFileSync(
+        path.join(buildDir, "index.html"),
+        "<html><head></head><body>app</body></html>",
+      );
+
+      const server = await startStaticServer({
+        port: 0,
+        host: "127.0.0.1",
+        dir: buildDir,
+        routes: {},
+        lockToCloud: "https://cloud.example.com",
+        externalSettingsShell: false,
+      });
+      servers.push(server);
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Static server did not bind to a TCP port");
+      }
+      const body = await (
+        await fetch(`http://127.0.0.1:${address.port}/`)
+      ).text();
+
+      expect(body).toContain(
+        "window.__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__=false",
+      );
     });
 
     it("injects organizationless Cloud mode for self-hosted control planes", async () => {

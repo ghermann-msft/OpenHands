@@ -4,6 +4,10 @@ import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackendContext } from "#/contexts/active-backend-context";
 import { isNoBackend } from "#/api/backend-registry/active-store";
 import { cloudIntegrationsUrl } from "#/utils/cloud-integrations-url";
+import {
+  getLockedCloudHost,
+  hasExternalSettingsShell,
+} from "#/api/agent-server-config";
 import { cn } from "#/utils/utils";
 import {
   SIDEBAR_ICON_SLOT_CLASS,
@@ -23,6 +27,7 @@ export function IntegrationsSettingsLink() {
   const { backend, orgId } = active;
 
   if (isNoBackend(backend) || backend.kind !== "cloud") return null;
+  if (getLockedCloudHost() !== null && !hasExternalSettingsShell()) return null;
 
   const integrationsUrl = cloudIntegrationsUrl(backend, orgId);
 

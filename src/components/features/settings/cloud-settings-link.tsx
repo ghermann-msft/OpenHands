@@ -3,7 +3,10 @@ import { Cloud, ExternalLink } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackendContext } from "#/contexts/active-backend-context";
 import { isNoBackend } from "#/api/backend-registry/active-store";
-import { getLockedCloudHost } from "#/api/agent-server-config";
+import {
+  getLockedCloudHost,
+  hasExternalSettingsShell,
+} from "#/api/agent-server-config";
 import { cn } from "#/utils/utils";
 import {
   SIDEBAR_ICON_SLOT_CLASS,
@@ -26,6 +29,7 @@ export function CloudSettingsLink() {
   if (isNoBackend(backend) || backend.kind !== "cloud") return null;
 
   const isLockedToCloud = getLockedCloudHost() !== null;
+  if (isLockedToCloud && !hasExternalSettingsShell()) return null;
 
   // `org` is consumed by the cloud settings loader so the page opens on the
   // org that is active here instead of the cloud's last-used org.

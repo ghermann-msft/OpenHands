@@ -7,7 +7,10 @@ import { useConfig } from "#/hooks/query/use-config";
 import { useSettingsNavItems } from "#/hooks/use-settings-nav-items";
 import { SettingsMobileHub } from "#/components/features/settings/settings-mobile-hub";
 import { getFirstAvailablePath } from "#/utils/settings-utils";
-import { getLockedCloudHost } from "#/api/agent-server-config";
+import {
+  getLockedCloudHost,
+  hasExternalSettingsShell,
+} from "#/api/agent-server-config";
 import { LOCKED_CLOUD_SETTINGS_NAV_PATH } from "#/constants/settings-nav";
 
 export default function SettingsIndex() {
@@ -19,10 +22,10 @@ export default function SettingsIndex() {
     return <SettingsMobileHub navigationItems={navigationItems} />;
   }
 
-  // Locked-to-Cloud (SaaS / self-hosted OHE) lists only the Application page,
-  // so land there instead of the Agent library (OHE-3168).
+  // A locked deployment that delegates settings lands on Application. When
+  // Canvas owns settings, use the normal first available page.
   const fallbackPath =
-    getLockedCloudHost() !== null
+    getLockedCloudHost() !== null && hasExternalSettingsShell()
       ? LOCKED_CLOUD_SETTINGS_NAV_PATH
       : (getFirstAvailablePath(config?.feature_flags) ?? "/settings/app");
 

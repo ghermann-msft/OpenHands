@@ -212,4 +212,26 @@ describe("useSettingsNavItems", () => {
       .map((item) => (item.type === "item" ? item.item.to : null));
     expect(paths).toEqual(["/settings/app"]);
   });
+
+  it("lists Canvas-owned pages when a locked deployment has no external settings shell", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+    vi.stubEnv("VITE_EXTERNAL_SETTINGS_SHELL", "false");
+    useConfigMock.mockReturnValue({
+      data: createConfig({ hide_llm_settings: true }),
+    });
+    useActiveBackendMock.mockReturnValue({
+      backend: { kind: "cloud" },
+      orgId: null,
+    });
+
+    const paths = renderHook(() => useSettingsNavItems())
+      .result.current.filter((item) => item.type === "item")
+      .map((item) => (item.type === "item" ? item.item.to : null));
+
+    expect(paths).toContain("/settings/agents");
+    expect(paths).toContain("/settings/condenser");
+    expect(paths).toContain("/settings/verification");
+    expect(paths).toContain("/settings/secrets");
+    expect(paths).not.toContain("/settings/llm");
+  });
 });
