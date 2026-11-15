@@ -257,6 +257,12 @@ export interface CloudIntegrationsConfig {
    * that run as a service account.
    */
   isServiceAccountsEnabled: boolean;
+  /** Whether this deployment exposes Canvas's hosted integrations surface. */
+  isCanvasIntegrationsEnabled?: boolean;
+  /** Whether native git providers can be linked through OAuth. */
+  isOauthV2LoginEnabled?: boolean;
+  /** Absolute GitHub App installation/configuration URL, when configured. */
+  githubAppInstallUrl?: string | null;
 }
 
 export async function fetchCloudIntegrationsConfig(): Promise<CloudIntegrationsConfig> {
@@ -271,6 +277,9 @@ export async function fetchCloudIntegrationsConfig(): Promise<CloudIntegrationsC
       deployment_mode?: string;
       enable_org_mcp_servers?: boolean;
       enable_service_accounts?: boolean;
+      enable_canvas_integrations?: boolean;
+      enable_oauth_v2_login?: boolean;
+      github_app_install_url?: string;
     };
   }>({
     backend,
@@ -288,6 +297,11 @@ export async function fetchCloudIntegrationsConfig(): Promise<CloudIntegrationsC
       config.feature_flags?.enable_org_mcp_servers === true,
     isServiceAccountsEnabled:
       config.feature_flags?.enable_service_accounts === true,
+    isCanvasIntegrationsEnabled:
+      config.feature_flags?.enable_canvas_integrations === true,
+    isOauthV2LoginEnabled: config.feature_flags?.enable_oauth_v2_login === true,
+    githubAppInstallUrl:
+      config.feature_flags?.github_app_install_url?.trim() || null,
   };
 }
 

@@ -13,6 +13,9 @@ describe("Docker Sandbox Server routing", () => {
       'STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1=${SANDBOX_SERVER_URL}")',
     );
     expect(entrypoint).toContain(
+      'STATIC_SERVER_CLOUD_ARGS+=(--route "/oauth=${SANDBOX_SERVER_URL}")',
+    );
+    expect(entrypoint).toContain(
       'STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")',
     );
     expect(entrypoint).toContain(

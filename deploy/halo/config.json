@@ -29,7 +29,7 @@
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
     "agentServerSdkRef": "b1d818a6078691cd765e05adbc60cd5fecb4c671",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "705616fe2fd01dbe5fda92a5b31d24d4f29c1b79"
+    "sandboxServerRef": "319f38bff9aadd31e41be161c4deb44d2366ae6c"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
@@ -135,13 +135,21 @@
       "entraDisplayName": "OpenHands Halo PPE",
       "entraClientId": "9071e6b8-c981-4a11-b975-256cc4b7b841",
       "entraScopeId": "0f36915e-4e16-46ac-b602-50058fd6559b",
+      "githubApp": {
+        "slug": "openhands-halo-ppe",
+        "secrets": {
+          "clientId": "halo-ppe-github-app-client-id",
+          "clientSecret": "halo-ppe-github-app-client-secret"
+        }
+      },
       "secrets": {
         "clientSecret": "halo-ppe-entra-client-secret",
         "cookieSecret": "halo-ppe-cookie-secret",
         "sessionApiKey": "halo-ppe-session-api-key",
         "ohSecretKey": "halo-ppe-oh-secret-key",
         "automationKvSecret": "halo-ppe-automation-kv-secret",
-        "trustedIdentityAssertion": "halo-ppe-trusted-identity-assertion"
+        "trustedIdentityAssertion": "halo-ppe-trusted-identity-assertion",
+        "jwtSecret": "halo-ppe-sandbox-jwt-secret"
       }
     },
     "primary": {
@@ -159,13 +167,21 @@
       "entraDisplayName": "OpenHands Halo",
       "entraClientId": "a43e0aee-2f24-4b80-91e5-b6eb3db972c0",
       "entraScopeId": "bc5dd6b6-9ba7-4e36-98c5-ec9f11e2adcd",
+      "githubApp": {
+        "slug": null,
+        "secrets": {
+          "clientId": null,
+          "clientSecret": null
+        }
+      },
       "secrets": {
         "clientSecret": "halo-primary-entra-client-secret",
         "cookieSecret": "halo-primary-cookie-secret",
         "sessionApiKey": "halo-primary-session-api-key",
         "ohSecretKey": "halo-primary-oh-secret-key",
         "automationKvSecret": "halo-primary-automation-kv-secret",
-        "trustedIdentityAssertion": "halo-primary-trusted-identity-assertion"
+        "trustedIdentityAssertion": "halo-primary-trusted-identity-assertion",
+        "jwtSecret": "halo-primary-sandbox-jwt-secret"
       }
     }
   }

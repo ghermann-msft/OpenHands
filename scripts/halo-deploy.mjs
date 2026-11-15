@@ -1166,7 +1166,10 @@ export function renderSecretProviderClass(environment, runtimeClientId) {
     ["ohSecretKey", env.secrets.ohSecretKey],
     ["automationKvSecret", env.secrets.automationKvSecret],
     ["trustedIdentityAssertion", env.secrets.trustedIdentityAssertion],
-  ];
+    ["jwtSecret", env.secrets.jwtSecret],
+    ["githubAppClientId", env.githubApp.secrets.clientId],
+    ["githubAppClientSecret", env.githubApp.secrets.clientSecret],
+  ].filter(([, name]) => Boolean(name));
   return `apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
@@ -1344,6 +1347,28 @@ export function renderSandboxServerResources(
     config.build.sandboxServerRepository,
     digest,
   );
+  const githubOAuthEnv =
+    env.githubApp.slug &&
+    env.githubApp.secrets.clientId &&
+    env.githubApp.secrets.clientSecret
+      ? `            - name: GITHUB_APP_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-halo-secrets
+                  key: githubAppClientId
+            - name: GITHUB_APP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-halo-secrets
+                  key: githubAppClientSecret
+            - name: GITHUB_APP_SLUG
+              value: ${env.githubApp.slug}
+            - name: OH_GITHUB_OAUTH_CALLBACK_URL
+              value: https://${env.frontDoorHost}/oauth/github/callback
+            - name: OH_GITHUB_OAUTH_SUCCESS_URL
+              value: https://${env.frontDoorHost}/settings/app
+`
+      : "";
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1423,7 +1448,12 @@ spec:
               value: "${sandbox.trustedIdentityMaxLifetimeSeconds}"
             - name: OH_TRUSTED_IDENTITY_ASSERTION_CLOCK_SKEW_SECONDS
               value: "${sandbox.trustedIdentityClockSkewSeconds}"
-            - name: OH_SANDBOX_KIND
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-halo-secrets
+                  key: jwtSecret
+${githubOAuthEnv}            - name: OH_SANDBOX_KIND
               value: openhands.app_server.sandbox.kubernetes_sandbox_service.KubernetesSandboxServiceInjector
             - name: OH_SANDBOX_SPEC_KIND
               value: openhands.app_server.sandbox.kubernetes_sandbox_spec_service.KubernetesSandboxSpecServiceInjector
@@ -2828,11 +2858,17 @@ async function deploy(
     "--ignore-not-found",
     "--wait=false",
   ]);
-  await waitForSecretKey(
-    env.namespace,
-    "openhands-halo-secrets",
-    "trustedIdentityAssertion",
-  );
+  const requiredSecretKeys = ["trustedIdentityAssertion", "jwtSecret"];
+  if (
+    env.githubApp.slug &&
+    env.githubApp.secrets.clientId &&
+    env.githubApp.secrets.clientSecret
+  ) {
+    requiredSecretKeys.push("githubAppClientId", "githubAppClientSecret");
+  }
+  for (const key of requiredSecretKeys) {
+    await waitForSecretKey(env.namespace, "openhands-halo-secrets", key);
+  }
   kubectl(["apply", "-f", "-"], {
     input: renderAgentSandboxResources(environment, agentServerDigest),
   });

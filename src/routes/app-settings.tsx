@@ -26,6 +26,7 @@ import { useFreeModels } from "#/hooks/query/use-free-models";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { formatModelNameForDisplay } from "#/utils/format-model-name";
 import { getLockedCloudHost } from "#/api/agent-server-config";
+import { GitHubIntegrationSettings } from "#/components/features/settings/app-settings/github-integration-settings";
 
 const AUTOMATIC_TITLE_LLM_PROFILE_KEY = "__automatic__";
 
@@ -208,6 +209,7 @@ function AppSettingsForm() {
           {/* Locked-to-Cloud never shows the checklist (OHE-3683). */}
           {getLockedCloudHost() === null && <GettingStartedChecklistSwitch />}
           <RecommendedAutomationsSwitch />
+          <GitHubIntegrationSettings />
 
           <div className="border-t border-border pt-6 mt-2">
             <h3 className="text-lg font-medium mb-2">

@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 705616fe2fd01dbe5fda92a5b31d24d4f29c1b79",
+      "git checkout --detach 319f38bff9aadd31e41be161c4deb44d2366ae6c",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -274,6 +274,9 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-entra-client-secret");
     expect(spc).toContain("halo-ppe-session-api-key");
     expect(spc).toContain("halo-ppe-trusted-identity-assertion");
+    expect(spc).toContain("halo-ppe-sandbox-jwt-secret");
+    expect(spc).toContain("halo-ppe-github-app-client-id");
+    expect(spc).toContain("halo-ppe-github-app-client-secret");
     expect(values).toContain(`digest: ${digest}`);
     expect(values).toContain("serviceAccount:\n  create: false");
     expect(values).toContain("value: azure/gpt-5.6-sol");
@@ -372,6 +375,18 @@ describe("Halo deployment automation", () => {
     expect(resources).not.toContain("DB_PASS");
     expect(resources).toContain(
       "name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER\n              value: openhands-halo-bff",
+    );
+    expect(resources).toContain("name: JWT_SECRET");
+    expect(resources).toContain("name: GITHUB_APP_CLIENT_ID");
+    expect(resources).toContain("name: GITHUB_APP_CLIENT_SECRET");
+    expect(resources).toContain(
+      "name: GITHUB_APP_SLUG\n              value: openhands-halo-ppe",
+    );
+    expect(resources).toContain(
+      "name: OH_GITHUB_OAUTH_CALLBACK_URL\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/oauth/github/callback",
+    );
+    expect(resources).toContain(
+      "name: OH_GITHUB_OAUTH_SUCCESS_URL\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/settings/app",
     );
     expect(resources).toContain("containerPort: 3000");
     expect(resources).toContain("path: /ready");
