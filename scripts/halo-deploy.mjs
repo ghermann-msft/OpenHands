@@ -1429,6 +1429,10 @@ spec:
               value: ${config.azureOpenAI.apiVersion}
             - name: LLM_AUTH_TYPE
               value: azure_workload_identity
+            - name: FOUNDRY_WEB_SEARCH_MCP_ENDPOINT
+              value: ${config.foundry.webSearchMcpEndpoint}
+            - name: FOUNDRY_WEB_SEARCH_MCP_AUTH_TYPE
+              value: ${config.foundry.webSearchMcpAuthType}
             - name: HIDE_LLM_SETTINGS
               value: "true"
             - name: OH_ALLOW_USER_LLM_CONFIGURATION

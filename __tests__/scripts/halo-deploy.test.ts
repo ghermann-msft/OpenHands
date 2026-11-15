@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 9fa2acadd6632e1736548a2b2698e38742bd0a18",
+      "git checkout --detach 95d5b7ab73050e6ab8eced72dfa691117472f183",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -61,7 +61,7 @@ describe("Halo deployment automation", () => {
       "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server:",
     );
     expect(job).toContain(
-      "git checkout --detach 87b5776c66843665ab218adf04721ae1bc99f045",
+      "git checkout --detach cb6974d484cdf9e85d7e1940a43bea3f360686d6",
     );
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
@@ -71,13 +71,13 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=87b5776c66843665ab218adf04721ae1bc99f045",
+      "AGENT_SERVER_SDK_GIT_REF=cb6974d484cdf9e85d7e1940a43bea3f360686d6",
     );
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "SOFTWARE_AGENT_SDK_REF=87b5776c66843665ab218adf04721ae1bc99f045",
+      "SOFTWARE_AGENT_SDK_REF=cb6974d484cdf9e85d7e1940a43bea3f360686d6",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
@@ -359,6 +359,12 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).toContain(
       "name: LLM_AUTH_TYPE\n              value: azure_workload_identity",
+    );
+    expect(resources).toContain(
+      "name: FOUNDRY_WEB_SEARCH_MCP_ENDPOINT\n              value: https://azureaieastus21665416127.services.ai.azure.com/api/projects/studio-ai-agents-project/toolboxes/openhands-web-search/versions/1/mcp?api-version=v1",
+    );
+    expect(resources).toContain(
+      "name: FOUNDRY_WEB_SEARCH_MCP_AUTH_TYPE\n              value: azure_workload_identity",
     );
     expect(resources).toContain(
       'name: HIDE_LLM_SETTINGS\n              value: "true"',
