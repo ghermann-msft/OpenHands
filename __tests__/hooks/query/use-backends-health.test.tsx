@@ -41,7 +41,7 @@ vi.mock("#/api/cloud/organization-service.api", () => ({
 }));
 
 vi.mock("#/api/cloud/settings-service.api", () => ({
-  fetchCloudSettingsForBackend: (...args: unknown[]) =>
+  probeCloudUserSession: (...args: unknown[]) =>
     fetchCloudSettingsMock(...args),
 }));
 
@@ -196,7 +196,7 @@ describe("useBackendsHealth", () => {
     expect(getSettingsMock).not.toHaveBeenCalled();
   });
 
-  it("probes cookie-auth cloud backends via settings without requiring organizations", async () => {
+  it("probes cookie-auth cloud backends via the current user without requiring organizations", async () => {
     const cookieBackend: Backend = {
       ...cloudBackend,
       id: "cloud-cookie",

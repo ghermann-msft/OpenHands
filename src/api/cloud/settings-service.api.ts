@@ -132,15 +132,21 @@ function deriveConversationSettings(
  * fires correctly in cloud mode. Nested `agent_settings` /
  * `conversation_settings` are derived for the settings page.
  */
-export async function fetchCloudSettingsForBackend(
-  backend: Backend,
-): Promise<Partial<Settings>> {
+export async function probeCloudUserSession(backend: Backend): Promise<void> {
+  await callCloudProxy({
+    backend,
+    method: "GET",
+    path: "/api/v1/users/me",
+  });
+}
+
+export async function fetchCloudSettings(): Promise<Partial<Settings>> {
+  const backend = getActiveCloudBackend();
   const flat = await callCloudProxy<CloudSettingsResponse>({
     backend,
     method: "GET",
     path: "/api/v1/settings",
   });
-
   return {
     ...flat,
     agent_settings: deriveAgentSettings(flat),
@@ -149,10 +155,6 @@ export async function fetchCloudSettingsForBackend(
     search_api_key_set: !!flat.search_api_key_set,
     provider_tokens_set: flat.provider_tokens_set,
   } as Partial<Settings>;
-}
-
-export async function fetchCloudSettings(): Promise<Partial<Settings>> {
-  return fetchCloudSettingsForBackend(getActiveCloudBackend());
 }
 
 export async function saveCloudSettings(diff: {

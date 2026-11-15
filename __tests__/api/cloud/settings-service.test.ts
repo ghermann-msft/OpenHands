@@ -10,6 +10,7 @@ import {
   fetchCloudConversationSettingsSchema,
   fetchCloudSettings,
   fetchCloudSettingsSchema,
+  probeCloudUserSession,
   saveCloudSettings,
 } from "#/api/cloud/settings-service.api";
 import SettingsService from "#/api/settings-service/settings-service.api";
@@ -83,6 +84,22 @@ afterEach(() => {
 });
 
 describe("cloud settings", () => {
+  it("probes a cookie-auth cloud session through the current user endpoint", async () => {
+    const cookieBackend: Backend = {
+      ...cloudBackend,
+      apiKey: "",
+      authMode: "cookie",
+    };
+    stubGet("/api/v1/users/me", {});
+
+    await probeCloudUserSession(cookieBackend);
+
+    const request = capturedRequests[0]!;
+    expect(request.method).toBe("GET");
+    expect(request.url).toBe(`${cloudBackend.host}/api/v1/users/me`);
+    expect(request.headers.get("authorization")).toBeNull();
+  });
+
   it("fetchCloudSettings preserves provider_tokens_set so the repo chain can fire", async () => {
     stubGet("/api/v1/settings", {
       llm_model: "anthropic/claude-3-5-sonnet",
