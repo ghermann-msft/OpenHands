@@ -87,7 +87,7 @@ export function useLlmConfigured(): LlmConfiguredResult {
     : (referencedProfile ?? selectedProfile);
   const hasActiveProfileApiKey = activeProfile?.api_key_set === true;
   const shouldLoadActiveProfileDetail =
-    isLocal && !!activeProfile && !hasActiveProfileApiKey;
+    !!activeProfile && !hasActiveProfileApiKey;
   const {
     data: activeProfileDetail,
     isLoading: activeProfileDetailLoading,

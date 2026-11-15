@@ -218,10 +218,10 @@ describe("AutomationService", () => {
     it("sends the creator filter as created_by", async () => {
       mockGet.mockResolvedValue({ data: { automations: [], total: 0 } });
 
-      await AutomationService.listAutomations({ createdBy: "others" });
+      await AutomationService.listAutomations({ createdBy: "service" });
 
       expect(mockGet).toHaveBeenCalledWith("/api/automation/v1", {
-        params: { limit: 50, offset: 0, created_by: "others" },
+        params: { limit: 50, offset: 0, created_by: "service" },
       });
     });
   });

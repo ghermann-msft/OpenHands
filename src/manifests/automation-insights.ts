@@ -189,14 +189,17 @@ const TRIGGER_PREDICATES: Record<
 };
 
 // The caller's id is non-null whenever these run; applyDashboardView skips the
-// creator check until identity resolves, so "me" is an exact match and
-// "others" is everything else, including creator-less automations.
+// creator check until identity resolves. Service-owned automations identify
+// that owner with run_as_kind, while older user-owned records may omit user_id.
 const CREATED_BY_PREDICATES: Record<
   Exclude<DashboardCreatedByValue, "all">,
   (automation: Automation, currentUserId: string) => boolean
 > = {
   me: (automation, currentUserId) => automation.user_id === currentUserId,
-  others: (automation, currentUserId) => automation.user_id !== currentUserId,
+  others: (automation, currentUserId) =>
+    automation.run_as_kind !== "service" &&
+    automation.user_id !== currentUserId,
+  service: (automation) => automation.run_as_kind === "service",
 };
 
 function runCount(automation: Automation, byId: Summaries): number {

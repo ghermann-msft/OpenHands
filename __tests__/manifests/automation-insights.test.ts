@@ -363,7 +363,7 @@ describe("applyDashboardView", () => {
     }).toEqual({ scheduled: ["healthy", "failing"], events: ["evented"] });
   });
 
-  it("splits automations by creator, counting a missing creator as someone else's", () => {
+  it("splits automations into mine, other people, and service-owned", () => {
     // Arrange
     const mine = createAutomation({
       id: "mine",
@@ -375,11 +375,16 @@ describe("applyDashboardView", () => {
       name: "B theirs",
       user_id: "teammate",
     });
-    const unowned = createAutomation({ id: "unowned", name: "C unowned" });
-    const automations = [unowned, theirs, mine];
+    const service = createAutomation({
+      id: "service",
+      name: "C service",
+      user_id: "service-account",
+      run_as_kind: "service",
+    });
+    const automations = [service, theirs, mine];
 
     // Act
-    const view = (createdBy: "all" | "me" | "others") =>
+    const view = (createdBy: "all" | "me" | "others" | "service") =>
       applyDashboardView(
         automations,
         { ...neutral, createdBy, currentUserId: "me" },
@@ -391,10 +396,12 @@ describe("applyDashboardView", () => {
       all: view("all"),
       me: view("me"),
       others: view("others"),
+      service: view("service"),
     }).toEqual({
-      all: ["mine", "theirs", "unowned"],
+      all: ["mine", "theirs", "service"],
       me: ["mine"],
-      others: ["theirs", "unowned"],
+      others: ["theirs"],
+      service: ["service"],
     });
   });
 

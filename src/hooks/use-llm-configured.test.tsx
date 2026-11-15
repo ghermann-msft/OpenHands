@@ -242,6 +242,54 @@ describe("useLlmConfigured", () => {
     expect(result.current.isConfigured).toBe(true);
   });
 
+  it("treats an active cloud workload identity profile as configured without an API key", async () => {
+    const cloudBackend: Backend = {
+      id: "test-cloud",
+      name: "Test Cloud",
+      host: "https://halo.example.com",
+      apiKey: "cloud-token",
+      kind: "cloud",
+      organizationMode: "none",
+    };
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+    mockGetSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      llm_api_key_set: false,
+      agent_settings: {
+        ...(DEFAULT_SETTINGS.agent_settings ?? {}),
+        agent_kind: "openhands",
+      },
+    });
+    mockListProfiles.mockResolvedValue({
+      active_profile: "default",
+      profiles: [
+        {
+          name: "default",
+          model: "azure/gpt-5.6-sol",
+          base_url: "https://mortmain-openai2.openai.azure.com/",
+          api_key_set: false,
+        },
+      ],
+    });
+    mockGetProfile.mockResolvedValue({
+      name: "default",
+      api_key_set: false,
+      config: {
+        model: "azure/gpt-5.6-sol",
+        auth_type: "azure_workload_identity",
+        base_url: "https://mortmain-openai2.openai.azure.com/",
+      },
+    });
+
+    const { result } = renderLlmConfiguredHook();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isConfigured).toBe(true);
+    expect(mockGetProfile).toHaveBeenCalledWith("default");
+  });
+
   it("treats a backend-managed LLM as configured without user settings", async () => {
     const cloudBackend: Backend = {
       id: "test-cloud",

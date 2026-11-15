@@ -208,9 +208,9 @@ export interface AutomationsResponse {
 
 /**
  * Mirrors the list endpoint's `created_by` query param: the caller's
- * automations (`me`) or the rest of the org's (`others`).
+ * automations (`me`), other users' (`others`), or service-owned automations.
  */
-export type AutomationCreatedByFilter = "me" | "others";
+export type AutomationCreatedByFilter = "me" | "others" | "service";
 
 /** Mirrors `RunStatus` in the automation service's OpenAPI schema. */
 export enum AutomationRunStatus {
