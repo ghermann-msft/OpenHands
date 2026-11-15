@@ -24,7 +24,7 @@ import {
 const getSettingsMock = vi.fn();
 const getServerInfoMock = vi.fn();
 const getCurrentCloudApiKeyMock = vi.fn();
-const getCloudOrganizationsMock = vi.fn();
+const fetchCloudSettingsMock = vi.fn();
 
 vi.mock("@openhands/typescript-client/clients", () => ({
   ServerClient: vi.fn(function ServerClientMock() {
@@ -36,10 +36,13 @@ vi.mock("@openhands/typescript-client/clients", () => ({
 }));
 
 vi.mock("#/api/cloud/organization-service.api", () => ({
-  getCloudOrganizations: (...args: unknown[]) =>
-    getCloudOrganizationsMock(...args),
   getCurrentCloudApiKey: (...args: unknown[]) =>
     getCurrentCloudApiKeyMock(...args),
+}));
+
+vi.mock("#/api/cloud/settings-service.api", () => ({
+  fetchCloudSettingsForBackend: (...args: unknown[]) =>
+    fetchCloudSettingsMock(...args),
 }));
 
 const localBackend: Backend = {
@@ -70,7 +73,7 @@ beforeEach(() => {
   getServerInfoMock.mockReset();
   getServerInfoMock.mockResolvedValue({ version: "1.59.0" });
   getCurrentCloudApiKeyMock.mockReset();
-  getCloudOrganizationsMock.mockReset();
+  fetchCloudSettingsMock.mockReset();
   vi.mocked(ServerClient).mockClear();
   vi.mocked(SettingsClient).mockClear();
   window.localStorage.clear();
@@ -193,17 +196,14 @@ describe("useBackendsHealth", () => {
     expect(getSettingsMock).not.toHaveBeenCalled();
   });
 
-  it("probes cookie-auth cloud backends via organizations without an API key", async () => {
+  it("probes cookie-auth cloud backends via settings without requiring organizations", async () => {
     const cookieBackend: Backend = {
       ...cloudBackend,
       id: "cloud-cookie",
       apiKey: "",
       authMode: "cookie",
     };
-    getCloudOrganizationsMock.mockResolvedValue({
-      items: [],
-      currentOrgId: null,
-    });
+    fetchCloudSettingsMock.mockResolvedValue({});
 
     const { result } = renderHook(() => useBackendsHealth([cookieBackend]), {
       wrapper,
@@ -212,7 +212,7 @@ describe("useBackendsHealth", () => {
     await waitFor(() =>
       expect(result.current[cookieBackend.id].isConnected).toBe(true),
     );
-    expect(getCloudOrganizationsMock).toHaveBeenCalledWith(cookieBackend);
+    expect(fetchCloudSettingsMock).toHaveBeenCalledWith(cookieBackend);
     expect(getCurrentCloudApiKeyMock).not.toHaveBeenCalled();
   });
 

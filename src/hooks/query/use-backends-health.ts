@@ -2,10 +2,8 @@ import React from "react";
 import axios from "axios";
 import { useQueries } from "@tanstack/react-query";
 import { HttpError } from "@openhands/typescript-client";
-import {
-  getCloudOrganizations,
-  getCurrentCloudApiKey,
-} from "#/api/cloud/organization-service.api";
+import { getCurrentCloudApiKey } from "#/api/cloud/organization-service.api";
+import { fetchCloudSettingsForBackend } from "#/api/cloud/settings-service.api";
 import {
   isDefinitiveLocalBackendError,
   validateLocalBackend,
@@ -96,7 +94,7 @@ async function probeBackend(backend: Backend): Promise<true> {
 
     try {
       if (backend.authMode === "cookie") {
-        await getCloudOrganizations(backend);
+        await fetchCloudSettingsForBackend(backend);
       } else {
         await getCurrentCloudApiKey(backend);
       }
