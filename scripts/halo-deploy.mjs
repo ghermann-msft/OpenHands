@@ -1470,7 +1470,7 @@ ${githubOAuthEnv}            - name: OH_SANDBOX_KIND
             - name: OH_SANDBOX_WEBHOOK_BASE_URL
               value: http://${sandbox.serviceName}:${sandbox.port}
             - name: OH_SANDBOX_SANDBOX_URL_PATTERN
-              value: http://openhands-halo:8000/sandboxes/{sandbox_name}
+              value: https://${env.frontDoorHost}/sandboxes/{sandbox_name}
             - name: OH_WEB_URL
               value: https://${env.frontDoorHost}
             - name: OH_PERMITTED_CORS_ORIGINS_0
