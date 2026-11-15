@@ -49,6 +49,12 @@ export const PROVIDER_CONNECTIONS_QUERY_KEYS = {
   all: ["provider-connections"] as const,
 } as const;
 
+export const ATLASSIAN_INTEGRATION_QUERY_KEYS = {
+  all: ["atlassian-integration"] as const,
+  status: (backendId: string, orgId: string | null, revision: number) =>
+    ["atlassian-integration", backendId, orgId, revision] as const,
+} as const;
+
 /** Fail fast when older backends lack the profile endpoint. */
 export const AGENT_PROFILES_RETRY_OPTIONS = {
   retry: false,

@@ -13,6 +13,14 @@ vi.mock(
     ),
   }),
 );
+vi.mock(
+  "#/components/features/settings/integrations/atlassian-integration-settings",
+  () => ({
+    AtlassianIntegrationSettings: () => (
+      <div data-testid="atlassian-integration-settings" />
+    ),
+  }),
+);
 
 describe("IntegrationsSettingsScreen", () => {
   it("renders the Canvas-owned integration controls as a standalone page", () => {
@@ -22,5 +30,8 @@ describe("IntegrationsSettingsScreen", () => {
       "data-standalone",
       "true",
     );
+    expect(
+      screen.getByTestId("atlassian-integration-settings"),
+    ).toBeInTheDocument();
   });
 });

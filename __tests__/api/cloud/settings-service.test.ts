@@ -8,6 +8,7 @@ import {
 import type { Backend } from "#/api/backend-registry/types";
 import {
   fetchCloudConversationSettingsSchema,
+  fetchCloudIntegrationsConfig,
   fetchCloudSettings,
   fetchCloudSettingsSchema,
   probeCloudUserSession,
@@ -84,6 +85,20 @@ afterEach(() => {
 });
 
 describe("cloud settings", () => {
+  it("maps the per-product Atlassian integration feature flag", async () => {
+    stubGet("/api/v1/web-client/config", {
+      feature_flags: {
+        enable_canvas_integrations: true,
+        enable_atlassian_api_token: true,
+      },
+    });
+
+    const result = await fetchCloudIntegrationsConfig();
+
+    expect(result.isCanvasIntegrationsEnabled).toBe(true);
+    expect(result.isAtlassianApiTokenEnabled).toBe(true);
+  });
+
   it("probes a cookie-auth cloud session through the current user endpoint", async () => {
     const cookieBackend: Backend = {
       ...cloudBackend,
