@@ -798,7 +798,9 @@ export function startStaticServer(config) {
       "Workspace runtime provisioning requires Microsoft Entra BFF authentication",
     );
   }
-  const sandboxRuntimes = createSandboxRuntimeProxy(config.env ?? process.env);
+  const sandboxRuntimes =
+    config.sandboxRuntimeProxy ??
+    createSandboxRuntimeProxy(config.env ?? process.env);
   if (sandboxRuntimes && !entraBff) {
     throw new Error(
       "Sandbox runtime proxying requires Microsoft Entra BFF authentication",
@@ -808,6 +810,16 @@ export function startStaticServer(config) {
   const internalAuthHeaders = config.entraBff
     ? { "X-Session-API-Key": config.sessionApiKey }
     : undefined;
+  const identityAssertionHeaders = new Set([
+    "x-openhands-identity-assertion",
+    config.entraBff?.identityAssertion?.header.toLowerCase(),
+  ]);
+
+  function stripClientIdentityAssertions(req) {
+    for (const header of identityAssertionHeaders) {
+      if (header) delete req.headers[header];
+    }
+  }
 
   const uninstallDiagnostics = proxy.installDiagnostics();
   // DigitalOcean Managed Agents for the browser: with MARS_WEB=1, host the MARS
@@ -837,6 +849,15 @@ export function startStaticServer(config) {
   async function handleRequest(req, res) {
     const url = req.url ?? "/";
     const clientSessionApiKey = req.headers["x-session-api-key"];
+    if (sandboxRuntimes && clientSessionApiKey) {
+      const runtimeProxy = sandboxRuntimes.resolveProxyRequest(url);
+      if (runtimeProxy) {
+        stripClientIdentityAssertions(req);
+        req.url = runtimeProxy.upstreamPath;
+        proxy.proxyHttp(req, res, runtimeProxy.target);
+        return;
+      }
+    }
     if (entraBff) {
       if (await entraBff.handleHttp(req, res)) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;
@@ -921,6 +942,15 @@ export function startStaticServer(config) {
   async function handleUpgrade(req, socket, head) {
     let identityHeaders = {};
     const clientSessionApiKey = req.headers["x-session-api-key"];
+    if (sandboxRuntimes && clientSessionApiKey) {
+      const runtimeProxy = sandboxRuntimes.resolveProxyRequest(req.url);
+      if (runtimeProxy) {
+        stripClientIdentityAssertions(req);
+        req.url = runtimeProxy.upstreamPath;
+        proxy.proxyWebSocket(req, socket, head, runtimeProxy.target);
+        return;
+      }
+    }
     if (entraBff) {
       if (!(await entraBff.authorizeWebSocket(req, socket))) return;
       req.headers["x-session-api-key"] = config.sessionApiKey;

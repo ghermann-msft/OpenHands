@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { loadEntraBffConfig } from "../../scripts/entra-bff.mjs";
 import {
   createSandboxRuntimeProxy,
   parseArgs,
@@ -73,9 +74,9 @@ describe("static-server.mjs", () => {
     return `http://127.0.0.1:${address.port}`;
   }
 
-  async function getJson(url: string) {
+  async function getJson(url: string, headers: Record<string, string> = {}) {
     return new Promise<{ status: number; body: unknown }>((resolve, reject) => {
-      const req = request(url, { method: "GET" }, (res) => {
+      const req = request(url, { method: "GET", headers }, (res) => {
         let body = "";
         res.setEncoding("utf8");
         res.on("data", (chunk) => {
@@ -133,6 +134,80 @@ describe("static-server.mjs", () => {
     ).toThrow(
       "AGENT_CANVAS_SANDBOX_RUNTIME_NAME_PREFIX must be a Kubernetes DNS label",
     );
+  });
+
+  it("forwards session-key-authenticated sandbox requests before Entra authentication", async () => {
+    const buildDir = mkdtempSync(path.join(tmpdir(), "sandbox-runtime-auth-"));
+    tempDirs.push(buildDir);
+    writeFileSync(
+      path.join(buildDir, "index.html"),
+      "<html><head></head><body>app</body></html>",
+    );
+
+    let upstreamRequestCount = 0;
+    let upstreamIdentityAssertion: string | undefined;
+    let upstreamSessionKey: string | undefined;
+    const upstream = createServer((req, res) => {
+      upstreamRequestCount += 1;
+      upstreamIdentityAssertion = req.headers[
+        "x-openhands-identity-assertion"
+      ] as string | undefined;
+      upstreamSessionKey = req.headers["x-session-api-key"] as string;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"status":"ready"}');
+    });
+    const upstreamOrigin = await startHttpServer(upstream);
+    const entraBff = loadEntraBffConfig({
+      AGENT_CANVAS_ENTRA_TENANT_ID: "11111111-1111-1111-1111-111111111111",
+      AGENT_CANVAS_ENTRA_CLIENT_ID: "22222222-2222-2222-2222-222222222222",
+      AGENT_CANVAS_ENTRA_CLIENT_SECRET: "client-secret",
+      AGENT_CANVAS_ENTRA_REDIRECT_URI:
+        "https://canvas.example.com/auth/callback",
+      AGENT_CANVAS_ENTRA_COOKIE_SECRET: "0123456789abcdef0123456789abcdef",
+      OH_TRUSTED_IDENTITY_ASSERTION_SECRET:
+        "halo-identity-assertion-secret-32-bytes",
+    });
+    const origin = await startServer(buildDir, {
+      entraBff,
+      sessionApiKey: "internal-agent-server-key",
+      sandboxRuntimeProxy: {
+        resolveProxyRequest: (url: string) =>
+          url.startsWith("/sandboxes/openhands-sandbox-runtime/")
+            ? {
+                target: upstreamOrigin,
+                upstreamPath: url.replace(
+                  "/sandboxes/openhands-sandbox-runtime",
+                  "",
+                ),
+              }
+            : null,
+      },
+    });
+
+    const response = await getJson(
+      `${origin}/sandboxes/openhands-sandbox-runtime/alive`,
+      {
+        "X-OpenHands-Identity-Assertion": "attacker-controlled",
+        "X-Session-API-Key": "sandbox-session-key",
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: "ready" });
+    expect(upstreamIdentityAssertion).toBeUndefined();
+    expect(upstreamSessionKey).toBe("sandbox-session-key");
+    expect(upstreamRequestCount).toBe(1);
+
+    const missingKeyResponse = await getJson(
+      `${origin}/sandboxes/openhands-sandbox-runtime/alive`,
+    );
+    const unconstrainedResponse = await getJson(`${origin}/api/alive`, {
+      "X-Session-API-Key": "sandbox-session-key",
+    });
+
+    expect(missingKeyResponse.status).toBe(401);
+    expect(unconstrainedResponse.status).toBe(401);
+    expect(upstreamRequestCount).toBe(1);
   });
 
   async function getText(url: string) {
