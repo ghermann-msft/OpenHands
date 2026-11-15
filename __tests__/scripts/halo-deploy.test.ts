@@ -373,7 +373,7 @@ describe("Halo deployment automation", () => {
       'name: OH_ALLOW_USER_LLM_CONFIGURATION\n              value: "false"',
     );
     expect(resources).toContain(
-      "name: OH_SANDBOX_SANDBOX_URL_PATTERN\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/sandboxes/{sandbox_name}",
+      "name: OH_SANDBOX_SANDBOX_URL_PATTERN\n              value: http://openhands-halo:8000/sandboxes/{sandbox_name}",
     );
     expect(resources).toContain(
       "name: OH_SANDBOX_CLAIM_NAME_PREFIX\n              value: openhands-sandbox",
