@@ -46,7 +46,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach af613d405de993647b8f768acf7eb29648eb992a",
+      "git checkout --detach 91b8fa0bd7c4bacfda0873a2b4563d81a7b3f29e",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
