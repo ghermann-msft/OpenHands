@@ -10,6 +10,7 @@ import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
 import { SETTINGS_QUERY_KEYS } from "#/hooks/query/query-keys";
 import { I18nKey } from "#/i18n/declaration";
+import { cn } from "#/utils/utils";
 import { BrandButton } from "../brand-button";
 
 function requireAbsoluteHttpsUrl(value: string): string {
@@ -20,7 +21,11 @@ function requireAbsoluteHttpsUrl(value: string): string {
   return url.href;
 }
 
-export function GitHubIntegrationSettings() {
+export function GitHubIntegrationSettings({
+  standalone = false,
+}: {
+  standalone?: boolean;
+}) {
   const { t } = useTranslation("openhands");
   const { backend } = useActiveBackend();
   const queryClient = useQueryClient();
@@ -72,7 +77,7 @@ export function GitHubIntegrationSettings() {
   return (
     <section
       data-testid="github-integration-settings"
-      className="border-t border-border pt-6 mt-2"
+      className={cn(!standalone && "border-t border-border pt-6 mt-2")}
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>

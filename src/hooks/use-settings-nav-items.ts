@@ -1,5 +1,6 @@
 import { useConfig } from "#/hooks/query/use-config";
 import {
+  CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
   LOCKED_CLOUD_SETTINGS_NAV_PATH,
   OSS_NAV_ITEMS,
   SettingsNavItem,
@@ -31,28 +32,35 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   // locked self-hosted control plane can instead keep settings in Canvas.
   const isLockedToCloud = getLockedCloudHost() !== null;
   const delegatesSettings = isLockedToCloud && hasExternalSettingsShell();
+  const settingsItems =
+    isLockedToCloud && !delegatesSettings
+      ? [...OSS_NAV_ITEMS, ...CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS]
+      : OSS_NAV_ITEMS;
 
-  return OSS_NAV_ITEMS.filter(
-    (item) =>
-      !isSettingsPageHidden(item.to, featureFlags) &&
-      (!delegatesSettings || item.to === LOCKED_CLOUD_SETTINGS_NAV_PATH) &&
-      (backend.kind === "cloud" || !PROFILE_OWNED_SETTINGS_PATHS.has(item.to)),
-  ).map((item) => {
-    const renamedItem =
-      item.to === "/settings"
-        ? {
-            ...item,
-            text:
-              backend.kind === "local"
-                ? I18nKey.SETTINGS$LLM_PROFILES
-                : item.text,
-            subtitle:
-              backend.kind === "local"
-                ? I18nKey.SETTINGS$PAGE_LLM_PROFILES_SUBLINE
-                : item.subtitle,
-          }
-        : item;
+  return settingsItems
+    .filter(
+      (item) =>
+        !isSettingsPageHidden(item.to, featureFlags) &&
+        (!delegatesSettings || item.to === LOCKED_CLOUD_SETTINGS_NAV_PATH) &&
+        (backend.kind === "cloud" ||
+          !PROFILE_OWNED_SETTINGS_PATHS.has(item.to)),
+    )
+    .map((item) => {
+      const renamedItem =
+        item.to === "/settings"
+          ? {
+              ...item,
+              text:
+                backend.kind === "local"
+                  ? I18nKey.SETTINGS$LLM_PROFILES
+                  : item.text,
+              subtitle:
+                backend.kind === "local"
+                  ? I18nKey.SETTINGS$PAGE_LLM_PROFILES_SUBLINE
+                  : item.subtitle,
+            }
+          : item;
 
-    return { type: "item", item: renamedItem };
-  });
+      return { type: "item", item: renamedItem };
+    });
 }

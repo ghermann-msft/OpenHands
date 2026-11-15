@@ -2,6 +2,7 @@ import {
   AppWindow,
   Brain,
   Container,
+  Plug,
   Route as RouteIcon,
   Shield,
 } from "lucide-react";
@@ -9,6 +10,8 @@ import KeyIcon from "#/icons/key.svg?react";
 import MemoryIcon from "#/icons/memory_icon.svg?react";
 import CircuitIcon from "#/icons/u-circuit.svg?react";
 import RobotIcon from "#/icons/u-robot.svg?react";
+import ServerProcessIcon from "#/icons/server-process.svg?react";
+import SkillsIcon from "#/icons/skills.svg?react";
 
 export interface SettingsNavItem {
   icon: React.ReactElement;
@@ -81,6 +84,32 @@ export const OSS_NAV_ITEMS: SettingsNavItem[] = [
     text: "SETTINGS$NAV_SECRETS",
     subtitle: "SETTINGS$PAGE_SECRETS_SUBLINE",
   },
+];
+
+export const CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
+  {
+    icon: <ServerProcessIcon width={16} height={16} />,
+    to: "/mcp",
+    text: "SETTINGS$MCP_TITLE",
+    subtitle: "MCP$PAGE_DESCRIPTION",
+  },
+  {
+    icon: <Plug className="size-4" strokeWidth={2} aria-hidden />,
+    to: "/settings/integrations",
+    text: "SETTINGS$INTEGRATIONS_SETTINGS_LINK",
+    subtitle: "SETUP$MANAGE_INTEGRATIONS",
+  },
+  {
+    icon: <SkillsIcon width={16} height={16} aria-hidden="true" />,
+    to: "/skills",
+    text: "SETTINGS$SKILLS_TITLE",
+    subtitle: "SETTINGS$SKILLS_PAGE_DESCRIPTION",
+  },
+];
+
+export const ALL_SETTINGS_NAV_ITEMS = [
+  ...OSS_NAV_ITEMS,
+  ...CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
 ];
 
 /**

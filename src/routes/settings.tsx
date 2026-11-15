@@ -20,8 +20,8 @@ import {
 } from "#/hooks/use-breakpoint";
 import { useSettingsNavItems } from "#/hooks/use-settings-nav-items";
 import {
+  ALL_SETTINGS_NAV_ITEMS,
   LOCKED_CLOUD_SETTINGS_NAV_PATH,
-  OSS_NAV_ITEMS,
 } from "#/constants/settings-nav";
 import {
   getFirstAvailablePath,
@@ -66,7 +66,7 @@ function SettingsScreen() {
   const { currentSectionTitle, currentSectionSubtitle } = useMemo(() => {
     // Resolve from the full list, not the listed subset, so a page that is
     // reachable but unlisted still gets its own title.
-    const currentItem = OSS_NAV_ITEMS.find(
+    const currentItem = ALL_SETTINGS_NAV_ITEMS.find(
       (item) =>
         item.to === location.pathname ||
         location.pathname.startsWith(`${item.to}/`),

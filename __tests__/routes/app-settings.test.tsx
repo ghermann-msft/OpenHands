@@ -17,6 +17,15 @@ vi.mock("#/utils/custom-toast-handlers", () => ({
   displaySuccessToast: vi.fn(),
 }));
 
+vi.mock(
+  "#/components/features/settings/app-settings/github-integration-settings",
+  () => ({
+    GitHubIntegrationSettings: () => (
+      <div data-testid="github-integration-settings" />
+    ),
+  }),
+);
+
 const activeBackendState = vi.hoisted(() => ({
   id: "local",
   kind: "local" as "local" | "cloud",
@@ -203,6 +212,22 @@ describe("AppSettingsScreen", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByTestId("show-getting-started-checklist-switch"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("moves integrations out of Application when locked Canvas owns settings", async () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+    vi.stubEnv("VITE_EXTERNAL_SETTINGS_SHELL", "false");
+    activeBackendState.kind = "cloud";
+    vi.spyOn(SettingsService, "getSettings").mockResolvedValue(buildSettings());
+
+    renderAppSettingsScreen();
+
+    expect(
+      await screen.findByTestId("enable-sound-notifications-switch"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("github-integration-settings"),
     ).not.toBeInTheDocument();
   });
 

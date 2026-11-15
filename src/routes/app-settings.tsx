@@ -25,7 +25,10 @@ import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useFreeModels } from "#/hooks/query/use-free-models";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { formatModelNameForDisplay } from "#/utils/format-model-name";
-import { getLockedCloudHost } from "#/api/agent-server-config";
+import {
+  getLockedCloudHost,
+  hasExternalSettingsShell,
+} from "#/api/agent-server-config";
 import { GitHubIntegrationSettings } from "#/components/features/settings/app-settings/github-integration-settings";
 
 const AUTOMATIC_TITLE_LLM_PROFILE_KEY = "__automatic__";
@@ -44,6 +47,8 @@ export function AppSettingsScreen() {
 
 function AppSettingsForm() {
   const { t } = useTranslation("openhands");
+  const canvasOwnsLockedCloudSettings =
+    getLockedCloudHost() !== null && !hasExternalSettingsShell();
 
   const { mutate: saveSettings, isPending } = useSaveSettings();
   const { data: settings, isLoading } = useSettings();
@@ -209,7 +214,7 @@ function AppSettingsForm() {
           {/* Locked-to-Cloud never shows the checklist (OHE-3683). */}
           {getLockedCloudHost() === null && <GettingStartedChecklistSwitch />}
           <RecommendedAutomationsSwitch />
-          <GitHubIntegrationSettings />
+          {!canvasOwnsLockedCloudSettings && <GitHubIntegrationSettings />}
 
           <div className="border-t border-border pt-6 mt-2">
             <h3 className="text-lg font-medium mb-2">

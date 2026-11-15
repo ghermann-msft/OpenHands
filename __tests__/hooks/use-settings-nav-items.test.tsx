@@ -232,6 +232,9 @@ describe("useSettingsNavItems", () => {
     expect(paths).toContain("/settings/condenser");
     expect(paths).toContain("/settings/verification");
     expect(paths).toContain("/settings/secrets");
+    expect(paths).toContain("/mcp");
+    expect(paths).toContain("/settings/integrations");
+    expect(paths).toContain("/skills");
     expect(paths).not.toContain("/settings/llm");
   });
 });
