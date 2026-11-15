@@ -46,7 +46,9 @@ built by the run, without rebuilding it; promotion fails if PPE has moved to a
 newer digest while approval was pending. Pull requests never run on the
 self-hosted scale set. Deployment readiness and authentication smoke checks
 use the in-cluster service because Front Door intentionally permits only the
-configured client CIDRs.
+configured client CIDRs. Sandbox Server health, status, and conversation
+requests likewise route through the in-cluster Canvas service; Front Door is
+only for approved browser ingress.
 
 `bootstrap-ci` installs Actions Runner Controller and the runner scale set from
 the pinned `0.15.1` Helm charts. The controller and listener run on the warm
