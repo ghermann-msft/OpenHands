@@ -230,13 +230,24 @@ describe("Halo deployment automation", () => {
       "uh-unrealhands-dev-acukmd-application-gateway-nsg",
     );
     expect(waf.properties.customRules.rules[0]).toMatchObject({
+      action: "Allow",
+      matchConditions: [
+        {
+          matchVariable: "RemoteAddr",
+          operator: "IPMatch",
+          negateCondition: false,
+          matchValue: ["20.14.0.239/32"],
+        },
+      ],
+    });
+    expect(waf.properties.customRules.rules[1]).toMatchObject({
       action: "Block",
       matchConditions: [
         {
           matchVariable: "RemoteAddr",
           operator: "IPMatch",
           negateCondition: true,
-          matchValue: ["207.68.149.128/28", "20.14.0.239/32"],
+          matchValue: ["207.68.149.128/28"],
         },
       ],
     });

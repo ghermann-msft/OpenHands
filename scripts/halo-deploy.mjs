@@ -1986,8 +1986,23 @@ export function renderFrontDoorWafPolicy() {
       customRules: {
         rules: [
           {
-            name: "BlockUnapprovedClients",
+            name: "AllowTrustedServices",
             priority: 1,
+            enabledState: "Enabled",
+            ruleType: "MatchRule",
+            action: "Allow",
+            matchConditions: [
+              {
+                matchVariable: "RemoteAddr",
+                operator: "IPMatch",
+                negateCondition: false,
+                matchValue: config.azure.allowedServiceCidrs,
+              },
+            ],
+          },
+          {
+            name: "BlockUnapprovedClients",
+            priority: 2,
             enabledState: "Enabled",
             ruleType: "MatchRule",
             action: "Block",

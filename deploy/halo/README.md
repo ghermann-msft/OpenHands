@@ -48,7 +48,7 @@ self-hosted scale set. Deployment readiness and authentication smoke checks
 use the in-cluster service because Front Door intentionally permits only the
 configured client CIDRs. Sandbox runtime URLs use the canonical Front Door
 origin for both browsers and Sandbox Server; the AKS NAT gateway's fixed egress
-address is included in that allowlist.
+address has a separate explicit service allow rule.
 
 `bootstrap-ci` installs Actions Runner Controller and the runner scale set from
 the pinned `0.15.1` Helm charts. The controller and listener run on the warm

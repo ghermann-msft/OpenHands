@@ -11,7 +11,8 @@
     "frontDoorProfile": "uh-unrealhands-dev-fd",
     "frontDoorWafPolicy": "openhandsHaloCidr",
     "frontDoorSecurityPolicy": "openhands-halo-cidr",
-    "allowedClientCidrs": ["207.68.149.128/28", "20.14.0.239/32"],
+    "allowedClientCidrs": ["207.68.149.128/28"],
+    "allowedServiceCidrs": ["20.14.0.239/32"],
     "applicationGatewayOriginHost": "unrealhands-dev-origin-acukmdbk.westus3.cloudapp.azure.com",
     "applicationGatewayNsg": "uh-unrealhands-dev-acukmd-application-gateway-nsg"
   },
