@@ -209,6 +209,138 @@ function ensureRole({ principalId, role, scope }) {
   ]);
 }
 
+export function natGatewayPublicIpCreateArgs() {
+  return [
+    "network",
+    "public-ip",
+    "create",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    config.network.publicIp,
+    "--location",
+    config.azure.location,
+    "--sku",
+    "Standard",
+    "--allocation-method",
+    "Static",
+    "--zone",
+    "1",
+    "2",
+    "3",
+    "--output",
+    "none",
+  ];
+}
+
+export function natGatewayCreateArgs() {
+  return [
+    "network",
+    "nat",
+    "gateway",
+    "create",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    config.network.natGateway,
+    "--location",
+    config.azure.location,
+    "--public-ip-addresses",
+    config.network.publicIp,
+    "--idle-timeout",
+    String(config.network.idleTimeoutMinutes),
+    "--output",
+    "none",
+  ];
+}
+
+export function validateNatGatewayPublicIp(publicIp) {
+  if (
+    publicIp.sku?.name !== "Standard" ||
+    publicIp.publicIPAllocationMethod !== "Static" ||
+    [...(publicIp.zones ?? [])].sort().join(",") !== "1,2,3"
+  ) {
+    throw new Error(
+      `${config.network.publicIp} must be a zone-redundant Standard static public IP`,
+    );
+  }
+  if (!publicIp.ipAddress) {
+    throw new Error(
+      `${config.network.publicIp} does not have an allocated IP address`,
+    );
+  }
+  const cidr = `${publicIp.ipAddress}/32`;
+  if (cidr !== config.network.publicIpCidr) {
+    throw new Error(
+      `Configured NAT Gateway CIDR ${config.network.publicIpCidr} does not match ${config.network.publicIp} (${publicIp.ipAddress})`,
+    );
+  }
+  return cidr;
+}
+
+export function natGatewaySubnetUpdateArgs(subnet) {
+  return [
+    "network",
+    "vnet",
+    "subnet",
+    "update",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--vnet-name",
+    config.network.vnet,
+    "--name",
+    subnet,
+    "--nat-gateway",
+    config.network.natGateway,
+    "--output",
+    "none",
+  ];
+}
+
+export function aksNatGatewaySubnets() {
+  return [...config.network.aksSubnets];
+}
+
+export function aksApiServerAuthorizedIpUpdateArgs() {
+  return [
+    "aks",
+    "update",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    config.azure.aksCluster,
+    "--api-server-authorized-ip-ranges",
+    config.network.apiServerAuthorizedCidrs.join(","),
+    "--output",
+    "none",
+  ];
+}
+
+export function aksNatGatewayUpdateArgs() {
+  return [
+    "aks",
+    "update",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    config.azure.aksCluster,
+    "--outbound-type",
+    "userAssignedNATGateway",
+    "--output",
+    "none",
+  ];
+}
+
 function validateAzureOpenAi() {
   const account = JSON.parse(
     az(
@@ -2244,6 +2376,135 @@ function bootstrapEnvironment(environment) {
   ensureFrontDoor(environment);
 }
 
+function ensureNatGatewayResources() {
+  const network = config.network;
+  const existingPublicIp = tryRun("az", [
+    "network",
+    "public-ip",
+    "show",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    network.publicIp,
+    "--output",
+    "json",
+  ]);
+  if (existingPublicIp.status !== 0) {
+    az(natGatewayPublicIpCreateArgs());
+  }
+  const publicIp = JSON.parse(
+    az(
+      [
+        "network",
+        "public-ip",
+        "show",
+        "--subscription",
+        config.azure.subscriptionId,
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--name",
+        network.publicIp,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  validateNatGatewayPublicIp(publicIp);
+
+  const natGateway = tryRun("az", [
+    "network",
+    "nat",
+    "gateway",
+    "show",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    network.natGateway,
+    "--output",
+    "json",
+  ]);
+  if (natGateway.status !== 0) {
+    az(natGatewayCreateArgs());
+  } else {
+    az([
+      "network",
+      "nat",
+      "gateway",
+      "update",
+      "--subscription",
+      config.azure.subscriptionId,
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--name",
+      network.natGateway,
+      "--public-ip-addresses",
+      network.publicIp,
+      "--idle-timeout",
+      String(network.idleTimeoutMinutes),
+      "--output",
+      "none",
+    ]);
+  }
+}
+
+function ensureAksNatGateway() {
+  ensureNatGatewayResources();
+  const authorizedCidrs = JSON.parse(
+    az(
+      [
+        "aks",
+        "show",
+        "--subscription",
+        config.azure.subscriptionId,
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--name",
+        config.azure.aksCluster,
+        "--query",
+        "apiServerAccessProfile.authorizedIpRanges",
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  if (
+    [...authorizedCidrs].sort().join(",") !==
+    [...config.network.apiServerAuthorizedCidrs].sort().join(",")
+  ) {
+    az(aksApiServerAuthorizedIpUpdateArgs());
+  }
+  ensureFrontDoorAccess();
+  for (const subnet of aksNatGatewaySubnets()) {
+    az(natGatewaySubnetUpdateArgs(subnet));
+  }
+  const outboundType = az(
+    [
+      "aks",
+      "show",
+      "--subscription",
+      config.azure.subscriptionId,
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--name",
+      config.azure.aksCluster,
+      "--query",
+      "networkProfile.outboundType",
+      "--output",
+      "tsv",
+    ],
+    { capture: true },
+  );
+  if (outboundType !== "userAssignedNATGateway") {
+    az(aksNatGatewayUpdateArgs());
+  }
+}
+
 function ensurePostgresNetwork() {
   const postgres = config.postgres;
   const subnet = tryRun("az", [
@@ -2526,6 +2787,7 @@ async function bootstrapPostgres() {
 }
 
 async function bootstrap() {
+  ensureAksNatGateway();
   bootstrapBuild();
   ensureRuntimeNodePool();
   ensureAgentSandbox();
@@ -3092,6 +3354,7 @@ function status() {
 function usage() {
   console.log(`Usage:
   npm run halo -- bootstrap
+  npm run halo -- bootstrap-network
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
   npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
@@ -3104,6 +3367,9 @@ async function main(args = process.argv.slice(2)) {
   switch (command) {
     case "bootstrap":
       await bootstrap();
+      break;
+    case "bootstrap-network":
+      ensureAksNatGateway();
       break;
     case "bootstrap-ci":
       bootstrapCi(args.slice(1));

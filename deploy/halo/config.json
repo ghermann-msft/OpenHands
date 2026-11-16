@@ -12,9 +12,18 @@
     "frontDoorWafPolicy": "openhandsHaloCidr",
     "frontDoorSecurityPolicy": "openhands-halo-cidr",
     "allowedClientCidrs": ["207.68.149.128/28"],
-    "allowedServiceCidrs": ["20.14.0.239/32"],
+    "allowedServiceCidrs": ["4.148.149.254/32"],
     "applicationGatewayOriginHost": "unrealhands-dev-origin-acukmdbk.westus3.cloudapp.azure.com",
     "applicationGatewayNsg": "uh-unrealhands-dev-acukmd-application-gateway-nsg"
+  },
+  "network": {
+    "vnet": "uh-unrealhands-dev-acukmd-vnet",
+    "aksSubnets": ["aks-system", "aks-linux", "aks-windows"],
+    "natGateway": "uh-unrealhands-dev-nat",
+    "publicIp": "uh-unrealhands-dev-egress-pip",
+    "publicIpCidr": "4.148.149.254/32",
+    "apiServerAuthorizedCidrs": ["207.68.149.128/28", "4.148.149.254/32"],
+    "idleTimeoutMinutes": 10
   },
   "azureOpenAI": {
     "subscriptionId": "fe0b1156-f0b3-4f98-aa1e-7d980f834fcf",

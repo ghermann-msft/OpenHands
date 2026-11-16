@@ -3,12 +3,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   appGatewayNsgRuleArgs,
+  aksApiServerAuthorizedIpUpdateArgs,
+  aksNatGatewaySubnets,
+  aksNatGatewayUpdateArgs,
   buildDigestsFromPodList,
   buildNodePoolCreateArgs,
   entraIdentifierUri,
   frontDoorOriginCreateArgs,
   frontDoorOriginGroupCreateArgs,
   imageReference,
+  natGatewayCreateArgs,
+  natGatewayPublicIpCreateArgs,
+  natGatewaySubnetUpdateArgs,
   normalizeDigest,
   postgresServerCreateArgs,
   renderArcControllerValues,
@@ -26,6 +32,7 @@ import {
   renderSecretProviderClass,
   renderWorkspaceStorageClass,
   runtimeNodePoolAutoscalerArgs,
+  validateNatGatewayPublicIp,
   validateBuildNodePool,
 } from "../../scripts/halo-deploy.mjs";
 
@@ -33,6 +40,62 @@ const digest = `sha256:${"a".repeat(64)}`;
 const commit = "84d224f45e7647c3a04d4b8ac4af47af22a23b12";
 
 describe("Halo deployment automation", () => {
+  it("configures a cluster-owned NAT Gateway for every AKS subnet", () => {
+    expect(natGatewayPublicIpCreateArgs()).toEqual(
+      expect.arrayContaining([
+        "uh-unrealhands-dev-egress-pip",
+        "Standard",
+        "Static",
+        "1",
+        "2",
+        "3",
+      ]),
+    );
+    expect(natGatewayCreateArgs()).toEqual(
+      expect.arrayContaining([
+        "uh-unrealhands-dev-nat",
+        "uh-unrealhands-dev-egress-pip",
+        "10",
+      ]),
+    );
+    expect(
+      validateNatGatewayPublicIp({
+        sku: { name: "Standard" },
+        publicIPAllocationMethod: "Static",
+        zones: ["1", "2", "3"],
+        ipAddress: "4.148.149.254",
+      }),
+    ).toBe("4.148.149.254/32");
+    expect(() =>
+      validateNatGatewayPublicIp({
+        sku: { name: "Basic" },
+        publicIPAllocationMethod: "Dynamic",
+        ipAddress: "4.148.149.254",
+      }),
+    ).toThrow(/zone-redundant Standard static/);
+    expect(natGatewaySubnetUpdateArgs("aks-linux")).toEqual(
+      expect.arrayContaining([
+        "uh-unrealhands-dev-acukmd-vnet",
+        "aks-linux",
+        "uh-unrealhands-dev-nat",
+      ]),
+    );
+    expect(aksNatGatewaySubnets()).toEqual([
+      "aks-system",
+      "aks-linux",
+      "aks-windows",
+    ]);
+    expect(aksApiServerAuthorizedIpUpdateArgs()).toEqual(
+      expect.arrayContaining([
+        "aks-unrealhands-dev",
+        "207.68.149.128/28,4.148.149.254/32",
+      ]),
+    );
+    expect(aksNatGatewayUpdateArgs()).toEqual(
+      expect.arrayContaining(["aks-unrealhands-dev", "userAssignedNATGateway"]),
+    );
+  });
+
   it("requires immutable image digests", () => {
     expect(normalizeDigest(digest)).toBe(digest);
     expect(() => normalizeDigest("84d224f45")).toThrow(/immutable sha256/);
@@ -236,7 +299,7 @@ describe("Halo deployment automation", () => {
           matchVariable: "RemoteAddr",
           operator: "IPMatch",
           negateCondition: false,
-          matchValue: ["20.14.0.239/32"],
+          matchValue: ["4.148.149.254/32"],
         },
       ],
     });

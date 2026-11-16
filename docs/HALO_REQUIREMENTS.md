@@ -79,6 +79,12 @@ Service (AKS).
 ### AKS environments
 
 - Run one AKS cluster with separate `candidate` and `primary` namespaces.
+- Route the AKS node subnets through a dedicated user-assigned Azure NAT Gateway
+  with a named static Standard public IP. Treat that IP as the authoritative
+  outbound allowlist identity for Halo integrations.
+- Add the NAT public IP to the AKS API-server authorized ranges before attaching
+  the gateway to a node subnet so kubelet connectivity is preserved during the
+  egress transition.
 - `candidate` and `primary` must use separate:
   - Hostnames and ingress configuration.
   - Microsoft Entra applications or environment-specific redirect URIs and
