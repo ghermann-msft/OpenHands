@@ -23,7 +23,9 @@ describe("ConversationCardPreview", () => {
       />,
     );
 
-    expect(screen.queryByTestId("conversation-card-tag-chip")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("conversation-card-tag-chip"),
+    ).not.toBeInTheDocument();
 
     const rows = screen.getAllByTestId("conversation-card-preview-tag-row");
     expect(rows).toHaveLength(2);
@@ -86,6 +88,20 @@ describe("ConversationCardPreview", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the execution profile pinned to the conversation", () => {
+    renderWithProviders(
+      <ConversationCardPreview
+        title={PREVIEW_TITLE}
+        selectedRepository={null}
+        sandboxSpecId="windows-build"
+      />,
+    );
+
+    expect(
+      screen.getByTestId("conversation-card-preview-execution-profile"),
+    ).toHaveTextContent("windows-build");
+  });
+
   it("still shows first-class repo / branch rows from selectedRepository", () => {
     renderWithProviders(
       <ConversationCardPreview
@@ -137,9 +153,9 @@ describe("ConversationCardPreview", () => {
       />,
     );
 
-    expect(screen.getByTestId("conversation-card-preview-tag-row")).toHaveTextContent(
-      longValue,
-    );
+    expect(
+      screen.getByTestId("conversation-card-preview-tag-row"),
+    ).toHaveTextContent(longValue);
   });
 
   it("styles the model row with the OpenHands brand icon", () => {

@@ -126,6 +126,26 @@ describe("AgentServerConversationService cloud branch", () => {
     ).toContain("ROUTE_AT_CONVERSATION_START");
   });
 
+  it("pins the selected execution profile in the cloud creation request", async () => {
+    fetchMock.mockResolvedValue(
+      mockJsonResponse({
+        id: "task-profile",
+        status: "WORKING",
+        app_conversation_id: null,
+      }),
+    );
+
+    await AgentServerConversationService.createConversation({
+      initialUserMsg: "build the project",
+      sandboxSpecId: "windows-build",
+    });
+
+    const [, init] = getFetchCall(fetchMock);
+    expect(getJsonBody(init)).toMatchObject({
+      sandbox_spec_id: "windows-build",
+    });
+  });
+
   it("createConversation omits agent_launch_additions on the cloud path when the toggle is off", async () => {
     fetchMock.mockResolvedValue(
       mockJsonResponse({

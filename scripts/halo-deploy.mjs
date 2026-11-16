@@ -104,6 +104,20 @@ export function imageReference(loginServer, repository, digest) {
   return `${loginServer}/${repository}@${normalizeDigest(digest)}`;
 }
 
+export function externalImageReference(repository, digest) {
+  const normalizedRepository = String(repository ?? "").trim();
+  if (
+    !normalizedRepository ||
+    normalizedRepository.includes("@") ||
+    /:[^/]+$/.test(normalizedRepository)
+  ) {
+    throw new Error(
+      `Expected an image repository without a tag or digest, received: ${normalizedRepository}`,
+    );
+  }
+  return `${normalizedRepository}@${normalizeDigest(digest)}`;
+}
+
 function resolveCommit(ref) {
   return run("git", ["rev-parse", `${ref}^{commit}`], { capture: true });
 }
@@ -513,6 +527,62 @@ export function buildNodePoolCreateArgs() {
   ];
 }
 
+function subnetResourceId(subnet) {
+  return `/subscriptions/${config.azure.subscriptionId}/resourceGroups/${config.azure.resourceGroup}/providers/Microsoft.Network/virtualNetworks/${config.network.vnet}/subnets/${subnet}`;
+}
+
+export function validateWindowsNodePoolName(name) {
+  if (!/^[a-z][a-z0-9]{0,5}$/.test(name)) {
+    throw new Error(
+      `Windows AKS node pool name must start with a lowercase letter, use only lowercase letters or digits, and be at most 6 characters: ${name}`,
+    );
+  }
+  return name;
+}
+
+export function windowsRuntimeNodePoolCreateArgs() {
+  const runtime = config.windowsRuntime;
+  validateWindowsNodePoolName(runtime.nodePool);
+  return [
+    "aks",
+    "nodepool",
+    "add",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--cluster-name",
+    config.azure.aksCluster,
+    "--name",
+    runtime.nodePool,
+    "--mode",
+    "User",
+    "--os-type",
+    "Windows",
+    "--os-sku",
+    runtime.osSku,
+    "--node-vm-size",
+    runtime.nodePoolVmSize,
+    "--node-count",
+    String(runtime.nodePoolMinCount),
+    "--enable-cluster-autoscaler",
+    "--min-count",
+    String(runtime.nodePoolMinCount),
+    "--max-count",
+    String(runtime.nodePoolMaxCount),
+    "--vnet-subnet-id",
+    subnetResourceId(runtime.nodeSubnet),
+    "--labels",
+    `${runtime.nodeTaintKey}=${runtime.nodeTaintValue}`,
+    "--node-taints",
+    `${runtime.nodeTaintKey}=${runtime.nodeTaintValue}:NoSchedule`,
+    "--ssh-access",
+    "disabled",
+    "--output",
+    "none",
+  ];
+}
+
 export function postgresServerCreateArgs(
   bootstrapIdentity,
   subnetId,
@@ -595,9 +665,44 @@ export function validateBuildNodePool(nodePool) {
   if (!nodePool.nodeTaints?.includes(expectedTaint)) {
     mismatches.push(`taint ${expectedTaint}`);
   }
+  if (nodePool.securityProfile?.sshAccess !== "Disabled") {
+    mismatches.push("SSH access disabled");
+  }
   if (mismatches.length > 0) {
     throw new Error(
       `AKS node pool ${build.nodePool} does not match the Halo build contract: ${mismatches.join(", ")}`,
+    );
+  }
+}
+
+export function validateWindowsRuntimeNodePool(nodePool) {
+  const runtime = config.windowsRuntime;
+  const expectedTaint = `${runtime.nodeTaintKey}=${runtime.nodeTaintValue}:NoSchedule`;
+  const mismatches = [];
+  if (nodePool.mode !== "User") mismatches.push("mode=User");
+  if (nodePool.osType !== "Windows") mismatches.push("osType=Windows");
+  if (nodePool.osSku !== runtime.osSku) {
+    mismatches.push(`osSku=${runtime.osSku}`);
+  }
+  if (nodePool.vmSize !== runtime.nodePoolVmSize) {
+    mismatches.push(`vmSize=${runtime.nodePoolVmSize}`);
+  }
+  if (!nodePool.enableAutoScaling) mismatches.push("autoscaling enabled");
+  if (nodePool.minCount !== runtime.nodePoolMinCount) {
+    mismatches.push(`minCount=${runtime.nodePoolMinCount}`);
+  }
+  if (nodePool.maxCount !== runtime.nodePoolMaxCount) {
+    mismatches.push(`maxCount=${runtime.nodePoolMaxCount}`);
+  }
+  if (nodePool.nodeLabels?.[runtime.nodeTaintKey] !== runtime.nodeTaintValue) {
+    mismatches.push(`label ${runtime.nodeTaintKey}=${runtime.nodeTaintValue}`);
+  }
+  if (!nodePool.nodeTaints?.includes(expectedTaint)) {
+    mismatches.push(`taint ${expectedTaint}`);
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `AKS node pool ${runtime.nodePool} does not match the Halo Windows runtime contract: ${mismatches.join(", ")}`,
     );
   }
 }
@@ -646,6 +751,52 @@ function ensureBuildNodePool() {
     ),
   );
   validateBuildNodePool(nodePool);
+}
+
+function ensureWindowsRuntimeNodePool() {
+  const runtime = config.windowsRuntime;
+  const existing = az(
+    [
+      "aks",
+      "nodepool",
+      "list",
+      "--subscription",
+      config.azure.subscriptionId,
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--cluster-name",
+      config.azure.aksCluster,
+      "--query",
+      `[?name=='${runtime.nodePool}'] | [0]`,
+      "--output",
+      "json",
+    ],
+    { capture: true },
+  );
+  if (!existing || existing === "null") {
+    az(windowsRuntimeNodePoolCreateArgs());
+  }
+  const nodePool = JSON.parse(
+    az(
+      [
+        "aks",
+        "nodepool",
+        "show",
+        "--subscription",
+        config.azure.subscriptionId,
+        "--resource-group",
+        config.azure.resourceGroup,
+        "--cluster-name",
+        config.azure.aksCluster,
+        "--name",
+        runtime.nodePool,
+        "--output",
+        "json",
+      ],
+      { capture: true },
+    ),
+  );
+  validateWindowsRuntimeNodePool(nodePool);
 }
 
 export function runtimeNodePoolAutoscalerArgs() {
@@ -1490,11 +1641,229 @@ extraVolumeMounts:
 `;
 }
 
+function sandboxSpecBootstrapProfiles(
+  environment,
+  agentServerDigest,
+  windowsRuntimeDigest,
+) {
+  const linuxImage = imageReference(
+    config.azure.acrLoginServer,
+    config.build.agentServerRepository,
+    agentServerDigest,
+  );
+  const windowsImage = externalImageReference(
+    config.windowsRuntime.imageRepository,
+    windowsRuntimeDigest,
+  );
+  const bootstrapRevision = `${agentServerDigest}:${windowsRuntimeDigest}`;
+  return config.agentSandbox.profileSeeds.map((profile) => {
+    const isWindows = profile.os === "windows";
+    return {
+      id: profile.id,
+      display_name: profile.name,
+      description: null,
+      enabled: profile.enabled,
+      published: true,
+      availability: "available",
+      availability_reason: null,
+      operating_system: profile.os,
+      platform: isWindows ? config.windowsRuntime.platform : "linux/amd64",
+      resource_class: profile.resourceClass,
+      image: isWindows ? windowsImage : linuxImage,
+      shell: isWindows ? ["powershell.exe", "-NoLogo", "-NoProfile"] : ["bash"],
+      workspace_mount_path: isWindows
+        ? config.windowsRuntime.workspacePath
+        : "/workspace",
+      durable_state_dir: isWindows
+        ? config.windowsRuntime.statePath
+        : "/openhands",
+      durable_mount_path: isWindows
+        ? config.windowsRuntime.durableMountPath
+        : "/openhands",
+      template_name: profile.template,
+      warm_pool_name: profile.warmPool,
+      warm_pool_replicas: profile.warmPoolReplicas,
+      cpu_request: profile.cpuRequest,
+      cpu_limit: profile.cpuLimit,
+      cpu_cores: Number(profile.cpuLimit),
+      memory_request: profile.memoryRequest,
+      memory_limit: profile.memoryLimit,
+      memory_gib: Number(profile.memoryLimit.replace(/Gi$/, "")),
+      workspace_storage_class: profile.storageClass,
+      workspace_storage_size: profile.storageSize,
+      storage_class: profile.storageClass,
+      storage_size: profile.storageSize,
+      durable_storage_class: config.conversationStorage.storageClass,
+      durable_storage_size: null,
+      durable_volume_claim_name:
+        config.environments[environment].conversationPvc,
+      durable_sub_path_template: "{sandbox_id}",
+      node_selector: {
+        "kubernetes.io/os": profile.os,
+        "kubernetes.io/arch": "amd64",
+        agentpool: profile.nodePool,
+        ...(isWindows
+          ? {
+              "node.kubernetes.io/windows-build":
+                config.windowsRuntime.windowsBuild,
+            }
+          : {}),
+      },
+      tolerations: [
+        ...(isWindows
+          ? [
+              {
+                key: "os",
+                operator: "Equal",
+                value: "windows",
+                effect: "NoSchedule",
+              },
+            ]
+          : []),
+        {
+          key: profile.nodeTaintKey,
+          operator: "Equal",
+          value: profile.nodeTaintValue,
+          effect: "NoSchedule",
+        },
+      ],
+      capabilities: profile.capabilities,
+      max_concurrent_sandboxes: profile.maxConcurrency,
+      max_concurrent_per_user: null,
+      startup_timeout_seconds: isWindows ? 600 : 300,
+      initial_env: isWindows
+        ? {
+            OH_ENABLE_VNC: "0",
+            LOG_JSON: "true",
+            OH_WORKSPACE_PATH: config.windowsRuntime.workingDir,
+            OH_CONVERSATIONS_PATH: config.windowsRuntime.conversationsPath,
+            OH_BASH_EVENTS_DIR: config.windowsRuntime.bashEventsPath,
+            OH_PERSISTENCE_DIR: config.windowsRuntime.persistencePath,
+            OH_CONVERSATION_WORKTREE_ROOT: config.windowsRuntime.worktreeRoot,
+            PYTHONUNBUFFERED: "1",
+            OH_SANDBOX_OPERATING_SYSTEM: "windows",
+          }
+        : {
+            OH_ENABLE_VNC: "0",
+            LOG_JSON: "true",
+            OH_WORKSPACE_PATH: "/workspace/project",
+            OH_CONVERSATIONS_PATH: "/openhands/conversations",
+            OH_BASH_EVENTS_DIR: "/openhands/bash_events",
+            OH_PERSISTENCE_DIR: "/openhands/persistence",
+            OH_CONVERSATION_WORKTREE_ROOT: "/workspace/worktrees",
+            PYTHONUNBUFFERED: "1",
+          },
+      working_dir: isWindows
+        ? config.windowsRuntime.workingDir
+        : "/workspace/project",
+      command: null,
+      bootstrap_revision: bootstrapRevision,
+      created_at: null,
+      updated_at: null,
+    };
+  });
+}
+
+export function renderSandboxSpecBootstrapConfigMap(
+  environment,
+  agentServerDigest,
+  windowsRuntimeDigest,
+) {
+  const env = config.environments[environment];
+  const json = JSON.stringify(
+    sandboxSpecBootstrapProfiles(
+      environment,
+      agentServerDigest,
+      windowsRuntimeDigest,
+    ),
+    null,
+    2,
+  )
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
+  return `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openhands-sandbox-spec-bootstrap
+  namespace: ${env.namespace}
+data:
+  sandbox-specs.json: |
+${json}
+`;
+}
+
+export function renderWindowsRuntimePreflight(
+  environment,
+  windowsRuntimeDigest,
+) {
+  const env = config.environments[environment];
+  const runtime = config.windowsRuntime;
+  const image = externalImageReference(
+    runtime.imageRepository,
+    windowsRuntimeDigest,
+  );
+  return `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openhands-windows-runtime-preflight
+  namespace: ${env.namespace}
+spec:
+  activeDeadlineSeconds: 1800
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+        openhands.dev/execution-profile: ${runtime.runtimeIdentity}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: ${env.serviceAccount}
+      nodeSelector:
+        kubernetes.io/os: windows
+        kubernetes.io/arch: amd64
+        agentpool: ${runtime.nodePool}
+        node.kubernetes.io/windows-build: "${runtime.windowsBuild}"
+      tolerations:
+        - key: os
+          operator: Equal
+          value: windows
+          effect: NoSchedule
+        - key: ${runtime.nodeTaintKey}
+          operator: Equal
+          value: ${runtime.nodeTaintValue}
+          effect: NoSchedule
+      containers:
+        - name: verify-runtime
+          image: ${image}
+          imagePullPolicy: Always
+          command:
+            - powershell.exe
+            - -NoLogo
+            - -NoProfile
+            - -Command
+            - |
+              $ErrorActionPreference = "Stop"
+              if ([string]::IsNullOrWhiteSpace($env:AZURE_FEDERATED_TOKEN_FILE)) {
+                throw "Azure Workload Identity did not inject AZURE_FEDERATED_TOKEN_FILE"
+              }
+              if (-not (Test-Path -LiteralPath $env:AZURE_FEDERATED_TOKEN_FILE -PathType Leaf)) {
+                throw "Azure Workload Identity token file is missing at $env:AZURE_FEDERATED_TOKEN_FILE"
+              }
+              if ((Get-Item -LiteralPath $env:AZURE_FEDERATED_TOKEN_FILE).Length -le 0) {
+                throw "Azure Workload Identity token file is empty"
+              }
+              Write-Output "Windows runtime image pull and Workload Identity token injection verified"
+`;
+}
+
 export function renderSandboxServerResources(
   environment,
   digest,
   runtimeDigest,
   runtimeClientId,
+  windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
   const sandbox = config.sandboxServer;
@@ -1507,6 +1876,10 @@ export function renderSandboxServerResources(
     config.azure.acrLoginServer,
     config.build.sandboxRuntimeRepository,
     runtimeDigest,
+  );
+  const windowsRuntimeImage = externalImageReference(
+    config.windowsRuntime.imageRepository,
+    windowsRuntimeDigest,
   );
   const githubOAuthEnv =
     env.githubApp.slug &&
@@ -1528,6 +1901,12 @@ export function renderSandboxServerResources(
               value: https://${env.frontDoorHost}/oauth/github/callback
             - name: OH_GITHUB_OAUTH_SUCCESS_URL
               value: https://${env.frontDoorHost}/settings/app
+`
+      : "";
+  const sandboxStartupTimeoutEnv =
+    environment === "candidate"
+      ? `            - name: OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT
+              value: "600"
 `
       : "";
   return `apiVersion: apps/v1
@@ -1570,7 +1949,13 @@ spec:
               value: kubernetes
             - name: AGENT_SERVER_IMAGE
               value: ${runtimeImage}
-            - name: SERVE_FRONTEND
+            - name: OH_WINDOWS_AGENT_SERVER_IMAGE
+              value: ${windowsRuntimeImage}
+            - name: OH_SANDBOX_SPEC_BOOTSTRAP_FILE
+              value: /etc/openhands/sandbox-specs.json
+            - name: OH_HALO_DURABLE_STATE_PVC
+              value: ${env.conversationPvc}
+${sandboxStartupTimeoutEnv}            - name: SERVE_FRONTEND
               value: "false"
             - name: DB_AZURE_IDENTITY
               value: "true"
@@ -1657,6 +2042,14 @@ ${githubOAuthEnv}            - name: OH_SANDBOX_KIND
             limits:
               cpu: "1"
               memory: 2Gi
+          volumeMounts:
+            - name: sandbox-spec-bootstrap
+              mountPath: /etc/openhands
+              readOnly: true
+      volumes:
+        - name: sandbox-spec-bootstrap
+          configMap:
+            name: openhands-sandbox-spec-bootstrap
 ---
 apiVersion: v1
 kind: Service
@@ -1673,20 +2066,145 @@ spec:
 `;
 }
 
-export function renderAgentSandboxResources(environment, agentServerDigest) {
-  const env = config.environments[environment];
-  const agentSandbox = config.agentSandbox;
-  const agentServerImage = imageReference(
-    config.azure.acrLoginServer,
-    config.build.agentServerRepository,
-    agentServerDigest,
+function reportWindowsRuntimePreflightFailure(environment) {
+  const namespace = config.environments[environment].namespace;
+  for (const args of [
+    ["-n", namespace, "get", "pods", "-l", "job-name=openhands-windows-runtime-preflight", "-o", "wide"],
+    ["-n", namespace, "describe", "job", "openhands-windows-runtime-preflight"],
+    ["-n", namespace, "logs", "job/openhands-windows-runtime-preflight", "--all-containers=true"],
+  ]) {
+    const result = tryRun("kubectl", args);
+    if (result.stdout) process.stderr.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+  }
+}
+
+export function windowsPreflightJobResult(job) {
+  const conditions = job.status?.conditions ?? [];
+  const complete = conditions.find(
+    (condition) => condition.type === "Complete" && condition.status === "True",
   );
+  if (complete) return { status: "complete" };
+  const failed = conditions.find(
+    (condition) => condition.type === "Failed" && condition.status === "True",
+  );
+  if (failed) {
+    return {
+      status: "failed",
+      detail:
+        [failed.reason, failed.message].filter(Boolean).join(": ") ||
+        "Windows runtime preflight Job failed",
+    };
+  }
+  return { status: "pending" };
+}
+
+async function waitForWindowsRuntimePreflight(environment) {
+  const namespace = config.environments[environment].namespace;
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const job = JSON.parse(
+      kubectl(
+        [
+          "-n",
+          namespace,
+          "get",
+          "job",
+          "openhands-windows-runtime-preflight",
+          "-o",
+          "json",
+        ],
+        { capture: true },
+      ),
+    );
+    const result = windowsPreflightJobResult(job);
+    if (result.status === "complete") return;
+    if (result.status === "failed") throw new Error(result.detail);
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  throw new Error(
+    "Timed out after 1800 seconds waiting for the Windows runtime image pull and Workload Identity preflight",
+  );
+}
+
+async function preflightWindowsRuntime(environment, windowsRuntimeDigest) {
+  const namespace = config.environments[environment].namespace;
+  kubectl([
+    "-n",
+    namespace,
+    "delete",
+    "job",
+    "openhands-windows-runtime-preflight",
+    "--ignore-not-found",
+    "--wait=true",
+  ]);
+  kubectl(["apply", "-f", "-"], {
+    input: renderWindowsRuntimePreflight(environment, windowsRuntimeDigest),
+  });
+  try {
+    await waitForWindowsRuntimePreflight(environment);
+    kubectl([
+      "-n",
+      namespace,
+      "logs",
+      "job/openhands-windows-runtime-preflight",
+      "--all-containers=true",
+    ]);
+  } catch (error) {
+    reportWindowsRuntimePreflightFailure(environment);
+    throw new Error(
+      `Windows runtime preflight failed; the profile remains undeployed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function yamlSingleQuoted(value) {
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function renderSandboxProfileTemplate(
+  env,
+  profile,
+  linuxAgentServerImage,
+  windowsAgentServerImage,
+) {
+  const isWindows = profile.os === "windows";
+  const image = isWindows ? windowsAgentServerImage : linuxAgentServerImage;
+  const workingDir = isWindows
+    ? config.windowsRuntime.workingDir
+    : "/workspace/project";
+  const workspacePath = isWindows
+    ? config.windowsRuntime.workspacePath
+    : "/workspace";
+  const renderedWorkingDir = isWindows
+    ? yamlSingleQuoted(workingDir)
+    : workingDir;
+  const renderedWorkspacePath = isWindows
+    ? yamlSingleQuoted(workspacePath)
+    : workspacePath;
+  const readinessPath = isWindows ? "/ready" : "/health";
+  const linuxSecurityContext = isWindows
+    ? ""
+    : `      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+`;
+  const vscodePort = isWindows
+    ? ""
+    : `            - containerPort: 8001
+              name: vscode
+`;
   return `apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: ${agentSandbox.template}
+  name: ${profile.template}
   namespace: ${env.namespace}
+  labels:
+    openhands.dev/execution-profile: ${profile.id}
+    openhands.dev/os: ${profile.os}
+    openhands.dev/resource-class: ${profile.resourceClass}
 spec:
+  volumeClaimTemplatesPolicy: Overrides
   envVarsInjectionPolicy: Allowed
   service: true
   networkPolicy:
@@ -1726,72 +2244,110 @@ spec:
         name: workspace
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: ${config.workspaceStorage.storageClass}
+        storageClassName: ${profile.storageClass}
         resources:
           requests:
-            storage: ${config.workspaceStorage.size}
+            storage: ${profile.storageSize}
   podTemplate:
     metadata:
       labels:
         azure.workload.identity/use: "true"
+        openhands.dev/execution-profile: ${profile.id}
     spec:
       serviceAccountName: ${env.serviceAccount}
-      nodeSelector:
-        kubernetes.io/os: linux
-        kubernetes.io/arch: amd64
-        agentpool: ${config.runtime.nodePool}
-      tolerations:
-        - key: ${config.runtime.nodeTaintKey}
-          operator: Equal
-          value: ${config.runtime.nodeTaintValue}
-          effect: NoSchedule
-      securityContext:
-        runAsUser: 10001
-        runAsGroup: 10001
-        fsGroup: 10001
       volumes:
         - name: openhands-state
-          emptyDir: {}
-      containers:
+          persistentVolumeClaim:
+            claimName: ${env.conversationPvc}
+      nodeSelector:
+        kubernetes.io/os: ${profile.os}
+        kubernetes.io/arch: amd64
+        agentpool: ${profile.nodePool}
+${isWindows ? `        node.kubernetes.io/windows-build: "${config.windowsRuntime.windowsBuild}"\n` : ""}      tolerations:
+${
+  isWindows
+    ? `        - key: os
+          operator: Equal
+          value: windows
+          effect: NoSchedule
+`
+    : ""
+}
+        - key: ${profile.nodeTaintKey}
+          operator: Equal
+          value: ${profile.nodeTaintValue}
+          effect: NoSchedule
+${linuxSecurityContext}      containers:
         - name: agent-server
-          image: ${agentServerImage}
+          image: ${image}
           args: ["--host", "0.0.0.0", "--port", "8000"]
-          workingDir: /workspace
+          workingDir: ${renderedWorkingDir}
           ports:
             - containerPort: 8000
               name: agent-server
-            - containerPort: 8001
-              name: vscode
-          readinessProbe:
+${vscodePort}          readinessProbe:
             httpGet:
-              path: /health
+              path: ${readinessPath}
               port: 8000
             initialDelaySeconds: 3
             periodSeconds: 3
             failureThreshold: 60
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: ${quote(profile.cpuRequest)}
+              memory: ${profile.memoryRequest}
             limits:
-              cpu: "2"
-              memory: 4Gi
+              cpu: ${quote(profile.cpuLimit)}
+              memory: ${profile.memoryLimit}
           volumeMounts:
             - name: workspace
-              mountPath: /workspace
+              mountPath: ${renderedWorkspacePath}
             - name: openhands-state
-              mountPath: /home/openhands/.openhands
+              mountPath: ${
+                isWindows
+                  ? yamlSingleQuoted(config.windowsRuntime.durableMountPath)
+                  : "/openhands"
+              }
+${isWindows ? "" : "              subPathExpr: $(OH_SANDBOX_ID)\n"}
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: ${agentSandbox.warmPool}
+  name: ${profile.warmPool}
   namespace: ${env.namespace}
 spec:
-  replicas: 0
+  replicas: ${profile.warmPoolReplicas}
   sandboxTemplateRef:
-    name: ${agentSandbox.template}
----
+    name: ${profile.template}
+`;
+}
+
+export function renderAgentSandboxResources(
+  environment,
+  agentServerDigest,
+  windowsRuntimeDigest,
+) {
+  const env = config.environments[environment];
+  const linuxAgentServerImage = imageReference(
+    config.azure.acrLoginServer,
+    config.build.agentServerRepository,
+    agentServerDigest,
+  );
+  const windowsAgentServerImage = externalImageReference(
+    config.windowsRuntime.imageRepository,
+    windowsRuntimeDigest,
+  );
+  const profiles = config.agentSandbox.profileSeeds;
+  return `${profiles
+    .map((profile) =>
+      renderSandboxProfileTemplate(
+        env,
+        profile,
+        linuxAgentServerImage,
+        windowsAgentServerImage,
+      ),
+    )
+    .join("---\n")}---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -2005,8 +2561,13 @@ spec:
 `;
 }
 
-export function renderWorkspaceStorageClass() {
-  const storage = config.workspaceStorage;
+export function renderWorkspaceStorageClass(os = "linux") {
+  const storage =
+    os === "windows" ? config.windowsWorkspaceStorage : config.workspaceStorage;
+  const fileSystemParameter =
+    os === "windows"
+      ? `  csi.storage.k8s.io/fstype: ${storage.fileSystem}\n`
+      : "";
   return `apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -2014,7 +2575,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: ${storage.skuName}
-reclaimPolicy: Retain
+${fileSystemParameter}reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 `;
@@ -2397,10 +2958,10 @@ function bootstrapEnvironment(environment) {
     input: renderWorkspaceStorageClass(),
   });
   kubectl(["apply", "-f", "-"], {
-    input: renderConversationPvc(environment),
+    input: renderWorkspaceStorageClass("windows"),
   });
   kubectl(["apply", "-f", "-"], {
-    input: renderAgentSandboxResources(environment),
+    input: renderConversationPvc(environment),
   });
   ensureFrontDoor(environment);
 }
@@ -2819,6 +3380,7 @@ async function bootstrap() {
   ensureAksNatGateway();
   bootstrapBuild();
   ensureRuntimeNodePool();
+  ensureWindowsRuntimeNodePool();
   ensureAgentSandbox();
   ensureFrontDoorAccess();
   validateAzureOpenAi();
@@ -3148,6 +3710,7 @@ async function deploy(
   agentServerDigest,
   sandboxServerDigest,
   sandboxRuntimeDigest,
+  windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
   const clientId = runtimeClientId(environment);
@@ -3184,7 +3747,18 @@ async function deploy(
     await waitForSecretKey(env.namespace, "openhands-halo-secrets", key);
   }
   kubectl(["apply", "-f", "-"], {
-    input: renderAgentSandboxResources(environment, agentServerDigest),
+    input: renderSandboxSpecBootstrapConfigMap(
+      environment,
+      agentServerDigest,
+      windowsRuntimeDigest,
+    ),
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderAgentSandboxResources(
+      environment,
+      agentServerDigest,
+      windowsRuntimeDigest,
+    ),
   });
   const valuesPath = join(
     tmpdir(),
@@ -3226,6 +3800,7 @@ async function deploy(
       sandboxServerDigest,
       sandboxRuntimeDigest,
       clientId,
+      windowsRuntimeDigest,
     ),
   });
   kubectl([
@@ -3250,10 +3825,46 @@ async function deploy(
   console.log(
     `${environment.toUpperCase()}_SANDBOX_RUNTIME_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.sandboxRuntimeRepository, sandboxRuntimeDigest)}`,
   );
+  console.log(
+    `${environment.toUpperCase()}_WINDOWS_RUNTIME_IMAGE=${externalImageReference(config.windowsRuntime.imageRepository, windowsRuntimeDigest)}`,
+  );
 }
 
-function candidateDigests() {
-  const env = config.environments.candidate;
+export function windowsRuntimeTemplateName() {
+  const windowsProfile = config.agentSandbox.profileSeeds.find(
+    (profile) => profile.enabled && profile.os === "windows",
+  );
+  if (!windowsProfile) {
+    throw new Error("No enabled Windows execution profile is configured");
+  }
+  return windowsProfile.template;
+}
+
+export function windowsRuntimeImageFromKubectlResult(
+  result,
+  /** @type {string | null} */
+  fallbackWindowsRuntimeDigest = null,
+) {
+  if (result.status === 0) return result.stdout.trim();
+  if (
+    fallbackWindowsRuntimeDigest &&
+    /\bnotfound\b|\bnot found\b/i.test(result.stderr)
+  ) {
+    return externalImageReference(
+      config.windowsRuntime.imageRepository,
+      fallbackWindowsRuntimeDigest,
+    );
+  }
+  throw new Error(
+    `Could not read the deployed Windows runtime image: ${result.stderr.trim() || `kubectl exited ${result.status}`}`,
+  );
+}
+
+function environmentDigests(
+  environment,
+  { fallbackWindowsRuntimeDigest = null } = {},
+) {
+  const env = config.environments[environment];
   const canvasImage = kubectl(
     [
       "-n",
@@ -3302,28 +3913,46 @@ function candidateDigests() {
     ],
     { capture: true },
   );
+  const windowsRuntimeImage = windowsRuntimeImageFromKubectlResult(
+    tryRun("kubectl", [
+      "-n",
+      env.namespace,
+      "get",
+      "sandboxtemplate",
+      windowsRuntimeTemplateName(),
+      "-o",
+      "jsonpath={.spec.podTemplate.spec.containers[0].image}",
+    ]),
+    fallbackWindowsRuntimeDigest,
+  );
   const canvasPrefix = `${config.azure.acrLoginServer}/${config.build.repository}@`;
   const agentServerPrefix = `${config.azure.acrLoginServer}/${config.build.agentServerRepository}@`;
   const sandboxServerPrefix = `${config.azure.acrLoginServer}/${config.build.sandboxServerRepository}@`;
   const sandboxRuntimePrefix = `${config.azure.acrLoginServer}/${config.build.sandboxRuntimeRepository}@`;
+  const windowsRuntimePrefix = `${config.windowsRuntime.imageRepository}@`;
   if (!canvasImage.startsWith(canvasPrefix)) {
     throw new Error(
-      `Candidate Canvas is not deployed by immutable digest: ${canvasImage}`,
+      `${environment} Canvas is not deployed by immutable digest: ${canvasImage}`,
     );
   }
   if (!sandboxServerImage.startsWith(sandboxServerPrefix)) {
     throw new Error(
-      `Candidate Sandbox Server is not deployed by immutable digest: ${sandboxServerImage}`,
+      `${environment} Sandbox Server is not deployed by immutable digest: ${sandboxServerImage}`,
     );
   }
   if (!agentServerImage.startsWith(agentServerPrefix)) {
     throw new Error(
-      `Candidate Agent Server is not deployed by immutable digest: ${agentServerImage}`,
+      `${environment} Agent Server is not deployed by immutable digest: ${agentServerImage}`,
     );
   }
   if (!sandboxRuntimeImage.startsWith(sandboxRuntimePrefix)) {
     throw new Error(
-      `Candidate Sandbox Runtime is not deployed by immutable digest: ${sandboxRuntimeImage}`,
+      `${environment} Sandbox Runtime is not deployed by immutable digest: ${sandboxRuntimeImage}`,
+    );
+  }
+  if (!windowsRuntimeImage.startsWith(windowsRuntimePrefix)) {
+    throw new Error(
+      `${environment} Windows runtime is not deployed by immutable digest: ${windowsRuntimeImage}`,
     );
   }
   return {
@@ -3337,7 +3966,29 @@ function candidateDigests() {
     sandboxRuntime: normalizeDigest(
       sandboxRuntimeImage.slice(sandboxRuntimePrefix.length),
     ),
+    windowsRuntime: normalizeDigest(
+      windowsRuntimeImage.slice(windowsRuntimePrefix.length),
+    ),
   };
+}
+
+function savePrimaryRollbackTarget(digests) {
+  const env = config.environments.primary;
+  const yaml = kubectl(
+    [
+      "-n",
+      env.namespace,
+      "create",
+      "configmap",
+      "openhands-halo-rollback",
+      `--from-literal=release=${JSON.stringify(digests)}`,
+      "--dry-run=client",
+      "-o",
+      "yaml",
+    ],
+    { capture: true },
+  );
+  kubectl(["apply", "-f", "-"], { input: yaml });
 }
 
 async function promote(args) {
@@ -3351,11 +4002,12 @@ async function promote(args) {
     "--timeout=5m",
   ]);
   await waitForReady("candidate");
-  const digests = candidateDigests();
+  const digests = environmentDigests("candidate");
   const expectedCanvasDigest = option(args, "--canvas-digest");
   const expectedAgentServerDigest = option(args, "--agent-server-digest");
   const expectedSandboxServerDigest = option(args, "--sandbox-server-digest");
   const expectedSandboxRuntimeDigest = option(args, "--sandbox-runtime-digest");
+  const expectedWindowsRuntimeDigest = option(args, "--windows-runtime-digest");
   if (
     expectedCanvasDigest &&
     normalizeDigest(expectedCanvasDigest) !== digests.canvas
@@ -3388,8 +4040,25 @@ async function promote(args) {
       `Candidate Sandbox Runtime digest changed while promotion awaited approval: expected ${expectedSandboxRuntimeDigest}, found ${digests.sandboxRuntime}`,
     );
   }
+  if (
+    expectedWindowsRuntimeDigest &&
+    normalizeDigest(expectedWindowsRuntimeDigest) !== digests.windowsRuntime
+  ) {
+    throw new Error(
+      `Candidate Windows runtime digest changed while promotion awaited approval: expected ${expectedWindowsRuntimeDigest}, found ${digests.windowsRuntime}`,
+    );
+  }
   console.log(
-    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, ${digests.sandboxServer}, and ${digests.sandboxRuntime}`,
+    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, ${digests.sandboxServer}, ${digests.sandboxRuntime}, and ${digests.windowsRuntime}`,
+  );
+  savePrimaryRollbackTarget(
+    environmentDigests("primary", {
+      // The first Windows promotion snapshots a primary deployment that has no
+      // Windows template yet. There is no older Windows image to restore, so
+      // retain the verified candidate digest while rolling back every
+      // pre-existing primary component.
+      fallbackWindowsRuntimeDigest: digests.windowsRuntime,
+    }),
   );
   await deploy(
     "primary",
@@ -3397,7 +4066,53 @@ async function promote(args) {
     digests.agentServer,
     digests.sandboxServer,
     digests.sandboxRuntime,
+    digests.windowsRuntime,
   );
+}
+
+async function rollbackPrimary() {
+  const env = config.environments.primary;
+  const release = kubectl(
+    [
+      "-n",
+      env.namespace,
+      "get",
+      "configmap",
+      "openhands-halo-rollback",
+      "-o",
+      "jsonpath={.data.release}",
+    ],
+    { capture: true },
+  );
+  const digests = parseRollbackDigests(release);
+  await deploy(
+    "primary",
+    digests.canvas,
+    digests.agentServer,
+    digests.sandboxServer,
+    digests.sandboxRuntime,
+    digests.windowsRuntime,
+  );
+}
+
+export function parseRollbackDigests(release) {
+  try {
+    const digests = JSON.parse(release);
+    for (const key of [
+      "canvas",
+      "agentServer",
+      "sandboxServer",
+      "sandboxRuntime",
+      "windowsRuntime",
+    ]) {
+      digests[key] = normalizeDigest(digests[key]);
+    }
+    return digests;
+  } catch {
+    throw new Error(
+      "Primary rollback metadata is missing or invalid; no deployment was changed",
+    );
+  }
 }
 
 function status() {
@@ -3423,8 +4138,10 @@ function usage() {
   npm run halo -- bootstrap-network
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
-  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest> --sandbox-runtime-digest sha256:<digest>
-  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest> --sandbox-runtime-digest sha256:<candidate-digest>]
+  npm run halo -- preflight-windows --windows-runtime-digest sha256:<digest>
+  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest> --sandbox-runtime-digest sha256:<digest> --windows-runtime-digest sha256:<digest>
+  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest> --sandbox-runtime-digest sha256:<candidate-digest> --windows-runtime-digest sha256:<candidate-digest>]
+  npm run halo -- rollback-primary
   npm run halo -- status`);
 }
 
@@ -3443,6 +4160,18 @@ async function main(args = process.argv.slice(2)) {
     case "build":
       await build(args.slice(1));
       break;
+    case "preflight-windows":
+      await preflightWindowsRuntime(
+        "candidate",
+        normalizeDigest(
+          option(
+            args,
+            "--windows-runtime-digest",
+            process.env.HALO_WINDOWS_RUNTIME_DIGEST,
+          ),
+        ),
+      );
+      break;
     case "deploy-candidate":
       await deploy(
         "candidate",
@@ -3450,10 +4179,20 @@ async function main(args = process.argv.slice(2)) {
         normalizeDigest(option(args, "--agent-server-digest")),
         normalizeDigest(option(args, "--sandbox-server-digest")),
         normalizeDigest(option(args, "--sandbox-runtime-digest")),
+        normalizeDigest(
+          option(
+            args,
+            "--windows-runtime-digest",
+            process.env.HALO_WINDOWS_RUNTIME_DIGEST,
+          ),
+        ),
       );
       break;
     case "promote":
       await promote(args.slice(1));
+      break;
+    case "rollback-primary":
+      await rollbackPrimary();
       break;
     case "status":
       status();

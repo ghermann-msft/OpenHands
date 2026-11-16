@@ -15,6 +15,9 @@ const useActiveBackendMock = vi.fn<
 const useActiveAgentProfileMock = vi.fn<
   () => { activeProfile: { agent_kind: string; name: string } | null }
 >(() => ({ activeProfile: null }));
+const useSandboxSpecAdminCapabilitiesMock = vi.fn(() => ({
+  data: { can_manage: false },
+}));
 
 vi.mock("#/hooks/query/use-config", () => ({
   useConfig: () => useConfigMock(),
@@ -30,6 +33,10 @@ vi.mock("#/contexts/active-backend-context", () => ({
 
 vi.mock("#/hooks/use-active-agent-profile", () => ({
   useActiveAgentProfile: () => useActiveAgentProfileMock(),
+}));
+
+vi.mock("#/hooks/query/use-sandbox-specs", () => ({
+  useSandboxSpecAdminCapabilities: () => useSandboxSpecAdminCapabilitiesMock(),
 }));
 
 const createConfig = (
@@ -61,6 +68,9 @@ describe("useSettingsNavItems", () => {
       orgId: null,
     });
     useActiveAgentProfileMock.mockReturnValue({ activeProfile: null });
+    useSandboxSpecAdminCapabilitiesMock.mockReturnValue({
+      data: { can_manage: false },
+    });
   });
 
   afterEach(() => {
@@ -97,6 +107,30 @@ describe("useSettingsNavItems", () => {
     expect(result.current).toEqual(
       OSS_NAV_ITEMS.map((item) => ({ type: "item", item })),
     );
+  });
+
+  it("adds the Administration section only when the server grants profile management", () => {
+    useConfigMock.mockReturnValue({ data: createConfig() });
+    useActiveBackendMock.mockReturnValue({
+      backend: { kind: "cloud" },
+      orgId: "org-123",
+    });
+    useSandboxSpecAdminCapabilitiesMock.mockReturnValue({
+      data: { can_manage: true },
+    });
+
+    const { result } = renderHook(() => useSettingsNavItems());
+
+    expect(result.current).toContainEqual({
+      type: "header",
+      text: "SETTINGS$ADMINISTRATION",
+    });
+    expect(result.current).toContainEqual({
+      type: "item",
+      item: expect.objectContaining({
+        to: "/settings/administration/execution-profiles",
+      }),
+    });
   });
 
   it("shows a single Agent item (the profile library) on both local and cloud", () => {

@@ -107,6 +107,7 @@ export const ConversationPanelRow = React.memo(function ConversationPanelRow({
             conversation.launched_agent_profile?.agent_profile_id ?? null
           }
           agentProfileName={agentProfileName}
+          sandboxSpecId={conversation.sandbox_spec_id}
           tags={conversation.tags}
           isArchived={isArchived}
         />

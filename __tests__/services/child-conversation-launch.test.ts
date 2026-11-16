@@ -24,6 +24,7 @@ const {
   mockSendMessage,
   mockUpdateTitle,
   mockCreateCloudAppConversation,
+  mockBatchGetCloudConversations,
   mockGetCloudStartTask,
   mockPickCloudBackend,
   mockGetCachedAgentServerVersion,
@@ -39,6 +40,7 @@ const {
   mockSendMessage: vi.fn(),
   mockUpdateTitle: vi.fn(),
   mockCreateCloudAppConversation: vi.fn(),
+  mockBatchGetCloudConversations: vi.fn(),
   mockGetCloudStartTask: vi.fn(),
   mockPickCloudBackend: vi.fn(),
   mockGetCachedAgentServerVersion: vi.fn(),
@@ -93,6 +95,7 @@ vi.mock("#/api/agent-server-adapter", async (importOriginal) => ({
 }));
 
 vi.mock("#/api/cloud/conversation-service.api", () => ({
+  batchGetCloudConversations: mockBatchGetCloudConversations,
   createCloudAppConversation: mockCreateCloudAppConversation,
   getCloudAppConversationStartTask: mockGetCloudStartTask,
   pickCloudBackendForLaunch: mockPickCloudBackend,
@@ -195,6 +198,7 @@ describe("handleLaunchChildConversationAction", () => {
       active_meta_profile: null,
     });
     mockBatchGetAppConversations.mockResolvedValue([]);
+    mockBatchGetCloudConversations.mockResolvedValue([null]);
     getQueryClient().clear();
     // A parent without a recorded profile launches its child from the active
     // one, the seeded `default` here.
@@ -551,6 +555,10 @@ describe("handleLaunchChildConversationAction", () => {
     });
 
     it("starts the child on the connected cloud backend without a dangling parent link", async () => {
+      mockGetSettings.mockResolvedValue({
+        run_router_at_conversation_start: false,
+        default_sandbox_spec_id: "windows-build",
+      });
       mockCreateCloudAppConversation.mockResolvedValue({
         id: "start-task-id",
         app_conversation_id: "cloud-child-id",
@@ -578,6 +586,61 @@ describe("handleLaunchChildConversationAction", () => {
         }),
         cloudBackend,
       );
+      const [request] = mockCreateCloudAppConversation.mock.calls.at(-1) as [
+        Record<string, unknown>,
+      ];
+      expect(request).not.toHaveProperty("sandbox_spec_id");
+    });
+
+    it("inherits a cloud parent's pinned execution profile server-side", async () => {
+      mockGetSettings.mockResolvedValue({
+        run_router_at_conversation_start: false,
+        default_sandbox_spec_id: "windows-build",
+      });
+      mockBatchGetCloudConversations.mockResolvedValue([
+        {
+          id: PARENT_ID,
+          selected_repository: "octocat/parent-repo",
+          git_provider: "github",
+          sandbox_spec_id: "openhands-pool",
+        },
+      ]);
+      mockCreateCloudAppConversation.mockResolvedValue({
+        id: "start-task-id",
+        app_conversation_id: "cloud-child-id",
+        status: "READY",
+      });
+
+      await handleLaunchChildConversationAction(
+        action({ target: "cloud" }),
+        PARENT_ID,
+        nextToolCallId(),
+      );
+
+      const [request] = mockCreateCloudAppConversation.mock.calls.at(-1) as [
+        Record<string, unknown>,
+      ];
+      expect(request).toEqual(
+        expect.objectContaining({
+          parent_conversation_id: PARENT_ID,
+          selected_repository: "octocat/parent-repo",
+        }),
+      );
+      expect(request).not.toHaveProperty("sandbox_spec_id");
+    });
+
+    it("does not detach a cloud child when the parent lookup fails", async () => {
+      mockBatchGetCloudConversations.mockRejectedValue(
+        new Error("parent lookup failed"),
+      );
+
+      await handleLaunchChildConversationAction(
+        action({ target: "cloud" }),
+        PARENT_ID,
+        nextToolCallId(),
+      );
+
+      expect(mockCreateCloudAppConversation).not.toHaveBeenCalled();
     });
 
     it("skips the meta-profiles fetch and launch additions when the router toggle is off", async () => {

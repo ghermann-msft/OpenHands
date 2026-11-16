@@ -186,6 +186,22 @@ describe("GitControlBar repo button visibility", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the execution profile pinned to the active conversation", () => {
+    vi.mocked(useActiveBackend).mockReturnValue(makeBackend("cloud"));
+    vi.mocked(useActiveConversation).mockReturnValue({
+      data: {
+        id: "test-conversation-id",
+        sandbox_spec_id: "windows-build",
+      },
+    } as ReturnType<typeof useActiveConversation>);
+
+    renderWithProviders(<GitControlBar onSuggestionsClick={vi.fn()} />);
+
+    expect(
+      screen.getByTestId("git-control-bar-execution-profile"),
+    ).toHaveTextContent("windows-build");
+  });
+
   it("renders the repo button as disabled on a local backend when only a workspace name is available", () => {
     vi.mocked(useActiveBackend).mockReturnValue(makeBackend("local"));
     vi.mocked(getStoredConversationMetadata).mockReturnValue({

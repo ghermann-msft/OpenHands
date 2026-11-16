@@ -42,6 +42,8 @@ function overlayStoredRepoSelection(
     git_provider: conversation.git_provider ?? stored.git_provider ?? null,
     selected_workspace:
       conversation.selected_workspace ?? stored.selected_workspace ?? null,
+    sandbox_spec_id:
+      conversation.sandbox_spec_id ?? stored.sandbox_spec_id ?? null,
   };
 }
 
@@ -116,9 +118,10 @@ export async function searchCloudConversations(
  */
 export async function batchGetCloudConversations(
   ids: string[],
+  backendOverride?: Backend,
 ): Promise<(AppConversation | null)[]> {
   if (ids.length === 0) return [];
-  const backend = getActiveCloudBackend();
+  const backend = backendOverride ?? getActiveCloudBackend();
   const params = new URLSearchParams();
   for (const id of ids) params.append("ids", id);
   const data = await callCloudProxy<(AppConversation | null)[]>({

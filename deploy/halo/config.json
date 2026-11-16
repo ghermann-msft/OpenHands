@@ -41,9 +41,9 @@
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
-    "agentServerSdkRef": "7e23aa7cf2de9baf98e59c8e7a2d7ed2c823eeb6",
+    "agentServerSdkRef": "d93ef1f55381994a667a06405ab0fe3c86cf06b1",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "7d339d53e2ec3d513f64ed2dd8df9ced5e001301"
+    "sandboxServerRef": "1c4aa03dcdaeede73101fcfe33b584c328dab5bb"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
@@ -92,6 +92,28 @@
     "nodeTaintKey": "unrealhands.io/pool",
     "nodeTaintValue": "services"
   },
+  "windowsRuntime": {
+    "imageRepository": "ghcr.io/ghermann-msft/agent-server",
+    "runtimeIdentity": "windows-server-2025-amd64",
+    "platform": "windows/amd64",
+    "workspacePath": "C:\\workspace",
+    "workingDir": "C:\\workspace\\project",
+    "durableMountPath": "C:\\OpenHands",
+    "statePath": "C:\\OpenHands\\{sandbox_id}",
+    "conversationsPath": "C:\\OpenHands\\{sandbox_id}\\conversations",
+    "bashEventsPath": "C:\\OpenHands\\{sandbox_id}\\bash_events",
+    "persistencePath": "C:\\OpenHands\\{sandbox_id}\\persistence",
+    "worktreeRoot": "C:\\workspace\\worktrees",
+    "nodePool": "halo25",
+    "nodePoolVmSize": "Standard_D8s_v5",
+    "nodePoolMinCount": 0,
+    "nodePoolMaxCount": 3,
+    "nodeSubnet": "aks-windows",
+    "osSku": "Windows2025",
+    "windowsBuild": "10.0.26100",
+    "nodeTaintKey": "unrealhands.io/pool",
+    "nodeTaintValue": "halo-windows"
+  },
   "conversationStorage": {
     "storageClass": "openhands-halo-azurefile",
     "size": "5Gi",
@@ -101,6 +123,12 @@
     "storageClass": "openhands-halo-workspace-disk",
     "size": "50Gi",
     "skuName": "StandardSSD_LRS"
+  },
+  "windowsWorkspaceStorage": {
+    "storageClass": "openhands-halo-windows-workspace-disk",
+    "size": "100Gi",
+    "skuName": "Premium_LRS",
+    "fileSystem": "ntfs"
   },
   "postgres": {
     "resourceGroup": "rg-unrealhands-dev",
@@ -133,7 +161,143 @@
     "version": "v0.5.2",
     "releaseManifest": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.2/sandbox-with-extensions.yaml",
     "template": "openhands-agent-server",
-    "warmPool": "openhands-pool"
+    "warmPool": "openhands-pool",
+    "profileSeeds": [
+      {
+        "id": "openhands-pool",
+        "name": "Linux Standard",
+        "enabled": true,
+        "os": "linux",
+        "resourceClass": "standard",
+        "template": "openhands-agent-server",
+        "warmPool": "openhands-pool",
+        "cpuRequest": "500m",
+        "cpuLimit": "2",
+        "memoryRequest": "1Gi",
+        "memoryLimit": "4Gi",
+        "storageClass": "openhands-halo-workspace-disk",
+        "storageSize": "50Gi",
+        "nodePool": "services",
+        "nodeTaintKey": "unrealhands.io/pool",
+        "nodeTaintValue": "services",
+        "warmPoolReplicas": 0,
+        "maxConcurrency": 12,
+        "capabilities": ["linux", "power_shell", "perforce", "halo"]
+      },
+      {
+        "id": "linux-high-memory",
+        "name": "Linux High Memory",
+        "enabled": true,
+        "os": "linux",
+        "resourceClass": "high-memory",
+        "template": "openhands-agent-server-linux-high-memory",
+        "warmPool": "openhands-pool-linux-high-memory",
+        "cpuRequest": "4",
+        "cpuLimit": "8",
+        "memoryRequest": "16Gi",
+        "memoryLimit": "32Gi",
+        "storageClass": "openhands-halo-workspace-disk",
+        "storageSize": "50Gi",
+        "nodePool": "services",
+        "nodeTaintKey": "unrealhands.io/pool",
+        "nodeTaintValue": "services",
+        "warmPoolReplicas": 0,
+        "maxConcurrency": 3,
+        "capabilities": [
+          "linux",
+          "high_memory",
+          "power_shell",
+          "perforce",
+          "halo"
+        ]
+      },
+      {
+        "id": "windows-server-2025-amd64",
+        "name": "Windows Standard",
+        "enabled": true,
+        "os": "windows",
+        "resourceClass": "standard",
+        "template": "openhands-agent-server-windows-2025",
+        "warmPool": "windows-server-2025-amd64",
+        "cpuRequest": "2",
+        "cpuLimit": "4",
+        "memoryRequest": "4Gi",
+        "memoryLimit": "8Gi",
+        "storageClass": "openhands-halo-windows-workspace-disk",
+        "storageSize": "100Gi",
+        "nodePool": "halo25",
+        "nodeTaintKey": "unrealhands.io/pool",
+        "nodeTaintValue": "halo-windows",
+        "warmPoolReplicas": 0,
+        "maxConcurrency": 3,
+        "capabilities": [
+          "windows",
+          "power_shell",
+          "perforce",
+          "halo",
+          "runtime_image_contract_v1",
+          "native_windows_runtime_v1"
+        ]
+      },
+      {
+        "id": "windows-high-memory",
+        "name": "Windows High Memory",
+        "enabled": true,
+        "os": "windows",
+        "resourceClass": "high-memory",
+        "template": "openhands-agent-server-windows-high-memory",
+        "warmPool": "openhands-pool-windows-high-memory",
+        "cpuRequest": "4",
+        "cpuLimit": "8",
+        "memoryRequest": "16Gi",
+        "memoryLimit": "32Gi",
+        "storageClass": "openhands-halo-windows-workspace-disk",
+        "storageSize": "100Gi",
+        "nodePool": "halo25",
+        "nodeTaintKey": "unrealhands.io/pool",
+        "nodeTaintValue": "halo-windows",
+        "warmPoolReplicas": 0,
+        "maxConcurrency": 1,
+        "capabilities": [
+          "windows",
+          "high_memory",
+          "power_shell",
+          "perforce",
+          "halo",
+          "runtime_image_contract_v1",
+          "native_windows_runtime_v1"
+        ]
+      },
+      {
+        "id": "windows-build",
+        "name": "Windows Build",
+        "enabled": true,
+        "os": "windows",
+        "resourceClass": "build",
+        "template": "openhands-agent-server-windows-build",
+        "warmPool": "openhands-pool-windows-build",
+        "cpuRequest": "4",
+        "cpuLimit": "8",
+        "memoryRequest": "8Gi",
+        "memoryLimit": "16Gi",
+        "storageClass": "openhands-halo-windows-workspace-disk",
+        "storageSize": "100Gi",
+        "nodePool": "halo25",
+        "nodeTaintKey": "unrealhands.io/pool",
+        "nodeTaintValue": "halo-windows",
+        "warmPoolReplicas": 0,
+        "maxConcurrency": 1,
+        "capabilities": [
+          "windows",
+          "build",
+          "power_shell",
+          "perforce",
+          "halo",
+          "runtime_image_contract_v1",
+          "native_windows_runtime_v1"
+        ]
+      }
+    ]
   },
   "environments": {
     "candidate": {

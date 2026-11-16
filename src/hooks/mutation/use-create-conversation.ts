@@ -45,6 +45,8 @@ export interface CreateConversationVariables {
   // one (the sidebar's "New Conversation in Sandbox"). Local backends have no
   // sandboxes, and the local launch path ignores it.
   sandboxId?: string;
+  /** Cloud execution profile override. Omit to use the saved default. */
+  sandboxSpecId?: string;
   // Launch from a specific AgentProfile (local backend). When omitted, the
   // active AgentProfile (if any) is used so home-composed conversations
   // launch from the user's selected profile (#3727).
@@ -114,6 +116,7 @@ export const useCreateConversation = ({
         agentProfileId,
         llmProfile,
         sandboxId,
+        sandboxSpecId,
       } = variables;
 
       // A home-page model pick (LLM profile or ACP model) made before the
@@ -126,6 +129,11 @@ export const useCreateConversation = ({
       // unrelated launch because a successful launch always clears it.
       const suppressRouterAtStart =
         useModelStore.getState().homeManualModelPick;
+      const effectiveSandboxSpecId =
+        sandboxSpecId ??
+        (parentConversationId
+          ? undefined
+          : (settings?.default_sandbox_spec_id ?? undefined));
 
       // The active AgentProfile is the default launch profile for new
       // conversations (#3727), on both local and cloud.
@@ -156,6 +164,9 @@ export const useCreateConversation = ({
           agentType,
           ...(llmProfile ? { llmProfile } : {}),
           ...(sandboxId ? { sandboxId } : {}),
+          ...(effectiveSandboxSpecId
+            ? { sandboxSpecId: effectiveSandboxSpecId }
+            : {}),
           // Cloud only; a local launch reads the toggle itself and gates it
           // on the launched profile's router. Only stamped when on, so the
           // e2e snapshot tests that assert the exact createConversation

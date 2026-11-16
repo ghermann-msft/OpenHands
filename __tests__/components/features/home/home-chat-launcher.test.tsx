@@ -19,6 +19,7 @@ import ProfilesService from "#/api/profiles-service/profiles-service.api";
 import GitService from "#/api/git-service/git-service.api";
 import { useHomeStore } from "#/stores/home-store";
 import { useModelStore } from "#/stores/model-store";
+import * as SandboxSpecService from "#/api/cloud/sandbox-spec-service.api";
 import { AGENT_SERVER_UI_DEFAULT_CSS_VARIABLES } from "#/styles/agent-server-ui-style-scope";
 import { COLOR_THEMES } from "#/themes/color-themes";
 import {
@@ -398,6 +399,10 @@ describe("HomeChatLauncher", () => {
     vi.clearAllMocks();
     mockImages = [];
     mockFiles = [];
+    vi.spyOn(SandboxSpecService, "searchSandboxSpecs").mockResolvedValue({
+      items: [],
+      next_page_id: null,
+    });
     mockIsolated = false;
     mockUseActiveBackend.mockReturnValue(localBackend);
     mockUseLlmConfigured.mockReturnValue({
@@ -930,6 +935,11 @@ describe("HomeChatLauncher", () => {
     expect(createSpy).toHaveBeenCalledWith(
       expect.objectContaining({ automationSetup: true }),
     );
+    await waitFor(() =>
+      expect(
+        Object.values(useConversationLaunchStore.getState().launches),
+      ).toEqual([expect.objectContaining({ targetId: "conv-abc" })]),
+    );
   });
 
   it("passes the picked repository + branch payload on a cloud backend", async () => {
@@ -963,6 +973,49 @@ describe("HomeChatLauncher", () => {
       expect(
         Object.values(useConversationLaunchStore.getState().launches),
       ).toEqual([expect.objectContaining({ targetId: "conv-repo" })]),
+    );
+  });
+
+  it("passes a per-conversation execution profile override on cloud", async () => {
+    mockUseActiveBackend.mockReturnValue(cloudBackend);
+    vi.mocked(SandboxSpecService.searchSandboxSpecs).mockResolvedValue({
+      items: [
+        {
+          id: "windows-build",
+          display_name: "Windows Build",
+          enabled: true,
+          published: true,
+          availability: "available",
+          operating_system: "windows",
+          resource_class: "build",
+          cpu_cores: 8,
+          memory_gib: 16,
+          capabilities: [],
+        },
+      ],
+      next_page_id: null,
+    } as never);
+    const createSpy = vi
+      .spyOn(AgentServerConversationService, "createConversation")
+      .mockResolvedValue(makeConversationResponse());
+
+    renderLauncher();
+    await screen.findByRole("option", { name: /Windows Build/ });
+    await userEvent.selectOptions(
+      screen.getByTestId("execution-profile-select"),
+      "windows-build",
+    );
+    await userEvent.click(screen.getByTestId("stub-chat-submit"));
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ sandboxSpecId: "windows-build" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        Object.values(useConversationLaunchStore.getState().launches),
+      ).toEqual([expect.objectContaining({ targetId: "conv-abc" })]),
     );
   });
 
@@ -1135,6 +1188,11 @@ describe("HomeChatLauncher", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy.mock.lastCall?.[0]?.llmProfile).toBe(expected);
+    await waitFor(() =>
+      expect(
+        Object.values(useConversationLaunchStore.getState().launches),
+      ).toEqual([expect.objectContaining({ targetId: "conv-abc" })]),
+    );
   });
 
   it("does not pass query to createConversation when attachments are present", async () => {
@@ -1328,6 +1386,9 @@ describe("HomeChatLauncher", () => {
         );
       } else {
         expect(mockMarkAutomationSetupHandoff).not.toHaveBeenCalled();
+        await waitFor(() =>
+          expect(mockNavigate).toHaveBeenCalledWith("/conversations/conv-abc"),
+        );
       }
     },
   );

@@ -45,6 +45,7 @@ interface ConversationCardPreviewProps {
    * another organization), ``undefined`` while the list is still loading.
    */
   agentProfileName?: string | null;
+  sandboxSpecId?: string | null;
   /**
    * Server-side conversation tags. Always shown in the hovercard when present
    * (except keys already covered by repository / branch / directory rows).
@@ -134,6 +135,7 @@ export function ConversationCardPreview({
   createdAt,
   agentProfileId = null,
   agentProfileName,
+  sandboxSpecId = null,
   tags = null,
   isArchived,
 }: ConversationCardPreviewProps) {
@@ -237,6 +239,14 @@ export function ConversationCardPreview({
           >
             <span data-testid="conversation-card-preview-agent-profile">
               {agentProfileName ?? agentProfileId}
+            </span>
+          </PreviewRow>
+        ) : null}
+
+        {sandboxSpecId ? (
+          <PreviewRow label={t(I18nKey.SETTINGS$EXECUTION_PROFILE)}>
+            <span data-testid="conversation-card-preview-execution-profile">
+              {sandboxSpecId}
             </span>
           </PreviewRow>
         ) : null}

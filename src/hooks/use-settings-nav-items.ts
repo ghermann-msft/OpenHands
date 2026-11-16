@@ -1,6 +1,7 @@
 import { useConfig } from "#/hooks/query/use-config";
 import {
   CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
+  ADMIN_SETTINGS_NAV_ITEMS,
   LOCKED_CLOUD_SETTINGS_NAV_PATH,
   OSS_NAV_ITEMS,
   SettingsNavItem,
@@ -12,6 +13,7 @@ import {
   getLockedCloudHost,
   hasExternalSettingsShell,
 } from "#/api/agent-server-config";
+import { useSandboxSpecAdminCapabilities } from "#/hooks/query/use-sandbox-specs";
 
 export type SettingsNavRenderedItem =
   | {
@@ -27,6 +29,8 @@ const PROFILE_OWNED_SETTINGS_PATHS = new Set(["/settings/condenser"]);
 export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   const { data: config } = useConfig();
   const { backend } = useActiveBackend();
+  const { data: sandboxSpecAdminCapabilities } =
+    useSandboxSpecAdminCapabilities();
   const featureFlags = config?.feature_flags;
   // Some hosted deployments delegate settings to a same-origin shell. A
   // locked self-hosted control plane can instead keep settings in Canvas.
@@ -35,9 +39,8 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   const settingsItems =
     isLockedToCloud && !delegatesSettings
       ? [...OSS_NAV_ITEMS, ...CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS]
-      : OSS_NAV_ITEMS;
-
-  return settingsItems
+      : [...OSS_NAV_ITEMS];
+  const renderedItems: SettingsNavRenderedItem[] = settingsItems
     .filter(
       (item) =>
         !isSettingsPageHidden(item.to, featureFlags) &&
@@ -61,6 +64,19 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
             }
           : item;
 
-      return { type: "item", item: renamedItem };
+      return { type: "item" as const, item: renamedItem };
     });
+
+  if (sandboxSpecAdminCapabilities?.can_manage && !delegatesSettings) {
+    renderedItems.push(
+      { type: "divider" },
+      { type: "header", text: I18nKey.SETTINGS$ADMINISTRATION },
+      ...ADMIN_SETTINGS_NAV_ITEMS.map((item) => ({
+        type: "item" as const,
+        item,
+      })),
+    );
+  }
+
+  return renderedItems;
 }

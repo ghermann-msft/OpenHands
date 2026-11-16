@@ -90,6 +90,7 @@ export interface AppConversationStartRequest {
   parent_conversation_id?: string | null;
   agent_type?: "default" | "plan";
   sandbox_id?: string | null;
+  sandbox_spec_id?: string | null;
   plugins?: PluginSpec[] | null; // Plugins to load when starting the conversation
   client_tools?: ClientToolSpec[] | null; // Browser/client-handled tools registered with the runtime
   tags?: Record<string, string> | null; // Conversation tags to persist at start
@@ -221,6 +222,8 @@ export interface AppConversation {
   conversation_url: string | null;
   session_api_key: string | null;
   sandbox_id: string | null;
+  /** Execution profile pinned when the sandbox was created. */
+  sandbox_spec_id?: string | null;
   workspace?: ConversationWorkspace | null;
   /**
    * The local workspace the user explicitly attached when creating this

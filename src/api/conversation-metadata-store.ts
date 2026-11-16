@@ -56,6 +56,8 @@ export interface ConversationMetadata {
    * backends do not, so Canvas stores the relationship here.
    */
   local_planning_conversation_id?: string | null;
+  /** Execution profile pinned when this conversation was created. */
+  sandbox_spec_id?: string | null;
 }
 
 export const toPluginCoordinates = (plugin: PluginSpec): PluginSpec => ({

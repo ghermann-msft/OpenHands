@@ -5,12 +5,24 @@ on:
     branches:
       - openhands-halo
   workflow_dispatch:
+    inputs:
+      operation:
+        description: PPE operation
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - deploy-and-promote
+          - prepare-windows-proof
+          - restore-windows-idle
 
 permissions:
   contents: read
 
 jobs:
   validate:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -52,6 +64,8 @@ jobs:
       canvas_digest: ${{ steps.image.outputs.canvas_digest }}
       agent_server_digest: ${{ steps.image.outputs.agent_server_digest }}
       sandbox_server_digest: ${{ steps.image.outputs.sandbox_server_digest }}
+      sandbox_runtime_digest: ${{ steps.image.outputs.sandbox_runtime_digest }}
+      windows_runtime_digest: ${{ steps.windows-runtime.outputs.digest }}
     steps:
       - name: Check out exact commit
         uses: actions/checkout@v7
@@ -93,6 +107,7 @@ jobs:
           canvas_digest="$(printf '%s\n' "$output" | sed -n 's/^CANVAS_IMAGE_DIGEST=//p' | tail -1)"
           agent_server_digest="$(printf '%s\n' "$output" | sed -n 's/^AGENT_SERVER_IMAGE_DIGEST=//p' | tail -1)"
           sandbox_server_digest="$(printf '%s\n' "$output" | sed -n 's/^SANDBOX_SERVER_IMAGE_DIGEST=//p' | tail -1)"
+          sandbox_runtime_digest="$(printf '%s\n' "$output" | sed -n 's/^SANDBOX_RUNTIME_IMAGE_DIGEST=//p' | tail -1)"
           if [[ ! "$canvas_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
             echo "::error::Halo build did not return an immutable Canvas image digest"
             exit 1
@@ -105,12 +120,33 @@ jobs:
             echo "::error::Halo build did not return an immutable Agent Server image digest"
             exit 1
           fi
+          if [[ ! "$sandbox_runtime_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Halo build did not return an immutable Linux sandbox runtime image digest"
+            exit 1
+          fi
           echo "canvas_digest=$canvas_digest" >> "$GITHUB_OUTPUT"
           echo "agent_server_digest=$agent_server_digest" >> "$GITHUB_OUTPUT"
           echo "sandbox_server_digest=$sandbox_server_digest" >> "$GITHUB_OUTPUT"
+          echo "sandbox_runtime_digest=$sandbox_runtime_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve immutable Windows runtime
+        id: windows-runtime
+        env:
+          WINDOWS_RUNTIME_DIGEST: ${{ vars.HALO_WINDOWS_RUNTIME_DIGEST }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$WINDOWS_RUNTIME_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Set the halo-ppe HALO_WINDOWS_RUNTIME_DIGEST variable to the validated ghcr.io/ghermann-msft/agent-server Windows Server 2025 image digest"
+            exit 1
+          fi
+          echo "digest=$WINDOWS_RUNTIME_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight Windows runtime image and identity
+        run: node scripts/halo-deploy.mjs preflight-windows --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
 
       - name: Deploy candidate digest
-        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}"
+        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ steps.image.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
 
       - name: Verify candidate access boundary
         shell: bash
@@ -132,6 +168,7 @@ jobs:
           test "$status" = "401"
 
   promote-candidate:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy-and-promote'
     needs:
       - validate
       - deploy-candidate
@@ -173,4 +210,49 @@ jobs:
           kubectl config use-context halo
 
       - name: Promote the candidate digest
-        run: node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --agent-server-digest "${{ needs.deploy-candidate.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}"
+        run: node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --agent-server-digest "${{ needs.deploy-candidate.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.deploy-candidate.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ needs.deploy-candidate.outputs.windows_runtime_digest }}"
+
+  manage-windows-proof-capacity:
+    if: github.event_name == 'workflow_dispatch' && (inputs.operation == 'prepare-windows-proof' || inputs.operation == 'restore-windows-idle')
+    runs-on: openhands-halo-ci
+    timeout-minutes: 15
+    environment: halo-ppe
+    concurrency:
+      group: halo-candidate
+      cancel-in-progress: false
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure in-cluster Kubernetes access
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          ca_file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          test -s "$token_file"
+          test -s "$ca_file"
+          kubectl config set-cluster halo \
+            --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" \
+            --certificate-authority="$ca_file" \
+            --embed-certs=true
+          kubectl config set-credentials halo-ci --token="$(cat "$token_file")"
+          kubectl config set-context halo --cluster=halo --user=halo-ci
+          kubectl config use-context halo
+
+      - name: Set Windows proof warm-pool capacity
+        env:
+          OPERATION: ${{ inputs.operation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$OPERATION" = "prepare-windows-proof" ]; then
+            replicas=1
+          else
+            replicas=0
+          fi
+          kubectl -n openhands-halo-ppe patch sandboxwarmpool windows-server-2025-amd64 \
+            --type merge \
+            --patch "{\"spec\":{\"replicas\":$replicas}}"
+          actual="$(kubectl -n openhands-halo-ppe get sandboxwarmpool windows-server-2025-amd64 -o jsonpath='{.spec.replicas}')"
+          test "$actual" = "$replicas"

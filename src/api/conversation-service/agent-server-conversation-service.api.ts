@@ -472,6 +472,7 @@ export interface CreateConversationOptions {
   parentConversationId?: string;
   agentType?: "default" | "plan";
   sandboxId?: string;
+  sandboxSpecId?: string;
   // The saved AgentProfile the server builds the agent from (#3727). Required
   // on local; cloud without one launches the org's default (OpenHands #15060).
   agentProfileId?: string;
@@ -567,6 +568,7 @@ class AgentServerConversationService {
       parentConversationId,
       agentType,
       sandboxId,
+      sandboxSpecId,
       agentProfileId,
       agentProfileKind,
       agentLlmProfileRef,
@@ -607,6 +609,7 @@ class AgentServerConversationService {
         parent_conversation_id: parentConversationId ?? null,
         agent_type: agentType,
         sandbox_id: sandboxId ?? null,
+        sandbox_spec_id: sandboxSpecId ?? null,
         agent_profile_id: agentProfileId ?? null,
         ...(llmProfile ? { llm_profile: llmProfile } : {}),
         ...(routerAtStartSuffix

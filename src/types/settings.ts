@@ -144,6 +144,8 @@ export type Settings = {
    * conversations behave exactly as before unless the user opts in.
    */
   run_router_at_conversation_start: boolean;
+  /** Preferred execution profile for new cloud conversations. */
+  default_sandbox_spec_id?: string | null;
   user_consents_to_analytics: boolean | null;
   search_api_key?: string;
   is_new_user?: boolean;

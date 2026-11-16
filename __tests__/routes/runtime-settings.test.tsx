@@ -1,15 +1,29 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsService from "#/api/settings-service/settings-service.api";
 import { MOCK_DEFAULT_USER_SETTINGS } from "#/mocks/handlers";
 import RuntimeSettingsScreen from "#/routes/runtime-settings";
 import type { SettingsValue } from "#/types/settings";
+import * as SandboxSpecService from "#/api/cloud/sandbox-spec-service.api";
 
 const mockUseConversationWorkspace = vi.hoisted(() => vi.fn());
+const backendState = vi.hoisted(() => ({ kind: "local" as "local" | "cloud" }));
 vi.mock("#/hooks/query/use-conversation-workspace", () => ({
   useConversationWorkspace: () => mockUseConversationWorkspace(),
+}));
+vi.mock("#/contexts/active-backend-context", () => ({
+  useActiveBackend: () => ({
+    backend: {
+      id: backendState.kind,
+      name: backendState.kind,
+      host: "https://halo.example.com",
+      apiKey: "test",
+      kind: backendState.kind,
+    },
+    orgId: null,
+  }),
 }));
 
 const RUNTIME_OPTION_IDS = [
@@ -42,10 +56,62 @@ async function renderRuntimeOptions(
 
 describe("RuntimeSettingsScreen", () => {
   beforeEach(() => {
+    backendState.kind = "local";
     mockUseConversationWorkspace.mockReturnValue({
       dockerSelectable: true,
       serverInfoLoading: false,
     });
+  });
+
+  it("persists the selected default execution profile for cloud conversations", async () => {
+    backendState.kind = "cloud";
+    vi.spyOn(SandboxSpecService, "searchSandboxSpecs").mockResolvedValue({
+      items: [
+        {
+          id: "openhands-pool",
+          display_name: "Linux Standard",
+          enabled: true,
+          published: true,
+          availability: "available",
+          operating_system: "linux",
+          resource_class: "standard",
+          cpu_cores: 4,
+          memory_gib: 8,
+          capabilities: ["git"],
+        },
+        {
+          id: "windows-build",
+          display_name: "Windows Build",
+          enabled: true,
+          published: true,
+          availability: "available",
+          operating_system: "windows",
+          resource_class: "build",
+          cpu_cores: 8,
+          memory_gib: 16,
+          capabilities: ["git", "perforce"],
+        },
+      ],
+      next_page_id: null,
+    } as never);
+    const saveSettings = vi
+      .spyOn(SettingsService, "saveSettings")
+      .mockResolvedValue(true);
+
+    await renderRuntimeOptions({ default_runtime: "local" });
+    await screen.findByRole("option", { name: /Windows Build/ });
+    await userEvent.selectOptions(
+      screen.getByTestId("execution-profile-select"),
+      "windows-build",
+    );
+
+    await waitFor(() =>
+      expect(saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          default_sandbox_spec_id: "windows-build",
+        }),
+      ),
+    );
   });
 
   it.each<[string, Record<string, SettingsValue>, string[]]>([

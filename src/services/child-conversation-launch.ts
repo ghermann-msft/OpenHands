@@ -5,6 +5,7 @@ import {
   getCachedAgentServerVersion,
 } from "#/api/agent-server-compatibility";
 import {
+  batchGetCloudConversations,
   createCloudAppConversation,
   getCloudAppConversationStartTask,
   pickCloudBackendForLaunch,
@@ -398,6 +399,10 @@ async function launchCloudChild(
   // request; when on, the suffix is only emitted if a router is actually
   // attached — failing closed if the endpoint is unreachable.
   const cloudSettings = await SettingsService.getSettings();
+  const [cloudParent] = await batchGetCloudConversations(
+    [parentConversationId],
+    backend,
+  );
   const cloudMetaProfiles = cloudSettings.run_router_at_conversation_start
     ? await MetaProfilesService.listMetaProfiles().catch(() => null)
     : null;
@@ -417,15 +422,18 @@ async function launchCloudChild(
       // provider only travels with the inherited repository — it may not apply
       // to one the agent named itself.
       selected_repository:
-        params.repository ?? parentMetadata?.selected_repository ?? null,
+        params.repository ??
+        cloudParent?.selected_repository ??
+        parentMetadata?.selected_repository ??
+        null,
       selected_branch: params.branch ?? null,
       git_provider: params.repository
         ? null
-        : (parentMetadata?.git_provider ?? null),
-      // The parent runs on the local agent-server, so its id means nothing to
-      // Cloud. Sending it would only hide the child from the Cloud
-      // conversation list, which filters out anything with a parent.
-      parent_conversation_id: null,
+        : (cloudParent?.git_provider ?? parentMetadata?.git_provider ?? null),
+      parent_conversation_id: cloudParent ? parentConversationId : null,
+      // Cloud parents inherit their pinned profile server-side. A cross-backend
+      // launch is a root conversation, so the target server resolves its own
+      // authoritative saved default.
       ...(routerAtStartSuffix
         ? {
             agent_launch_additions: {

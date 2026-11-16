@@ -9,6 +9,7 @@ import {
   buildDigestsFromPodList,
   buildNodePoolCreateArgs,
   entraIdentifierUri,
+  externalImageReference,
   frontDoorOriginCreateArgs,
   frontDoorOriginGroupCreateArgs,
   imageReference,
@@ -30,10 +31,19 @@ import {
   renderPostgresBootstrapJob,
   renderSandboxServerResources,
   renderSecretProviderClass,
+  renderSandboxSpecBootstrapConfigMap,
   renderWorkspaceStorageClass,
+  renderWindowsRuntimePreflight,
   runtimeNodePoolAutoscalerArgs,
+  validateWindowsRuntimeNodePool,
   validateNatGatewayPublicIp,
   validateBuildNodePool,
+  validateWindowsNodePoolName,
+  windowsRuntimeTemplateName,
+  windowsRuntimeNodePoolCreateArgs,
+  windowsRuntimeImageFromKubectlResult,
+  windowsPreflightJobResult,
+  parseRollbackDigests,
 } from "../../scripts/halo-deploy.mjs";
 
 const digest = `sha256:${"a".repeat(64)}`;
@@ -102,6 +112,18 @@ describe("Halo deployment automation", () => {
     expect(imageReference("registry.example", "openhands-halo", digest)).toBe(
       `registry.example/openhands-halo@${digest}`,
     );
+    expect(
+      externalImageReference("ghcr.io/openhands/agent-server", digest),
+    ).toBe(`ghcr.io/openhands/agent-server@${digest}`);
+    expect(() =>
+      externalImageReference("ghcr.io/openhands/agent-server:latest", digest),
+    ).toThrow(/repository without a tag/);
+  });
+
+  it("uses the configured Windows profile template for promotion", () => {
+    expect(windowsRuntimeTemplateName()).toBe(
+      "openhands-agent-server-windows-2025",
+    );
   });
 
   it("renders an isolated privileged cached build for the exact commit", () => {
@@ -109,7 +131,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 7d339d53e2ec3d513f64ed2dd8df9ced5e001301",
+      "git checkout --detach 1c4aa03dcdaeede73101fcfe33b584c328dab5bb",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -128,7 +150,7 @@ describe("Halo deployment automation", () => {
       "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server:",
     );
     expect(job).toContain(
-      "git checkout --detach 7e23aa7cf2de9baf98e59c8e7a2d7ed2c823eeb6",
+      "git checkout --detach d93ef1f55381994a667a06405ab0fe3c86cf06b1",
     );
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
@@ -138,13 +160,13 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=7e23aa7cf2de9baf98e59c8e7a2d7ed2c823eeb6",
+      "AGENT_SERVER_SDK_GIT_REF=d93ef1f55381994a667a06405ab0fe3c86cf06b1",
     );
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "SOFTWARE_AGENT_SDK_REF=7e23aa7cf2de9baf98e59c8e7a2d7ed2c823eeb6",
+      "SOFTWARE_AGENT_SDK_REF=d93ef1f55381994a667a06405ab0fe3c86cf06b1",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
@@ -277,6 +299,270 @@ describe("Halo deployment automation", () => {
         nodeTaints: ["unrealhands.io/pool=halo-build:NoSchedule"],
       }),
     ).toThrow(/SSH access disabled/);
+  });
+
+  it("defines and validates the native Windows Server 2025 runtime pool", () => {
+    const args = windowsRuntimeNodePoolCreateArgs();
+
+    expect(args).toContain("halo25");
+    expect(args).toContain("Windows");
+    expect(args).toContain("Windows2025");
+    expect(args).toContain("Standard_D8s_v5");
+    expect(args).toContain("0");
+    expect(args).toContain("3");
+    expect(args).toContain("unrealhands.io/pool=halo-windows:NoSchedule");
+    expect(args).toContain("disabled");
+    expect(args).toContain(
+      "/subscriptions/3956877a-1e3c-4990-aba7-7481b5d99a60/resourceGroups/rg-unrealhands-dev/providers/Microsoft.Network/virtualNetworks/uh-unrealhands-dev-acukmd-vnet/subnets/aks-windows",
+    );
+
+    expect(() =>
+      validateWindowsRuntimeNodePool({
+        mode: "User",
+        osType: "Windows",
+        osSku: "Windows2025",
+        vmSize: "Standard_D8s_v5",
+        enableAutoScaling: true,
+        minCount: 0,
+        maxCount: 3,
+        nodeLabels: {
+          "unrealhands.io/pool": "halo-windows",
+        },
+        nodeTaints: ["unrealhands.io/pool=halo-windows:NoSchedule"],
+        securityProfile: { sshAccess: "Disabled" },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateWindowsRuntimeNodePool({
+        mode: "User",
+        osType: "Linux",
+        osSku: "Ubuntu",
+        vmSize: "Standard_D8s_v5",
+        enableAutoScaling: true,
+        minCount: 0,
+        maxCount: 3,
+        nodeLabels: {
+          "unrealhands.io/pool": "halo-windows",
+        },
+        nodeTaints: ["unrealhands.io/pool=halo-windows:NoSchedule"],
+        securityProfile: { sshAccess: "Disabled" },
+      }),
+    ).toThrow(/osType=Windows/);
+  });
+
+  it("rejects Windows node pool names that AKS cannot create", () => {
+    expect(validateWindowsNodePoolName("halo25")).toBe("halo25");
+    expect(() => validateWindowsNodePoolName("halowindows")).toThrow(
+      /at most 6 characters/,
+    );
+    expect(() => validateWindowsNodePoolName("25halo")).toThrow(
+      /start with a lowercase letter/,
+    );
+  });
+
+  it("requires the immutable Windows runtime digest in rollback metadata", () => {
+    const rollback = {
+      canvas: digest,
+      agentServer: digest,
+      sandboxServer: digest,
+      sandboxRuntime: digest,
+      windowsRuntime: digest,
+    };
+
+    expect(parseRollbackDigests(JSON.stringify(rollback))).toEqual(rollback);
+    delete (rollback as Partial<typeof rollback>).windowsRuntime;
+    expect(() => parseRollbackDigests(JSON.stringify(rollback))).toThrow(
+      "Primary rollback metadata is missing or invalid",
+    );
+  });
+
+  it("uses the candidate Windows digest only when legacy primary has no Windows template", () => {
+    expect(
+      windowsRuntimeImageFromKubectlResult(
+        {
+          status: 1,
+          stdout: "",
+          stderr:
+            'Error from server (NotFound): sandboxtemplates.extensions.agents.x-k8s.io "openhands-agent-server-windows-2025" not found',
+        },
+        digest,
+      ),
+    ).toBe(`ghcr.io/ghermann-msft/agent-server@${digest}`);
+    expect(() =>
+      windowsRuntimeImageFromKubectlResult(
+        {
+          status: 1,
+          stdout: "",
+          stderr: "Error from server (Forbidden)",
+        },
+        digest,
+      ),
+    ).toThrow(/Forbidden/);
+  });
+
+  it("renders Linux and native Windows curated sandbox profiles", () => {
+    const windowsDigest = `sha256:${"e".repeat(64)}`;
+    const resources = renderAgentSandboxResources(
+      "candidate",
+      digest,
+      windowsDigest,
+    );
+
+    expect(resources).toContain("name: openhands-agent-server");
+    expect(resources).toContain(
+      "name: openhands-agent-server-linux-high-memory",
+    );
+    expect(resources).toContain("name: openhands-agent-server-windows-2025");
+    expect(resources).toContain(
+      "name: openhands-agent-server-windows-high-memory",
+    );
+    expect(resources).toContain("name: openhands-agent-server-windows-build");
+    expect(resources).toContain(
+      `image: ghcr.io/ghermann-msft/agent-server@${windowsDigest}`,
+    );
+    expect(resources).toContain("kubernetes.io/os: windows");
+    expect(resources).toContain("agentpool: halo25");
+    expect(resources).toContain("workingDir: 'C:\\workspace\\project'");
+    expect(resources).toContain("mountPath: 'C:\\workspace'");
+    expect(resources).not.toContain("name: OH_SESSION_API_KEYS_0");
+    expect(resources).not.toContain("name: OH_SECRET_KEY");
+    expect(resources).toContain(
+      'node.kubernetes.io/windows-build: "10.0.26100"',
+    );
+    expect(resources).toContain("replicas: 0");
+    expect(resources).toContain(
+      "storageClassName: openhands-halo-windows-workspace-disk",
+    );
+    expect(resources).toContain(
+      "name: openhands-state\n          persistentVolumeClaim:\n            claimName: openhands-halo-conversations",
+    );
+    expect(resources).toContain(
+      "name: openhands-state\n              mountPath: 'C:\\OpenHands'",
+    );
+    const windowsTemplate = resources
+      .split("name: openhands-agent-server-windows-2025", 2)[1]
+      .split("---", 1)[0];
+    expect(windowsTemplate).not.toContain("subPath");
+    expect(resources).toContain('cpu: "8"');
+    expect(resources).toContain("memory: 32Gi");
+    const windowsTemplates = resources.split(
+      "name: openhands-agent-server-windows-2025",
+    )[1];
+    expect(windowsTemplates).not.toContain("containerPort: 8001");
+  });
+
+  it("preflights the exact Windows image and Workload Identity token", () => {
+    const job = renderWindowsRuntimePreflight("candidate", digest);
+
+    expect(job).toContain(
+      `image: ghcr.io/ghermann-msft/agent-server@${digest}`,
+    );
+    expect(job).toContain("activeDeadlineSeconds: 1800");
+    expect(job).toContain("agentpool: halo25");
+    expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
+    expect(job).toContain('azure.workload.identity/use: "true"');
+    expect(job).toContain("serviceAccountName: openhands-halo");
+    expect(job).toContain("AZURE_FEDERATED_TOKEN_FILE");
+    expect(job).not.toContain("imagePullSecrets:");
+  });
+
+  it("surfaces Windows preflight failure details without waiting for the deadline", () => {
+    expect(
+      windowsPreflightJobResult({
+        status: {
+          conditions: [
+            {
+              type: "Failed",
+              status: "True",
+              reason: "DeadlineExceeded",
+              message: "Job was active longer than specified deadline",
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      status: "failed",
+      detail:
+        "DeadlineExceeded: Job was active longer than specified deadline",
+    });
+  });
+
+  it("seeds separate workspace disks and durable Azure Files paths", () => {
+    const windowsDigest = `sha256:${"e".repeat(64)}`;
+    const configMap = renderSandboxSpecBootstrapConfigMap(
+      "candidate",
+      digest,
+      windowsDigest,
+    );
+
+    expect(configMap).toContain('"working_dir": "/workspace/project"');
+    expect(configMap).toContain('"workspace_mount_path": "/workspace"');
+    expect(configMap).toContain('"durable_state_dir": "/openhands"');
+    expect(configMap).toContain('"durable_mount_path": "/openhands"');
+    expect(configMap).toContain('"startup_timeout_seconds": 300');
+    expect(configMap).toContain(
+      '"OH_CONVERSATIONS_PATH": "/openhands/conversations"',
+    );
+    expect(configMap).toContain(
+      '"OH_CONVERSATION_WORKTREE_ROOT": "/workspace/worktrees"',
+    );
+    expect(configMap).toContain('"working_dir": "C:\\\\workspace\\\\project"');
+    expect(configMap).toContain(
+      '"workspace_mount_path": "C:\\\\workspace"',
+    );
+    expect(configMap).toContain(
+      '"durable_state_dir": "C:\\\\OpenHands\\\\{sandbox_id}"',
+    );
+    expect(configMap).toContain(
+      '"durable_mount_path": "C:\\\\OpenHands"',
+    );
+    expect(configMap).toContain('"operating_system": "windows"');
+    expect(configMap).toContain('"availability": "available"');
+    expect(configMap).toContain('"startup_timeout_seconds": 600');
+    expect(configMap).toContain(
+      '"shell": [\n          "powershell.exe",\n          "-NoLogo",\n          "-NoProfile"\n        ]',
+    );
+    expect(configMap).toContain('"cpu_cores": 4');
+    expect(configMap).toContain('"memory_gib": 8');
+    expect(configMap).toContain(
+      '"node.kubernetes.io/windows-build": "10.0.26100"',
+    );
+    expect(configMap).toContain('"initial_env": {');
+    expect(configMap).toContain('"OH_ENABLE_VNC": "0"');
+    expect(configMap).toContain('"LOG_JSON": "true"');
+    expect(configMap).toContain('"PYTHONUNBUFFERED": "1"');
+    expect(configMap).toContain('"OH_SANDBOX_OPERATING_SYSTEM": "windows"');
+    expect(configMap).not.toContain('"state_path"');
+    expect(configMap).not.toContain("OH_SESSION_API_KEYS_0");
+    expect(configMap).not.toContain("OH_SECRET_KEY");
+    expect(configMap).toContain(
+      '"OH_CONVERSATION_WORKTREE_ROOT": "C:\\\\workspace\\\\worktrees"',
+    );
+    expect(configMap).toContain(
+      '"workspace_storage_class": "openhands-halo-windows-workspace-disk"',
+    );
+    expect(configMap).toContain(
+      '"durable_storage_class": "openhands-halo-azurefile"',
+    );
+    expect(configMap).toContain('"durable_storage_size": null');
+    expect(configMap).toContain(
+      '"durable_volume_claim_name": "openhands-halo-conversations"',
+    );
+    expect(configMap).toContain('"durable_sub_path_template": "{sandbox_id}"');
+    expect(configMap).toContain(
+      '"OH_CONVERSATIONS_PATH": "C:\\\\OpenHands\\\\{sandbox_id}\\\\conversations"',
+    );
+  });
+
+  it("renders an NTFS workspace storage class for Windows sandboxes", () => {
+    const storageClass = renderWorkspaceStorageClass("windows");
+
+    expect(storageClass).toContain(
+      "name: openhands-halo-windows-workspace-disk",
+    );
+    expect(storageClass).toContain("skuName: Premium_LRS");
+    expect(storageClass).toContain("csi.storage.k8s.io/fstype: ntfs");
+    expect(storageClass).toContain("volumeBindingMode: WaitForFirstConsumer");
   });
 
   it("restricts Front Door clients and its Application Gateway origin", () => {
@@ -414,6 +700,7 @@ describe("Halo deployment automation", () => {
       `sha256:${"b".repeat(64)}`,
       `sha256:${"d".repeat(64)}`,
       "runtime-client-id",
+      `sha256:${"e".repeat(64)}`,
     );
 
     expect(resources).toContain("kind: Deployment");
@@ -423,6 +710,30 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).toContain(
       "name: AGENT_SERVER_IMAGE\n              value: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-runtime@sha256:",
+    );
+    expect(resources).toContain(
+      "name: OH_WINDOWS_AGENT_SERVER_IMAGE\n              value: ghcr.io/ghermann-msft/agent-server@sha256:",
+    );
+    expect(resources).toContain(
+      "name: OH_SANDBOX_SPEC_BOOTSTRAP_FILE\n              value: /etc/openhands/sandbox-specs.json",
+    );
+    expect(resources).toContain(
+      "name: OH_HALO_DURABLE_STATE_PVC\n              value: openhands-halo-conversations",
+    );
+    expect(resources).toContain(
+      'name: OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT\n              value: "600"',
+    );
+    expect(
+      renderSandboxServerResources(
+        "primary",
+        `sha256:${"b".repeat(64)}`,
+        `sha256:${"d".repeat(64)}`,
+        "runtime-client-id",
+        digest,
+      ),
+    ).not.toContain("OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT");
+    expect(resources).toContain(
+      "name: sandbox-spec-bootstrap\n          configMap:\n            name: openhands-sandbox-spec-bootstrap",
     );
     expect(resources).toContain('azure.workload.identity/use: "true"');
     expect(resources).toContain("serviceAccountName: openhands-halo");
@@ -488,15 +799,18 @@ describe("Halo deployment automation", () => {
 
   it("renders isolated agent-sandbox resources for each environment", () => {
     const agentServerDigest = `sha256:${"c".repeat(64)}`;
+    const windowsRuntimeDigest = `sha256:${"e".repeat(64)}`;
     const resources = renderAgentSandboxResources(
       "candidate",
       agentServerDigest,
+      windowsRuntimeDigest,
     );
 
     expect(resources).toContain(
       "apiVersion: extensions.agents.x-k8s.io/v1beta1",
     );
     expect(resources).toContain("kind: SandboxTemplate");
+    expect(resources).toContain("volumeClaimTemplatesPolicy: Overrides");
     expect(resources).toContain("namespace: openhands-halo-ppe");
     expect(resources).toContain("envVarsInjectionPolicy: Allowed");
     expect(resources).toContain("service: true");
@@ -505,14 +819,9 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).not.toContain("AGENT_CANVAS_BACKEND");
     expect(resources).not.toContain("agent-canvas-session-key");
+    expect(resources).toContain("workingDir: /workspace/project");
     expect(resources).toContain(
-      "name: openhands-state\n          emptyDir: {}",
-    );
-    expect(resources).toContain(
-      "name: openhands-state\n              mountPath: /home/openhands/.openhands",
-    );
-    expect(resources).not.toContain(
-      "mountPath: /home/openhands/.openhands/agent-canvas",
+      "name: openhands-state\n              mountPath: /openhands\n              subPathExpr: $(OH_SANDBOX_ID)",
     );
     expect(resources).toContain(
       "storageClassName: openhands-halo-workspace-disk",

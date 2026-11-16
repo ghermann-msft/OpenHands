@@ -5,6 +5,7 @@ import {
   Plug,
   Route as RouteIcon,
   Shield,
+  Settings2,
 } from "lucide-react";
 import KeyIcon from "#/icons/key.svg?react";
 import MemoryIcon from "#/icons/memory_icon.svg?react";
@@ -107,9 +108,19 @@ export const CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   },
 ];
 
+export const ADMIN_SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
+  {
+    icon: <Settings2 className="size-4" strokeWidth={2} aria-hidden />,
+    to: "/settings/administration/execution-profiles",
+    text: "SETTINGS$EXECUTION_PROFILES",
+    subtitle: "SETTINGS$EXECUTION_PROFILES_ADMIN_DESCRIPTION",
+  },
+];
+
 export const ALL_SETTINGS_NAV_ITEMS = [
   ...OSS_NAV_ITEMS,
   ...CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
+  ...ADMIN_SETTINGS_NAV_ITEMS,
 ];
 
 /**

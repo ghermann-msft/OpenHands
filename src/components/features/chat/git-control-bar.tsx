@@ -26,6 +26,7 @@ import { getStoredConversationMetadata } from "#/api/conversation-metadata-store
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useUserProviders } from "#/hooks/use-user-providers";
 import { useOptionalScrollContext } from "#/context/scroll-context";
+import { Server } from "lucide-react";
 
 interface GitControlBarProps {
   onSuggestionsClick: (value: string) => void;
@@ -213,18 +214,31 @@ export function GitControlBar({ onSuggestionsClick }: GitControlBarProps) {
   // modal — that flow is cloud-only. Disable the button in that case so the
   // click is a no-op. Linkable repos render as <a> and ignore `disabled`.
   const isRepoButtonInert = isLocalBackend && !hasRepository;
+  const sandboxSpecId = conversation?.sandbox_spec_id;
 
   // True when the bar will render at least one chip (cloud always shows
   // "Open Repository"; local needs a repo or a workspace name; selected
   // branch or push/pull/PR also count). When false, the bar has nothing to
   // show — return null so the wrapper above collapses to its natural padding
   // instead of leaving an empty DOM node below the chat input.
-  const hasAnyContent = showRepoButton || !!selectedBranch || hasRepository;
+  const hasAnyContent =
+    showRepoButton || !!selectedBranch || hasRepository || !!sandboxSpecId;
   if (!hasAnyContent) return null;
 
   return (
     <div className="flex flex-row items-center">
       <div className="flex flex-row gap-2.5 items-center overflow-x-auto flex-nowrap relative scrollbar-hide">
+        {sandboxSpecId ? (
+          <span
+            data-testid="git-control-bar-execution-profile"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-text-secondary"
+            title={t(I18nKey.SETTINGS$EXECUTION_PROFILE)}
+          >
+            <Server className="size-3" aria-hidden />
+            {sandboxSpecId}
+          </span>
+        ) : null}
+
         {showRepoButton ? (
           <GitControlBarRepoButton
             selectedRepository={selectedRepository}

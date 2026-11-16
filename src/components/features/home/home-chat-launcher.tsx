@@ -58,6 +58,7 @@ import { OpenLauncherButton } from "./open-launcher-button";
 import { OpenWorkspaceDialog } from "./open-workspace-dialog";
 import { OpenRepositoryDialog } from "./open-repository-dialog";
 import { HomeGitControlBarPreview } from "./home-git-control-bar-preview";
+import { ExecutionProfileSelect } from "../settings/execution-profiles/execution-profile-select";
 
 // How long a create may run before the "Creating conversation…" toast appears.
 const CREATING_TOAST_DELAY_MS = 600;
@@ -106,6 +107,7 @@ export function HomeChatLauncher() {
   const [selectedPlugins, setSelectedPlugins] = useState<PluginSpec[]>([]);
   const [isPluginPickerOpen, setIsPluginPickerOpen] = useState(false);
   const [launcherMode, setLauncherMode] = useState<HomeLauncherMode>("code");
+  const [sandboxSpecId, setSandboxSpecId] = useState("");
   const displayedLauncherMode = launcherMode;
   const isAutomateMode = launcherMode === "automate";
   const handleLauncherModeChange = setLauncherMode;
@@ -217,6 +219,7 @@ export function HomeChatLauncher() {
       query: hasAttachments ? undefined : trimmed || undefined,
       automationSetup: isAutomateMode,
       entryPoint: "home_chat_launcher",
+      ...(sandboxSpecId ? { sandboxSpecId } : {}),
     };
     // An isolated backend owns its workspace, so a host selection left over
     // from a non-isolated session must not be forwarded: the server rejects it
@@ -496,6 +499,17 @@ export function HomeChatLauncher() {
             onChange={handleLauncherModeChange}
           />
         </div>
+
+        {!isLocal && !activeLaunch && (
+          <div className="w-full">
+            <ExecutionProfileSelect
+              value={sandboxSpecId}
+              onChange={setSandboxSpecId}
+              includeSavedDefault
+              disabled={isCreating}
+            />
+          </div>
+        )}
 
         <div className="w-full">
           <CustomChatInput

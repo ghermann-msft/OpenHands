@@ -5,7 +5,11 @@ import {
 } from "#/components/features/settings/sdk-settings/sdk-section-page";
 import { useConversationWorkspace } from "#/hooks/query/use-conversation-workspace";
 import { useSettings } from "#/hooks/query/use-settings";
+import { useSaveSettings } from "#/hooks/mutation/use-save-settings";
 import { I18nKey } from "#/i18n/declaration";
+import { useActiveBackend } from "#/contexts/active-backend-context";
+import { ExecutionProfileSelect } from "#/components/features/settings/execution-profiles/execution-profile-select";
+import { DEFAULT_SANDBOX_SPEC_ID } from "#/api/cloud/sandbox-spec-service.api";
 
 const CONTAINER_FIELD_KEYS = new Set([
   "container_memory",
@@ -16,6 +20,9 @@ const CONTAINER_FIELD_KEYS = new Set([
 function RuntimeSettingsScreen() {
   const { t } = useTranslation();
   const { data: settings } = useSettings();
+  const { backend } = useActiveBackend();
+  const { mutate: saveSettings, isPending: isSavingProfile } =
+    useSaveSettings();
   const { dockerSelectable, serverInfoLoading } = useConversationWorkspace();
   const dockerUnavailable = !serverInfoLoading && !dockerSelectable;
   const savedDocker =
@@ -35,14 +42,32 @@ function RuntimeSettingsScreen() {
     <SdkSectionPage
       settingsSources={[source]}
       header={
-        dockerUnavailable && savedDocker
+        backend.kind === "cloud" || (dockerUnavailable && savedDocker)
           ? () => (
-              <p
-                data-testid="runtime-docker-unavailable"
-                className="text-sm text-muted"
-              >
-                {t(I18nKey.SETTINGS$RUNTIME_DOCKER_UNAVAILABLE)}
-              </p>
+              <div className="flex flex-col gap-3">
+                {backend.kind === "cloud" && (
+                  <ExecutionProfileSelect
+                    value={
+                      settings?.default_sandbox_spec_id ??
+                      DEFAULT_SANDBOX_SPEC_ID
+                    }
+                    onChange={(defaultSandboxSpecId) =>
+                      saveSettings({
+                        default_sandbox_spec_id: defaultSandboxSpecId || null,
+                      })
+                    }
+                    disabled={isSavingProfile}
+                  />
+                )}
+                {dockerUnavailable && savedDocker && (
+                  <p
+                    data-testid="runtime-docker-unavailable"
+                    className="text-sm text-muted"
+                  >
+                    {t(I18nKey.SETTINGS$RUNTIME_DOCKER_UNAVAILABLE)}
+                  </p>
+                )}
+              </div>
             )
           : undefined
       }

@@ -31,6 +31,10 @@ export default [
       route("agent-context", "routes/agent-context-settings.tsx"),
       route("verification", "routes/verification-settings.tsx"),
       route("runtime", "routes/runtime-settings.tsx"),
+      route(
+        "administration/execution-profiles",
+        "routes/execution-profiles-settings.tsx",
+      ),
       route("app", "routes/app-settings.tsx"),
       route("integrations", "routes/integrations-settings.tsx"),
       route("secrets", "routes/secrets-settings.tsx"),

@@ -41,6 +41,7 @@ export const APP_PREFERENCE_FIELDS = [
   "disabled_skills",
   "enabled_skills",
   "run_router_at_conversation_start",
+  "default_sandbox_spec_id",
   "workspace_file_discovery",
   "home_pinned_automations",
   "default_profile_migrated",

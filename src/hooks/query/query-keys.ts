@@ -30,6 +30,12 @@ export const ACP_MODEL_DISCOVERY_QUERY_KEYS = {
   all: ["acp-model-discovery"] as const,
 } as const;
 
+export const SANDBOX_SPEC_QUERY_KEYS = {
+  all: ["sandbox-specs"] as const,
+  admin: ["sandbox-specs", "admin"] as const,
+  capabilities: ["sandbox-specs", "admin-capabilities"] as const,
+} as const;
+
 export const AGENT_PROFILES_QUERY_KEYS = {
   all: ["agent-profiles"] as const,
   // Nested under `all` so profile mutations invalidate cached details too.

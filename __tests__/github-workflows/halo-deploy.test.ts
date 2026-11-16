@@ -18,8 +18,22 @@ describe("Halo deployment workflow", () => {
       'node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA"',
     );
     expect(workflow).toContain(
-      'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}"',
+      'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ steps.image.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"',
     );
+    expect(workflow).toContain("HALO_WINDOWS_RUNTIME_DIGEST");
+    expect(workflow).toContain(
+      "node scripts/halo-deploy.mjs preflight-windows",
+    );
+    expect(workflow).toContain("prepare-windows-proof");
+    expect(workflow).toContain("restore-windows-idle");
+    expect(workflow).toContain("deploy-and-promote");
+    expect(workflow).toContain(
+      "github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy-and-promote'",
+    );
+    expect(workflow).toContain(
+      "patch sandboxwarmpool windows-server-2025-amd64",
+    );
+    expect(workflow).toContain("ghcr.io/ghermann-msft/agent-server");
     expect(workflow).toContain(
       "/var/run/secrets/kubernetes.io/serviceaccount/token",
     );
@@ -45,7 +59,7 @@ describe("Halo deployment workflow", () => {
   it("requires protected approval to promote the digest built by the same run", () => {
     expect(workflow).toContain("environment: halo-production");
     expect(workflow).toContain(
-      'node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --agent-server-digest "${{ needs.deploy-candidate.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}"',
+      'node scripts/halo-deploy.mjs promote --canvas-digest "${{ needs.deploy-candidate.outputs.canvas_digest }}" --agent-server-digest "${{ needs.deploy-candidate.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.deploy-candidate.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.deploy-candidate.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ needs.deploy-candidate.outputs.windows_runtime_digest }}"',
     );
     expect(workflow).toContain("group: halo-candidate");
     expect(workflow).toContain("group: halo-production");
