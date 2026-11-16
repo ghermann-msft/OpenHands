@@ -43,6 +43,7 @@ import {
   isServerInfoRequest,
   matchesPathPrefix,
   proxyServerInfoRequest,
+  rewriteJsonResponse,
 } from "./proxy-utils.mjs";
 import { createWorkspaceRuntimeController } from "./workspace-runtime-controller.mjs";
 
@@ -77,6 +78,9 @@ const ASSET_LIKE_EXTENSIONS = new Set([
   ".xml",
 ]);
 const SANDBOX_RUNTIME_PREFIX = "/sandboxes";
+const WEB_CLIENT_CONFIG_PATH = "/api/v1/web-client/config";
+const WEB_CLIENT_CONFIG_RESPONSE_LIMIT = 1024 * 1024;
+const FEATURE_FLAG_NAME = /^[a-z][a-z0-9_]*$/;
 const KUBERNETES_DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
 const SANDBOX_RUNTIME_NAME_SUFFIX =
   /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?-[0-9a-f]{6}$/;
@@ -146,6 +150,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     lockToCloud: null,
     cloudOrganizationMode: "required",
     externalSettingsShell: true,
+    webClientFeatureFlags: {},
     basePath: "/",
     vscodeBasePath: null,
     entraBff: loadEntraBffConfig(env),
@@ -205,12 +210,22 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
       case "--no-external-settings-shell":
         config.externalSettingsShell = false;
         break;
+      case "--web-client-feature-flag": {
+        const name = argv[++i];
+        if (!name || !FEATURE_FLAG_NAME.test(name)) {
+          throw new Error(
+            `Invalid --web-client-feature-flag (expected snake_case name): ${name ?? "(empty)"}`,
+          );
+        }
+        config.webClientFeatureFlags[name] = true;
+        break;
+      }
       case "--base-path":
         config.basePath = normalizeBasePath(argv[++i]);
         break;
       case "--vscode-base-path": {
         const prefix = argv[++i];
-        if (!prefix || !prefix.startsWith("/")) {
+        if (!prefix?.startsWith("/")) {
           throw new Error(
             `--vscode-base-path value must start with '/': ${prefix ?? "(empty)"}`,
           );
@@ -230,7 +245,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
         break;
       case "--reject-prefix": {
         const prefix = argv[++i];
-        if (!prefix || !prefix.startsWith("/")) {
+        if (!prefix?.startsWith("/")) {
           throw new Error(
             `--reject-prefix value must start with '/': ${prefix ?? "(empty)"}`,
           );
@@ -240,7 +255,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
       }
       case "--no-referrer-prefix": {
         const prefix = argv[++i];
-        if (!prefix || !prefix.startsWith("/")) {
+        if (!prefix?.startsWith("/")) {
           throw new Error(
             `--no-referrer-prefix value must start with '/': ${prefix ?? "(empty)"}`,
           );
@@ -252,6 +267,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
       case "--help":
         showHelp();
         process.exit(0);
+        break;
       default:
         throw new Error(`Unknown flag: ${flag}`);
     }
@@ -357,6 +373,10 @@ OPTIONS:
                                locked to Cloud. Use for self-hosted control
                                planes that do not provide a separate /settings
                                shell.
+  --web-client-feature-flag <name>
+                               Add a true boolean flag to the proxied
+                               /api/v1/web-client/config response. May be
+                               repeated.
   --disable-telemetry          Disable all product telemetry (including the
                                anonymous install event) in the pre-built
                                frontend at runtime, without VITE_DO_NOT_TRACK
@@ -828,6 +848,31 @@ export function startStaticServer(config) {
   const internalAuthHeaders = config.entraBff
     ? { "X-Session-API-Key": config.sessionApiKey }
     : undefined;
+  const webClientFeatureFlags = config.webClientFeatureFlags ?? {};
+  const rewriteWebClientConfig =
+    Object.keys(webClientFeatureFlags).length > 0
+      ? rewriteJsonResponse(
+          (body) => {
+            if (!body || typeof body !== "object" || Array.isArray(body)) {
+              return body;
+            }
+            const featureFlags =
+              body.feature_flags &&
+              typeof body.feature_flags === "object" &&
+              !Array.isArray(body.feature_flags)
+                ? body.feature_flags
+                : {};
+            return {
+              ...body,
+              feature_flags: {
+                ...featureFlags,
+                ...webClientFeatureFlags,
+              },
+            };
+          },
+          { limit: WEB_CLIENT_CONFIG_RESPONSE_LIMIT },
+        )
+      : null;
   const identityAssertionHeaders = new Set([
     "x-openhands-identity-assertion",
     config.entraBff?.identityAssertion?.header.toLowerCase(),
@@ -910,6 +955,8 @@ export function startStaticServer(config) {
     if (marsWeb?.handleHttp(req, res)) return;
     const backend = route(url);
     if (backend) {
+      const isWebClientConfig =
+        new URL(url, "http://localhost").pathname === WEB_CLIENT_CONFIG_PATH;
       // The editor is advertised as `<origin><prefix>/?tkn=<token>`, and that
       // token is agent-server's session key. The workbench loads webviews,
       // previews and extension content from that document, so without this a
@@ -929,7 +976,14 @@ export function startStaticServer(config) {
         return;
       }
       proxy.proxyHttp(req, res, backend, {
-        headers: { ...internalAuthHeaders, ...identityHeaders },
+        headers: {
+          ...internalAuthHeaders,
+          ...identityHeaders,
+          ...(isWebClientConfig && rewriteWebClientConfig
+            ? { "Accept-Encoding": "identity" }
+            : {}),
+        },
+        onResponse: isWebClientConfig ? rewriteWebClientConfig : null,
       });
       return;
     }

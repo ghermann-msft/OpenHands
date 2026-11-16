@@ -9,7 +9,9 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, passthrough } from "msw";
 
+import { server as mockServer } from "#/mocks/node";
 import { loadEntraBffConfig } from "../../scripts/entra-bff.mjs";
 import {
   createSandboxRuntimeProxy,
@@ -340,6 +342,22 @@ describe("static-server.mjs", () => {
       expect(config.externalSettingsShell).toBe(true);
     });
 
+    it("collects web-client feature flags", () => {
+      const config = parseArgs([
+        "--web-client-feature-flag",
+        "enable_atlassian_api_token",
+      ]);
+      expect(config.webClientFeatureFlags).toEqual({
+        enable_atlassian_api_token: true,
+      });
+    });
+
+    it("rejects invalid web-client feature flag names", () => {
+      expect(() =>
+        parseArgs(["--web-client-feature-flag", "not-a-flag"]),
+      ).toThrow(/expected snake_case name/);
+    });
+
     it("parses --lock-to-cloud", () => {
       const config = parseArgs([
         "--lock-to-cloud",
@@ -413,6 +431,78 @@ describe("static-server.mjs", () => {
       const config = parseArgs(["--runtime-services-info", ""]);
       expect(config.runtimeServicesInfo).toBeNull();
     });
+  });
+
+  it("routes Atlassian requests to Agent Server and advertises the feature", async () => {
+    mockServer.use(http.get("*/api/v1/web-client/config", () => passthrough()));
+    const buildDir = mkdtempSync(path.join(tmpdir(), "atlassian-routing-"));
+    tempDirs.push(buildDir);
+    writeFileSync(
+      path.join(buildDir, "index.html"),
+      "<html><head></head><body>app</body></html>",
+    );
+
+    let controlPlaneRequests = 0;
+    let controlPlaneAcceptEncoding: string | string[] | undefined;
+    const controlPlane = createServer((req, res) => {
+      controlPlaneRequests += 1;
+      controlPlaneAcceptEncoding = req.headers["accept-encoding"];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          feature_flags: { enable_canvas_integrations: true },
+          providers_configured: [],
+        }),
+      );
+    });
+    const controlPlaneOrigin = await startHttpServer(controlPlane);
+
+    let agentServerRequests = 0;
+    const agentServer = createServer((_req, res) => {
+      agentServerRequests += 1;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          jira: { connected: false, site_url: null, email: null },
+          confluence: { connected: false, site_url: null, email: null },
+        }),
+      );
+    });
+    const agentServerOrigin = await startHttpServer(agentServer);
+
+    const origin = await startServer(buildDir, {
+      routes: {
+        "/api/v1": controlPlaneOrigin,
+        "/api/v1/integrations/atlassian": agentServerOrigin,
+      },
+      webClientFeatureFlags: { enable_atlassian_api_token: true },
+    });
+
+    const config = await getJson(`${origin}/api/v1/web-client/config`);
+    const integration = await getJson(
+      `${origin}/api/v1/integrations/atlassian`,
+    );
+
+    expect(config).toEqual({
+      status: 200,
+      body: {
+        feature_flags: {
+          enable_canvas_integrations: true,
+          enable_atlassian_api_token: true,
+        },
+        providers_configured: [],
+      },
+    });
+    expect(integration).toEqual({
+      status: 200,
+      body: {
+        jira: { connected: false, site_url: null, email: null },
+        confluence: { connected: false, site_url: null, email: null },
+      },
+    });
+    expect(controlPlaneRequests).toBe(1);
+    expect(controlPlaneAcceptEncoding).toBe("identity");
+    expect(agentServerRequests).toBe(1);
   });
 
   describe("serializeForInlineScript", () => {

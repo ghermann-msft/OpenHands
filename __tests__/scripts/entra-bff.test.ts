@@ -415,11 +415,14 @@ describe("Microsoft Entra BFF", () => {
       .getSetCookie()
       .find((cookie) => cookie.startsWith("agent-canvas-entra-session="))!
       .split(";")[0];
-    const protectedApi = await rawRequest(`${origin}/api/halo-identity-test`, {
-      Cookie: sessionCookie,
-      "X-OpenHands-Identity-Assertion": "attacker-assertion",
-      "X-Session-API-Key": "attacker-key",
-    });
+    const protectedApi = await rawRequest(
+      `${origin}/api/v1/integrations/atlassian`,
+      {
+        Cookie: sessionCookie,
+        "X-OpenHands-Identity-Assertion": "attacker-assertion",
+        "X-Session-API-Key": "attacker-key",
+      },
+    );
     expect(protectedApi.status).toBe(200);
     expect(getUpstreamHttpKey()).toBe("internal-agent-server-key");
     const identityAssertion = getUpstreamIdentityAssertion();
