@@ -482,6 +482,9 @@ describe("static-server.mjs", () => {
     const integration = await getJson(
       `${origin}/api/v1/integrations/atlassian`,
     );
+    const jiraIntegration = await getJson(
+      `${origin}/api/v1/integrations/atlassian/jira`,
+    );
 
     expect(config).toEqual({
       status: 200,
@@ -500,9 +503,10 @@ describe("static-server.mjs", () => {
         confluence: { connected: false, site_url: null, email: null },
       },
     });
+    expect(jiraIntegration).toEqual(integration);
     expect(controlPlaneRequests).toBe(1);
     expect(controlPlaneAcceptEncoding).toBe("identity");
-    expect(agentServerRequests).toBe(1);
+    expect(agentServerRequests).toBe(2);
   });
 
   describe("serializeForInlineScript", () => {
