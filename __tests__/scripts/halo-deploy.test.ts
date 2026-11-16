@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  acrTrustedServicesUpdateArgs,
   appGatewayNsgRuleArgs,
   aksApiServerAuthorizedIpUpdateArgs,
   aksNatGatewaySubnets,
@@ -106,6 +107,14 @@ describe("Halo deployment automation", () => {
     expect(aksNatGatewayUpdateArgs()).toEqual(
       expect.arrayContaining(["aks-unrealhands-dev", "userAssignedNATGateway"]),
     );
+    expect(acrTrustedServicesUpdateArgs()).toEqual(
+      expect.arrayContaining([
+        "uhunrealhaacukmdbkacr",
+        "--allow-trusted-services",
+        "true",
+      ]),
+    );
+    expect(acrTrustedServicesUpdateArgs()).not.toContain("--default-action");
   });
 
   it("requires immutable image digests", () => {

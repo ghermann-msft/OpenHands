@@ -355,6 +355,21 @@ export function aksNatGatewayUpdateArgs() {
   ];
 }
 
+export function acrTrustedServicesUpdateArgs() {
+  return [
+    "acr",
+    "update",
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--name",
+    config.azure.acrName,
+    "--allow-trusted-services",
+    "true",
+    "--output",
+    "none",
+  ];
+}
+
 function validateAzureOpenAi() {
   const account = JSON.parse(
     az(
@@ -1426,6 +1441,7 @@ ${agentSandboxBinding("primary")}`;
 
 function bootstrapBuild() {
   ensureBuildNodePool();
+  az(acrTrustedServicesUpdateArgs());
   const builder = identity(config.identities.builder);
   const windowsRuntimeImporter = ensureIdentity(
     config.identities.windowsRuntimeImporter,
