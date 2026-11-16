@@ -21,6 +21,14 @@ vi.mock(
     ),
   }),
 );
+vi.mock(
+  "#/components/features/settings/integrations/perforce-integration-settings",
+  () => ({
+    PerforceIntegrationSettings: () => (
+      <div data-testid="perforce-integration-settings" />
+    ),
+  }),
+);
 
 describe("IntegrationsSettingsScreen", () => {
   it("renders the Canvas-owned integration controls as a standalone page", () => {
@@ -32,6 +40,9 @@ describe("IntegrationsSettingsScreen", () => {
     );
     expect(
       screen.getByTestId("atlassian-integration-settings"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("perforce-integration-settings"),
     ).toBeInTheDocument();
   });
 });

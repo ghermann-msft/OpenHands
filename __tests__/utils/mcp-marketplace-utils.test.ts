@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   findCatalogEntryForServer,
   findInstalledEntryMatch,
+  findInstalledEntryMatches,
   findInstalledMatch,
   getDefaultMcpConnectionOption,
   getDefaultMcpTransport,
@@ -767,6 +768,51 @@ describe("URL and entry matching", () => {
         { id: "match", type: "shttp", url: "https://example.com/mcp" },
       ]),
     ).toMatchObject({ id: "match" });
+  });
+
+  it("returns every installed server matching an entry", () => {
+    const entry = {
+      ...linearEntry,
+      connectionOptions: [
+        {
+          id: "stdio",
+          provider: "mcp",
+          auth: { strategy: "none" },
+          transport: {
+            kind: "stdio",
+            serverName: "perforce",
+            command: "/usr/local/bin/p4-mcp-server",
+            args: ["--readonly"],
+          },
+        },
+      ],
+    } as typeof linearEntry;
+
+    expect(
+      findInstalledEntryMatches(entry, [
+        {
+          id: "perforce",
+          type: "stdio",
+          command: "/usr/local/bin/p4-mcp-server",
+          args: ["--readonly"],
+        },
+        {
+          id: "other",
+          type: "stdio",
+          command: "/usr/local/bin/other-mcp-server",
+          args: [],
+        },
+        {
+          id: "perforce_1",
+          type: "stdio",
+          command: "/usr/local/bin/p4-mcp-server",
+          args: ["--readonly"],
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({ id: "perforce" }),
+      expect.objectContaining({ id: "perforce_1" }),
+    ]);
   });
 
   it("requires the installed server transport type to match", () => {

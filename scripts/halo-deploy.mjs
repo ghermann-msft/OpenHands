@@ -810,6 +810,8 @@ export function renderBuildJob({ commit }) {
   const agentServerCache = `${config.azure.acrLoginServer}/${build.agentServerRepository}:${build.agentServerCacheTag}`;
   const sandboxImage = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${sandboxShort}`;
   const sandboxCache = `${config.azure.acrLoginServer}/${build.sandboxServerRepository}:${build.sandboxServerCacheTag}`;
+  const sandboxRuntimeImage = `${config.azure.acrLoginServer}/${build.sandboxRuntimeRepository}:${sandboxShort}`;
+  const sandboxRuntimeCache = `${config.azure.acrLoginServer}/${build.sandboxRuntimeRepository}:${build.sandboxRuntimeCacheTag}`;
   return `apiVersion: batch/v1
 kind: Job
 metadata:
@@ -914,6 +916,7 @@ spec:
               canvas_metadata=/tmp/canvas-build-metadata.json
               agent_server_metadata=/tmp/agent-server-build-metadata.json
               sandbox_metadata=/tmp/sandbox-build-metadata.json
+              sandbox_runtime_metadata=/tmp/sandbox-runtime-build-metadata.json
               buildkitd \\
                 --addr unix:///run/buildkit/buildkitd.sock &
               buildkitd_pid="$!"
@@ -975,6 +978,22 @@ spec:
                 --frontend dockerfile.v0 \\
                 --local context=/sandbox-server \\
                 --local dockerfile=/sandbox-server \\
+                --opt filename=containers/sandbox/Dockerfile \\
+                --opt platform=linux/amd64 \\
+                --import-cache type=registry,ref=${sandboxRuntimeCache} \\
+                --export-cache type=registry,ref=${sandboxRuntimeCache},mode=max,compression=zstd,ignore-error=true \\
+                --metadata-file "$sandbox_runtime_metadata" \\
+                --output type=image,name=${sandboxRuntimeImage},push=true
+              sandbox_runtime_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$sandbox_runtime_metadata")"
+              if ! printf '%s' "$sandbox_runtime_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                echo "BuildKit did not report an immutable Sandbox Runtime image digest" >&2
+                cat "$sandbox_runtime_metadata" >&2
+                exit 1
+              fi
+              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
+                --frontend dockerfile.v0 \\
+                --local context=/sandbox-server \\
+                --local dockerfile=/sandbox-server \\
                 --opt filename=containers/app/Dockerfile \\
                 --opt target=openhands-sandbox-server \\
                 --opt platform=linux/amd64 \\
@@ -991,10 +1010,11 @@ spec:
                 cat "$sandbox_metadata" >&2
                 exit 1
               fi
-              printf '{"canvas":"%s","agentServer":"%s","sandboxServer":"%s"}' "$canvas_digest" "$agent_server_digest" "$sandbox_digest" > /dev/termination-log
+              printf '{"canvas":"%s","agentServer":"%s","sandboxServer":"%s","sandboxRuntime":"%s"}' "$canvas_digest" "$agent_server_digest" "$sandbox_digest" "$sandbox_runtime_digest" > /dev/termination-log
               printf 'CANVAS_IMAGE_DIGEST=%s\\n' "$canvas_digest"
               printf 'AGENT_SERVER_IMAGE_DIGEST=%s\\n' "$agent_server_digest"
               printf 'SANDBOX_SERVER_IMAGE_DIGEST=%s\\n' "$sandbox_digest"
+              printf 'SANDBOX_RUNTIME_IMAGE_DIGEST=%s\\n' "$sandbox_runtime_digest"
           env:
             - name: DOCKER_CONFIG
               value: /docker
@@ -1049,6 +1069,7 @@ export function buildDigestsFromPodList(podList) {
         canvas: normalizeDigest(digests.canvas),
         agentServer: normalizeDigest(digests.agentServer),
         sandboxServer: normalizeDigest(digests.sandboxServer),
+        sandboxRuntime: normalizeDigest(digests.sandboxRuntime),
       };
     } catch {
       // Check other pods before reporting the missing build result.
@@ -1472,6 +1493,7 @@ extraVolumeMounts:
 export function renderSandboxServerResources(
   environment,
   digest,
+  runtimeDigest,
   runtimeClientId,
 ) {
   const env = config.environments[environment];
@@ -1480,6 +1502,11 @@ export function renderSandboxServerResources(
     config.azure.acrLoginServer,
     config.build.sandboxServerRepository,
     digest,
+  );
+  const runtimeImage = imageReference(
+    config.azure.acrLoginServer,
+    config.build.sandboxRuntimeRepository,
+    runtimeDigest,
   );
   const githubOAuthEnv =
     env.githubApp.slug &&
@@ -1541,6 +1568,8 @@ spec:
               value: ${runtimeClientId}
             - name: RUNTIME
               value: kubernetes
+            - name: AGENT_SERVER_IMAGE
+              value: ${runtimeImage}
             - name: SERVE_FRONTEND
               value: "false"
             - name: DB_AZURE_IDENTITY
@@ -3041,6 +3070,7 @@ async function build(args) {
   console.log(`CANVAS_IMAGE_DIGEST=${digests.canvas}`);
   console.log(`AGENT_SERVER_IMAGE_DIGEST=${digests.agentServer}`);
   console.log(`SANDBOX_SERVER_IMAGE_DIGEST=${digests.sandboxServer}`);
+  console.log(`SANDBOX_RUNTIME_IMAGE_DIGEST=${digests.sandboxRuntime}`);
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
 
@@ -3117,6 +3147,7 @@ async function deploy(
   canvasDigest,
   agentServerDigest,
   sandboxServerDigest,
+  sandboxRuntimeDigest,
 ) {
   const env = config.environments[environment];
   const clientId = runtimeClientId(environment);
@@ -3193,6 +3224,7 @@ async function deploy(
     input: renderSandboxServerResources(
       environment,
       sandboxServerDigest,
+      sandboxRuntimeDigest,
       clientId,
     ),
   });
@@ -3214,6 +3246,9 @@ async function deploy(
   );
   console.log(
     `${environment.toUpperCase()}_SANDBOX_SERVER_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.sandboxServerRepository, sandboxServerDigest)}`,
+  );
+  console.log(
+    `${environment.toUpperCase()}_SANDBOX_RUNTIME_IMAGE=${imageReference(config.azure.acrLoginServer, config.build.sandboxRuntimeRepository, sandboxRuntimeDigest)}`,
   );
 }
 
@@ -3255,9 +3290,22 @@ function candidateDigests() {
     ],
     { capture: true },
   );
+  const sandboxRuntimeImage = kubectl(
+    [
+      "-n",
+      env.namespace,
+      "get",
+      "deployment",
+      config.sandboxServer.serviceName,
+      "-o",
+      'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="AGENT_SERVER_IMAGE")].value}',
+    ],
+    { capture: true },
+  );
   const canvasPrefix = `${config.azure.acrLoginServer}/${config.build.repository}@`;
   const agentServerPrefix = `${config.azure.acrLoginServer}/${config.build.agentServerRepository}@`;
   const sandboxServerPrefix = `${config.azure.acrLoginServer}/${config.build.sandboxServerRepository}@`;
+  const sandboxRuntimePrefix = `${config.azure.acrLoginServer}/${config.build.sandboxRuntimeRepository}@`;
   if (!canvasImage.startsWith(canvasPrefix)) {
     throw new Error(
       `Candidate Canvas is not deployed by immutable digest: ${canvasImage}`,
@@ -3273,6 +3321,11 @@ function candidateDigests() {
       `Candidate Agent Server is not deployed by immutable digest: ${agentServerImage}`,
     );
   }
+  if (!sandboxRuntimeImage.startsWith(sandboxRuntimePrefix)) {
+    throw new Error(
+      `Candidate Sandbox Runtime is not deployed by immutable digest: ${sandboxRuntimeImage}`,
+    );
+  }
   return {
     canvas: normalizeDigest(canvasImage.slice(canvasPrefix.length)),
     agentServer: normalizeDigest(
@@ -3280,6 +3333,9 @@ function candidateDigests() {
     ),
     sandboxServer: normalizeDigest(
       sandboxServerImage.slice(sandboxServerPrefix.length),
+    ),
+    sandboxRuntime: normalizeDigest(
+      sandboxRuntimeImage.slice(sandboxRuntimePrefix.length),
     ),
   };
 }
@@ -3299,6 +3355,7 @@ async function promote(args) {
   const expectedCanvasDigest = option(args, "--canvas-digest");
   const expectedAgentServerDigest = option(args, "--agent-server-digest");
   const expectedSandboxServerDigest = option(args, "--sandbox-server-digest");
+  const expectedSandboxRuntimeDigest = option(args, "--sandbox-runtime-digest");
   if (
     expectedCanvasDigest &&
     normalizeDigest(expectedCanvasDigest) !== digests.canvas
@@ -3323,14 +3380,23 @@ async function promote(args) {
       `Candidate Sandbox Server digest changed while promotion awaited approval: expected ${expectedSandboxServerDigest}, found ${digests.sandboxServer}`,
     );
   }
+  if (
+    expectedSandboxRuntimeDigest &&
+    normalizeDigest(expectedSandboxRuntimeDigest) !== digests.sandboxRuntime
+  ) {
+    throw new Error(
+      `Candidate Sandbox Runtime digest changed while promotion awaited approval: expected ${expectedSandboxRuntimeDigest}, found ${digests.sandboxRuntime}`,
+    );
+  }
   console.log(
-    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, and ${digests.sandboxServer}`,
+    `Promoting candidate digests ${digests.canvas}, ${digests.agentServer}, ${digests.sandboxServer}, and ${digests.sandboxRuntime}`,
   );
   await deploy(
     "primary",
     digests.canvas,
     digests.agentServer,
     digests.sandboxServer,
+    digests.sandboxRuntime,
   );
 }
 
@@ -3357,8 +3423,8 @@ function usage() {
   npm run halo -- bootstrap-network
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
   npm run halo -- build --ref <git-ref>
-  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest>
-  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest>]
+  npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest> --sandbox-runtime-digest sha256:<digest>
+  npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest> --sandbox-runtime-digest sha256:<candidate-digest>]
   npm run halo -- status`);
 }
 
@@ -3383,6 +3449,7 @@ async function main(args = process.argv.slice(2)) {
         normalizeDigest(option(args, "--canvas-digest")),
         normalizeDigest(option(args, "--agent-server-digest")),
         normalizeDigest(option(args, "--sandbox-server-digest")),
+        normalizeDigest(option(args, "--sandbox-runtime-digest")),
       );
       break;
     case "promote":

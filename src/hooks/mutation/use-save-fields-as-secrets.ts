@@ -8,6 +8,11 @@ import {
   displayErrorToast,
   displaySuccessToast,
 } from "#/utils/custom-toast-handlers";
+import { REDACTED_MCP_SECRET_VALUE } from "#/utils/mcp-config";
+
+type ConfigurableMarketplaceField = MarketplaceField & {
+  canSaveAsSecret?: boolean;
+};
 
 /** Truncates a list of key names for display in toasts. */
 function formatKeyList(keys: string[]): string {
@@ -35,8 +40,12 @@ export function useSaveFieldsAsSecrets() {
       values: Record<string, string>,
       savedAsSecret: Record<string, boolean>,
     ): Promise<void> => {
-      const fieldsToSave = envFields.filter(
-        (field) => savedAsSecret[field.key] && (values[field.key] ?? "").trim(),
+      const fieldsToSave = (envFields as ConfigurableMarketplaceField[]).filter(
+        (field) =>
+          field.canSaveAsSecret !== false &&
+          savedAsSecret[field.key] &&
+          (values[field.key] ?? "").trim() &&
+          values[field.key] !== REDACTED_MCP_SECRET_VALUE,
       );
       if (fieldsToSave.length === 0) return Promise.resolve();
 

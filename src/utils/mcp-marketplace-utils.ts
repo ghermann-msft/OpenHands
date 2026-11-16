@@ -214,6 +214,18 @@ export function findInstalledEntryMatch(
   return null;
 }
 
+export function findInstalledEntryMatches(
+  entry: MarketplaceEntry,
+  servers: MCPServerConfig[],
+): MCPServerConfig[] {
+  const transports = getMcpConnectionOptions(entry).map(
+    (option) => option.transport,
+  );
+  return servers.filter((server) =>
+    transports.some((transport) => transportMatchesServer(transport, server)),
+  );
+}
+
 function transportMatchesServer(
   transport: IntegrationTransport,
   server: MCPServerConfig,

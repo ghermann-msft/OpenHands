@@ -106,6 +106,11 @@ Service (AKS).
 - Build OpenHands Halo images in CI and publish them to Azure Container
   Registry.
 - Tag images with the source commit and deploy them by immutable image digest.
+- Build the sandbox runtime independently from the Sandbox Server control plane,
+  publish it to ACR, and inject its immutable digest into the control plane.
+  Runtime tools such as the official Perforce MCP must be installed and
+  checksum-verified in that image rather than downloaded when a conversation
+  starts.
 - Never deploy `latest`.
 - Use GitOps, such as Flux or Argo CD, as the deployment authority.
 - OpenHands may create changes or pull requests for deployment configuration,
@@ -155,12 +160,12 @@ Service (AKS).
 
 ### Authority boundaries
 
-| Authority | Responsibility |
-| --- | --- |
-| Microsoft Entra | Authentication, Conditional Access, account lifecycle, and group membership |
-| OpenHands | Organizations, teams, projects, roles, permissions, ownership, sharing, and authorization decisions |
-| Git provider | Repository, branch, pull request, and source-control authorization |
-| AKS RBAC | Infrastructure and Kubernetes workload authorization |
+| Authority       | Responsibility                                                                                      |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| Microsoft Entra | Authentication, Conditional Access, account lifecycle, and group membership                         |
+| OpenHands       | Organizations, teams, projects, roles, permissions, ownership, sharing, and authorization decisions |
+| Git provider    | Repository, branch, pull request, and source-control authorization                                  |
+| AKS RBAC        | Infrastructure and Kubernetes workload authorization                                                |
 
 - Entra roles and groups must not encode project lists or project-specific
   permission policy.

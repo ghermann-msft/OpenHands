@@ -39,6 +39,49 @@ function renderWith(ui: React.ReactNode) {
   });
 }
 
+const PERFORCE_ENTRY = {
+  id: "perforce",
+  name: "Perforce",
+  description: "Browse Perforce history.",
+  iconBg: "#000000",
+  connectionOptions: [
+    {
+      id: "stdio",
+      provider: "mcp",
+      transport: {
+        kind: "stdio",
+        serverName: "perforce",
+        serverNameEditable: true,
+        command: "/usr/local/bin/p4-mcp-server",
+        args: ["--readonly"],
+        envFields: [
+          {
+            key: "P4PORT",
+            label: "Server",
+            type: "text",
+            required: true,
+          },
+          {
+            key: "P4USER",
+            label: "Username",
+            type: "text",
+            required: true,
+          },
+          {
+            key: "P4PASSWD",
+            label: "Ticket",
+            type: "password",
+            required: true,
+            saveAsSecretByDefault: false,
+            canSaveAsSecret: false,
+          },
+        ],
+      },
+      auth: { strategy: "none" },
+    },
+  ],
+} as unknown as MarketplaceEntry;
+
 describe("InstallServerModal", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -328,6 +371,172 @@ describe("InstallServerModal", () => {
         }),
       ),
     );
+  });
+
+  it("preserves a Perforce ticket while editing connection metadata", async () => {
+    const storedServer = {
+      transport: "stdio" as const,
+      command: "/usr/local/bin/p4-mcp-server",
+      args: ["--readonly"],
+      env: {
+        P4PORT: "ssl:perforce.example.com:1666",
+        P4USER: "old-user",
+        P4PASSWD: "**********",
+      },
+    };
+    vi.spyOn(SettingsService, "getSettings").mockResolvedValue({
+      ...MOCK_DEFAULT_USER_SETTINGS,
+      agent_settings: {
+        ...MOCK_DEFAULT_USER_SETTINGS.agent_settings,
+        mcp_config: { perforce_main: storedServer },
+      },
+    });
+    const patchSpy = vi
+      .spyOn(SettingsService, "patchMcpServer")
+      .mockResolvedValue(true);
+    const saveSecretSpy = vi.spyOn(SecretsService, "createSecret");
+
+    renderWith(
+      <InstallServerModal
+        existingServers={[
+          {
+            id: "perforce_main",
+            type: "stdio",
+            name: "perforce_main",
+            command: storedServer.command,
+            args: storedServer.args,
+            env: storedServer.env,
+          },
+        ]}
+        entry={PERFORCE_ENTRY}
+        serverToReplace={{
+          id: "perforce_main",
+          type: "stdio",
+          name: "perforce_main",
+          command: storedServer.command,
+          args: storedServer.args,
+          env: storedServer.env,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByTestId("mcp-install-field-server_name"),
+    ).toHaveValue("perforce_main");
+    expect(screen.getByTestId("mcp-install-field-P4PASSWD")).toHaveValue(
+      "**********",
+    );
+    expect(
+      screen.queryByTestId("mcp-install-save-secret-P4PASSWD"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4USER"), {
+      target: { value: "new-user" },
+    });
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+    await waitFor(() =>
+      expect(patchSpy).toHaveBeenCalledWith("perforce_main", {
+        transport: "stdio",
+        command: "/usr/local/bin/p4-mcp-server",
+        args: ["--readonly"],
+        env: {
+          P4PORT: "ssl:perforce.example.com:1666",
+          P4USER: "new-user",
+        },
+      }),
+    );
+    expect(saveSecretSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses an editable Perforce connection name as the tool namespace", async () => {
+    const saveSpy = vi
+      .spyOn(SettingsService, "saveSettings")
+      .mockResolvedValue(true);
+
+    renderWith(
+      <InstallServerModal
+        existingServers={[]}
+        entry={PERFORCE_ENTRY}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(
+      await screen.findByTestId("mcp-install-field-server_name"),
+      {
+        target: { value: "perforce_main" },
+      },
+    );
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4PORT"), {
+      target: { value: "ssl:perforce.example.com:1666" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4USER"), {
+      target: { value: "main-user" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4PASSWD"), {
+      target: { value: "ticket-value" },
+    });
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+    await waitFor(() => expect(saveSpy).toHaveBeenCalledTimes(1));
+    expect(saveSpy.mock.calls[0][0]).toMatchObject({
+      agent_settings_diff: {
+        mcp_config: {
+          perforce_main: {
+            command: "/usr/local/bin/p4-mcp-server",
+            args: ["--readonly"],
+            env: {
+              P4PORT: "ssl:perforce.example.com:1666",
+              P4USER: "main-user",
+              P4PASSWD: "ticket-value",
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("rejects a duplicate Perforce tool namespace", async () => {
+    const testSpy = vi.spyOn(McpService, "testServer");
+    renderWith(
+      <InstallServerModal
+        existingServers={[
+          {
+            id: "perforce_main",
+            type: "stdio",
+            name: "perforce_main",
+            command: "/usr/local/bin/p4-mcp-server",
+            args: ["--readonly"],
+          },
+        ]}
+        entry={PERFORCE_ENTRY}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(
+      await screen.findByTestId("mcp-install-field-server_name"),
+      {
+        target: { value: "perforce_main" },
+      },
+    );
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4PORT"), {
+      target: { value: "ssl:perforce.example.com:1666" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4USER"), {
+      target: { value: "main-user" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4PASSWD"), {
+      target: { value: "ticket-value" },
+    });
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+    expect(
+      await screen.findByText("SETTINGS$MCP_ERROR_NAME_DUPLICATE"),
+    ).toBeInTheDocument();
+    expect(testSpy).not.toHaveBeenCalled();
   });
 
   it("does not seed a stdio catalog server's health on cloud backends", async () => {

@@ -12,10 +12,11 @@ import { BrandBadge } from "#/components/shared/badge";
 import { I18nKey } from "#/i18n/declaration";
 import type {
   IntegrationCatalogEntry as MarketplaceEntry,
+  IntegrationTransport,
   MarketplaceField,
 } from "@openhands/extensions/integrations";
 import { McpLogoBadge } from "#/components/features/mcp-logo-badge";
-import { MCPServerConfig } from "#/types/mcp-server";
+import type { MCPServerConfig } from "#/types/mcp-server";
 import type { MCPAuthCredential } from "#/types/mcp-auth";
 import { seedMcpServerHealth } from "#/api/mcp-health/probe-mcp-server-health";
 import { useActiveBackend } from "#/contexts/active-backend-context";
@@ -37,7 +38,7 @@ import { useSaveFieldsAsSecrets } from "#/hooks/mutation/use-save-fields-as-secr
 import { makeMcpTestErrorMessage } from "#/utils/mcp-test-error-message";
 import { modalTitleLgClassName } from "#/utils/modal-classes";
 import McpService from "#/api/mcp-service/mcp-service.api";
-import { toMcpServerName } from "#/utils/mcp-server-name";
+import { isValidMcpServerName, toMcpServerName } from "#/utils/mcp-server-name";
 
 /**
  * Renders a helperText string as React nodes, converting any `[text](url)`
@@ -92,6 +93,19 @@ interface FieldState {
   errors: Record<string, string | null>;
   savedAsSecret: Record<string, boolean>;
 }
+
+type ConfigurableMarketplaceField = MarketplaceField & {
+  canSaveAsSecret?: boolean;
+  saveAsSecretByDefault?: boolean;
+};
+
+type ConfigurableStdioTransport = Omit<
+  Extract<IntegrationTransport, { kind: "stdio" }>,
+  "envFields"
+> & {
+  serverNameEditable?: boolean;
+  envFields?: ConfigurableMarketplaceField[];
+};
 
 function optionNeedsCredentialField(
   option: McpMarketplaceConnectionOption | undefined,
@@ -148,12 +162,18 @@ function makeInitialState(
   const savedAsSecret: Record<string, boolean> = {};
   const template = option?.transport;
   if (template?.kind === "stdio") {
-    for (const field of template.envFields ?? []) {
-      values[field.key] = "";
-      // Pre-check password fields; non-password fields default to off.
-      savedAsSecret[field.key] = field.type === "password";
+    const stdio = template as ConfigurableStdioTransport;
+    if (stdio.serverNameEditable) {
+      values.server_name = serverToReplace?.name ?? stdio.serverName;
     }
-    for (const field of template.argFields ?? []) {
+    for (const field of stdio.envFields ?? []) {
+      values[field.key] = serverToReplace?.env?.[field.key] ?? "";
+      // Pre-check password fields; non-password fields default to off.
+      savedAsSecret[field.key] =
+        field.canSaveAsSecret !== false &&
+        (field.saveAsSecretByDefault ?? field.type === "password");
+    }
+    for (const field of stdio.argFields ?? []) {
       values[field.key] = "";
     }
   } else if (template?.kind === "shttp" || template?.kind === "sse") {
@@ -539,9 +559,25 @@ export function InstallServerModal({
 
   const handleStdioSubmit = () => {
     if (template?.kind !== "stdio") return;
-    const stdio = template;
+    const stdio = template as ConfigurableStdioTransport;
     const errors: Record<string, string | null> = {};
 
+    const serverName = stdio.serverNameEditable
+      ? (state.values.server_name ?? "").trim()
+      : (serverToReplace?.name ?? stdio.serverName);
+    if (!serverName) {
+      errors.server_name = t(I18nKey.SETTINGS$MCP_ERROR_NAME_REQUIRED);
+    } else if (!isValidMcpServerName(serverName)) {
+      errors.server_name = t(I18nKey.SETTINGS$MCP_ERROR_NAME_INVALID);
+    } else if (
+      existingServers.some(
+        (server) =>
+          server.id !== serverToReplace?.id &&
+          (server.id === serverName || server.name === serverName),
+      )
+    ) {
+      errors.server_name = t(I18nKey.SETTINGS$MCP_ERROR_NAME_DUPLICATE);
+    }
     for (const field of stdio.envFields ?? []) {
       if (field.required && !(state.values[field.key] ?? "").trim()) {
         errors[field.key] = t(I18nKey.MCP$ERROR_FIELD_REQUIRED);
@@ -576,7 +612,7 @@ export function InstallServerModal({
     const payload: MCPServerConfig = {
       id: serverToReplace?.id ?? "",
       type: "stdio",
-      name: serverToReplace?.name ?? stdio.serverName,
+      name: serverName,
       command: stdio.command,
       args: [...stdio.args, ...extraArgs],
       ...(Object.keys(env).length > 0 && { env }),
@@ -741,9 +777,28 @@ export function InstallServerModal({
     }
 
     if (template?.kind !== "stdio") return null;
-    const stdio = template;
+    const stdio = template as ConfigurableStdioTransport;
     return (
       <>
+        {stdio.serverNameEditable && (
+          <div className="flex flex-col gap-1">
+            <SettingsInput
+              testId="mcp-install-field-server_name"
+              name="server_name"
+              type="text"
+              label={t(I18nKey.SETTINGS$MCP_SERVER_NAME)}
+              value={state.values.server_name ?? stdio.serverName}
+              onChange={(value) => setValue("server_name", value)}
+              required
+              className="w-full"
+            />
+            {state.errors.server_name && (
+              <p className="text-xs text-feedback-error">
+                {state.errors.server_name}
+              </p>
+            )}
+          </div>
+        )}
         <SettingsInput
           testId="mcp-install-field-command-readonly"
           name="command-readonly"
@@ -778,13 +833,14 @@ export function InstallServerModal({
                 {state.errors[field.key]}
               </p>
             )}
-            {field.key in state.savedAsSecret && (
-              <SaveAsSecretToggle
-                fieldKey={field.key}
-                checked={state.savedAsSecret[field.key]}
-                onToggle={(v) => toggleSecret(field.key, v)}
-              />
-            )}
+            {field.canSaveAsSecret !== false &&
+              field.key in state.savedAsSecret && (
+                <SaveAsSecretToggle
+                  fieldKey={field.key}
+                  checked={state.savedAsSecret[field.key]}
+                  onToggle={(v) => toggleSecret(field.key, v)}
+                />
+              )}
           </div>
         ))}
         {/* argFields are CLI arguments, not credentials — they don't need

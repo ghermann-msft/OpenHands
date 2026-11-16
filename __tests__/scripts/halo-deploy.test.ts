@@ -109,7 +109,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 87b8316fd508420dd76b114ec013c9d84f406b45",
+      "git checkout --detach a936b5ef28c26d6283173da9e44feb9560a37aa7",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -117,6 +117,10 @@ describe("Halo deployment automation", () => {
     );
     expect(job).toContain("containers/app/Dockerfile");
     expect(job).toContain("--opt target=openhands-sandbox-server");
+    expect(job).toContain("containers/sandbox/Dockerfile");
+    expect(job).toContain(
+      "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-runtime:",
+    );
     expect(job).toContain(
       "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-server:",
     );
@@ -157,7 +161,7 @@ describe("Halo deployment automation", () => {
     expect(job).toContain("> /dev/termination-log");
   });
 
-  it("reads both immutable digests reported by the completed build container", () => {
+  it("reads all immutable digests reported by the completed build container", () => {
     expect(
       buildDigestsFromPodList({
         items: [
@@ -172,6 +176,7 @@ describe("Halo deployment automation", () => {
                         canvas: digest,
                         agentServer: `sha256:${"c".repeat(64)}`,
                         sandboxServer: `sha256:${"b".repeat(64)}`,
+                        sandboxRuntime: `sha256:${"d".repeat(64)}`,
                       }),
                     },
                   },
@@ -185,6 +190,7 @@ describe("Halo deployment automation", () => {
       canvas: digest,
       agentServer: `sha256:${"c".repeat(64)}`,
       sandboxServer: `sha256:${"b".repeat(64)}`,
+      sandboxRuntime: `sha256:${"d".repeat(64)}`,
     });
     expect(() => buildDigestsFromPodList({ items: [] })).toThrow(
       /did not publish immutable image digests/,
@@ -406,6 +412,7 @@ describe("Halo deployment automation", () => {
     const resources = renderSandboxServerResources(
       "candidate",
       `sha256:${"b".repeat(64)}`,
+      `sha256:${"d".repeat(64)}`,
       "runtime-client-id",
     );
 
@@ -413,6 +420,9 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("name: openhands-sandbox-server");
     expect(resources).toContain(
       "image: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-server@sha256:",
+    );
+    expect(resources).toContain(
+      "name: AGENT_SERVER_IMAGE\n              value: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-runtime@sha256:",
     );
     expect(resources).toContain('azure.workload.identity/use: "true"');
     expect(resources).toContain("serviceAccountName: openhands-halo");

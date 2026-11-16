@@ -43,7 +43,7 @@
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
     "agentServerSdkRef": "7e23aa7cf2de9baf98e59c8e7a2d7ed2c823eeb6",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "87b8316fd508420dd76b114ec013c9d84f406b45"
+    "sandboxServerRef": "a936b5ef28c26d6283173da9e44feb9560a37aa7"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
@@ -59,6 +59,8 @@
     "agentServerCacheTag": "agent-server-buildcache-amd64",
     "sandboxServerRepository": "openhands-sandbox-server",
     "sandboxServerCacheTag": "sandbox-server-buildcache-amd64",
+    "sandboxRuntimeRepository": "openhands-sandbox-runtime",
+    "sandboxRuntimeCacheTag": "sandbox-runtime-buildcache-amd64",
     "gitImage": "alpine/git:2.49.1",
     "azureCliImage": "mcr.microsoft.com/azure-cli:2.92.0",
     "buildkitImage": "moby/buildkit:v0.34.1",
