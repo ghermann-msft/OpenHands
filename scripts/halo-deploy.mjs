@@ -1874,7 +1874,7 @@ spec:
           image: ${image}
           imagePullPolicy: Always
           command:
-            - powershell.exe
+            - C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe
             - -NoLogo
             - -NoProfile
             - -Command

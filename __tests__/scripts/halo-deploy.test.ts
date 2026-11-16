@@ -491,6 +491,9 @@ describe("Halo deployment automation", () => {
     );
     expect(job).toContain("activeDeadlineSeconds: 1800");
     expect(job).toContain("agentpool: halo25");
+    expect(job).toContain(
+      "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+    );
     expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
     expect(job).toContain('azure.workload.identity/use: "true"');
     expect(job).toContain("serviceAccountName: openhands-halo");
