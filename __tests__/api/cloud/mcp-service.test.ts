@@ -24,6 +24,16 @@ const cloudBackend: Backend = {
   kind: "cloud",
 };
 
+const selfHostedBackend: Backend = {
+  id: "self-hosted",
+  name: "Self-hosted",
+  host: "https://openhands.example.com",
+  apiKey: "",
+  kind: "cloud",
+  authMode: "cookie",
+  organizationMode: "none",
+};
+
 const originalFetch = global.fetch;
 const fetchMock = vi.fn();
 
@@ -79,6 +89,31 @@ describe("testCloudMcpServer", () => {
       error_kind: "connection",
     });
   });
+
+  it("uses the Agent Server MCP route for self-hosted cloud backends", async () => {
+    setRegisteredBackends([selfHostedBackend]);
+    setActiveSelection({ backendId: selfHostedBackend.id });
+    fetchMock.mockResolvedValue(
+      mockJsonResponse({
+        ok: false,
+        error: "refused",
+        error_kind: "connection",
+      }),
+    );
+
+    await testCloudMcpServer({
+      name: "atlassian-rovo",
+      server: {
+        type: "http",
+        url: "https://mcp.atlassian.com/v2/mcp",
+      },
+    });
+
+    const [url, init] = getFetchCall(fetchMock);
+    expect(url).toBe(`${selfHostedBackend.host}/api/mcp/test`);
+    expect(init).toMatchObject({ method: "POST" });
+    expect(init.headers).not.toHaveProperty("Authorization");
+  });
 });
 
 describe("startCloudMcpOAuth", () => {
@@ -118,6 +153,33 @@ describe("startCloudMcpOAuth", () => {
       authorization_url: "https://auth.example/authorize",
     });
   });
+
+  it("uses the Agent Server OAuth route for self-hosted cloud backends", async () => {
+    setRegisteredBackends([selfHostedBackend]);
+    setActiveSelection({ backendId: selfHostedBackend.id });
+    fetchMock.mockResolvedValue(
+      mockJsonResponse({
+        ok: true,
+        job_id: "job-1",
+        authorization_url: "https://auth.example/authorize",
+      }),
+    );
+
+    await startCloudMcpOAuth({
+      name: "atlassian-rovo",
+      server: {
+        type: "http",
+        url: "https://mcp.atlassian.com/v2/mcp",
+        auth: {
+          strategy: "oauth2",
+          authentication: { type: "oauth", client_auth_method: "none" },
+        },
+      },
+    });
+
+    const [url] = getFetchCall(fetchMock);
+    expect(url).toBe(`${selfHostedBackend.host}/api/mcp/oauth/start`);
+  });
 });
 
 describe("getCloudMcpOAuthStatus", () => {
@@ -143,5 +205,23 @@ describe("getCloudMcpOAuthStatus", () => {
       status: "authorizing",
       callback_ready: true,
     });
+  });
+
+  it("uses the Agent Server status route for self-hosted cloud backends", async () => {
+    setRegisteredBackends([selfHostedBackend]);
+    setActiveSelection({ backendId: selfHostedBackend.id });
+    fetchMock.mockResolvedValue(
+      mockJsonResponse({
+        ok: true,
+        status: "authorizing",
+        job_id: "job/1",
+        callback_ready: true,
+      }),
+    );
+
+    await getCloudMcpOAuthStatus("job/1");
+
+    const [url] = getFetchCall(fetchMock);
+    expect(url).toBe(`${selfHostedBackend.host}/api/mcp/oauth/status/job%2F1`);
   });
 });

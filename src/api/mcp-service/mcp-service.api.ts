@@ -25,7 +25,7 @@ import { redactMcpSecrets } from "#/utils/redact-mcp-secrets";
 import { substituteRedactedMcpCredentials } from "./mcp-redacted-credentials";
 
 const OAUTH_MCP_TEST_TIMEOUT_SECONDS = 120;
-// Upper bound accepted by the app server's `POST /api/v1/mcp/test`.
+// Upper bound accepted by the cloud MCP test endpoints.
 const MAX_CLOUD_MCP_TEST_TIMEOUT_SECONDS = 120;
 
 function toMcpServer(
@@ -158,9 +158,8 @@ function createMcpProbeClient(): MCPClient {
 }
 
 /**
- * OAuth probes run on the local agent-server (`/api/mcp/oauth/*`) or, for
- * cloud backends, on the app server (`/api/v1/mcp/oauth/*`). Both share the
- * start/status contract, so callers only differ in transport.
+ * OAuth probes run on the local Agent Server or through the cloud transport.
+ * Both share the start/status contract, so callers only differ in transport.
  */
 interface McpOAuthTransport {
   start(server: MCPServerConfig): Promise<MCPOAuthStartResponse>;
@@ -238,14 +237,13 @@ class McpService {
   }
 
   /**
-   * Remote servers on cloud backends are probed by the app server's
-   * `POST /api/v1/mcp/test`. Unchanged (redacted) credentials are not
-   * substituted here: the app server restores them from the stored server of
-   * the same settings key, which is why the key is sent as `name`. `auth` is
-   * flattened to headers the same way cloud saves persist it so that
-   * restoration matches; an `auth` that cannot be flattened (e.g. OAuth
-   * without tokens) is passed through and the app server answers with a
-   * structured failure.
+   * Remote servers on cloud backends are probed through the backend's MCP
+   * endpoint. Unchanged (redacted) credentials are not substituted here: the
+   * backend restores them from the stored server of the same settings key,
+   * which is why the key is sent as `name`. `auth` is flattened to headers the
+   * same way cloud saves persist it so that restoration matches; an `auth`
+   * that cannot be flattened (e.g. OAuth without tokens) is passed through and
+   * the backend answers with a structured failure.
    */
   private static async testRemoteServerViaCloud(
     server: MCPServerConfig,
