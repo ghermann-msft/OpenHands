@@ -498,6 +498,9 @@ describe("Halo deployment automation", () => {
     expect(job).toContain('azure.workload.identity/use: "true"');
     expect(job).toContain("serviceAccountName: openhands-halo");
     expect(job).toContain("AZURE_FEDERATED_TOKEN_FILE");
+    expect(job).toContain(
+      "[IO.File]::ReadAllText($env:AZURE_FEDERATED_TOKEN_FILE)",
+    );
     expect(job).not.toContain("imagePullSecrets:");
   });
 

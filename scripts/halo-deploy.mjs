@@ -1886,7 +1886,8 @@ spec:
               if (-not (Test-Path -LiteralPath $env:AZURE_FEDERATED_TOKEN_FILE -PathType Leaf)) {
                 throw "Azure Workload Identity token file is missing at $env:AZURE_FEDERATED_TOKEN_FILE"
               }
-              if ((Get-Item -LiteralPath $env:AZURE_FEDERATED_TOKEN_FILE).Length -le 0) {
+              $token = [IO.File]::ReadAllText($env:AZURE_FEDERATED_TOKEN_FILE)
+              if ([string]::IsNullOrWhiteSpace($token)) {
                 throw "Azure Workload Identity token file is empty"
               }
               Write-Output "Windows runtime image pull and Workload Identity token injection verified"
