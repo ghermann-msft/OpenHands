@@ -131,7 +131,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 1c4aa03dcdaeede73101fcfe33b584c328dab5bb",
+      "git checkout --detach 240128e80e5e9aa1e4d3a7dae0e38357313662c9",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -247,8 +247,10 @@ describe("Halo deployment automation", () => {
     );
     expect(rbac).toContain('resources: ["sandboxes"]');
     expect(rbac).toContain('verbs: ["get", "list", "watch", "patch"]');
-    expect(rbac).toContain('resources: ["pods"]');
-    expect(rbac).toContain('verbs: ["get"]');
+    expect(rbac).toContain(
+      'resources: ["pods", "persistentvolumeclaims", "events"]',
+    );
+    expect(rbac).toContain('verbs: ["get", "list", "watch"]');
     expect(rbac).toContain("namespace: openhands-halo-ppe");
     expect(rbac).toContain("namespace: openhands-halo-primary");
     expect(rbac).not.toContain("ClusterRoleBinding");
@@ -723,6 +725,9 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       'name: OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT\n              value: "600"',
     );
+    expect(resources).toContain(
+      'name: OH_APP_CONVERSATION_SANDBOX_STARTUP_INACTIVITY_TIMEOUT\n              value: "120"',
+    );
     expect(
       renderSandboxServerResources(
         "primary",
@@ -836,8 +841,10 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("app.kubernetes.io/name: agent-canvas");
     expect(resources).toContain('resources: ["sandboxclaims"]');
     expect(resources).toContain('verbs: ["get", "list", "watch", "patch"]');
-    expect(resources).toContain('resources: ["pods"]');
-    expect(resources).toContain('verbs: ["get"]');
+    expect(resources).toContain(
+      'resources: ["pods", "persistentvolumeclaims", "events"]',
+    );
+    expect(resources).toContain('verbs: ["get", "list", "watch"]');
     expect(resources).toContain("name: openhands-halo");
   });
 

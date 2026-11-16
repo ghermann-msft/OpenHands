@@ -122,12 +122,40 @@ export type AppConversationStartTaskStatus =
   | "READY"
   | "ERROR";
 
+export type SandboxStartupPhase =
+  | "WAITING_FOR_CAPACITY"
+  | "PROVISIONING_NODE"
+  | "SCHEDULING"
+  | "PROVISIONING_STORAGE"
+  | "PULLING_IMAGE"
+  | "STARTING_CONTAINER"
+  | "WAITING_FOR_AGENT_SERVER"
+  | "READY"
+  | "FAILED";
+
+export type SandboxStartupProgressStatus = "PROGRESSING" | "READY" | "FAILED";
+
+export interface SandboxStartupProgress {
+  phase: SandboxStartupPhase;
+  status: SandboxStartupProgressStatus;
+  message: string;
+  reason?: string | null;
+  started_at: string;
+  updated_at: string;
+  phase_started_at: string;
+  elapsed_seconds: number;
+  phase_elapsed_seconds: number;
+  inactivity_seconds: number;
+}
+
 export interface AppConversationStartTask {
   title_generation?: ConversationTitleGeneration | null;
   id: string;
   created_by_user_id: string | null;
   status: AppConversationStartTaskStatus;
   detail: string | null;
+  sandbox_id?: string | null;
+  sandbox_startup_progress?: SandboxStartupProgress | null;
   app_conversation_id: string | null;
   agent_server_url: string | null;
   request: AppConversationStartRequest;

@@ -116,7 +116,11 @@ export const useTaskPolling = () => {
     conversationId: isTask ? null : (conversationId ?? null),
     task: taskQuery.data,
     taskStatus: taskQuery.data?.status,
-    taskDetail: taskQuery.data?.detail,
+    taskDetail:
+      taskQuery.data?.sandbox_startup_progress?.status === "PROGRESSING"
+        ? taskQuery.data.sandbox_startup_progress.message
+        : taskQuery.data?.detail,
+    taskStartupProgress: taskQuery.data?.sandbox_startup_progress,
     taskError: taskQuery.error,
     isLoadingTask: taskQuery.isLoading,
     // Repository information from task request
@@ -177,6 +181,9 @@ export const useTaskPollingController = () => {
     const activity = useSessionActivityStore.getState();
     activity.begin(key, "initialize");
     activity.observe(key, task.status);
+    if (task.sandbox_startup_progress) {
+      activity.observeStartup(key, task.sandbox_startup_progress);
+    }
     if (task.status === "READY" && task.app_conversation_id) {
       activity.transfer(
         key,

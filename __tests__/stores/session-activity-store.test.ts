@@ -66,3 +66,42 @@ it("tracks the latest repeated phase without duplicating its history", () => {
   store.observe(key, "PREPARING_REPOSITORY");
   expect(storeEntry().currentStatus).toBe("PREPARING_REPOSITORY");
 });
+
+it("tracks sandbox startup progress without duplicating repeated phases", () => {
+  const store = useSessionActivityStore.getState();
+  store.begin(key, "initialize");
+  store.observe(key, "WAITING_FOR_SANDBOX");
+  store.observeStartup(key, {
+    phase: "PROVISIONING_NODE",
+    status: "PROGRESSING",
+    message: "Scaling sandbox capacity",
+    reason: "AUTOSCALER_TRIGGERED",
+    started_at: "2026-11-16T00:00:00Z",
+    updated_at: "2026-11-16T00:00:10Z",
+    phase_started_at: "2026-11-16T00:00:05Z",
+    elapsed_seconds: 10,
+    phase_elapsed_seconds: 5,
+    inactivity_seconds: 0,
+  });
+  store.observeStartup(key, {
+    phase: "PROVISIONING_NODE",
+    status: "PROGRESSING",
+    message: "Waiting for the new node",
+    reason: "AUTOSCALER_TRIGGERED",
+    started_at: "2026-11-16T00:00:00Z",
+    updated_at: "2026-11-16T00:00:20Z",
+    phase_started_at: "2026-11-16T00:00:05Z",
+    elapsed_seconds: 20,
+    phase_elapsed_seconds: 15,
+    inactivity_seconds: 0,
+  });
+
+  expect(storeEntry()).toMatchObject({
+    phase: "pending",
+    currentStartupProgress: {
+      phase: "PROVISIONING_NODE",
+      message: "Waiting for the new node",
+    },
+  });
+  expect(storeEntry().startupSteps).toHaveLength(1);
+});

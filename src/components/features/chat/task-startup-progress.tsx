@@ -17,8 +17,15 @@ export function TaskStartupProgress() {
   const { t } = useTranslation("openhands");
   const { navigate } = useNavigation();
   const queryClient = useQueryClient();
-  const { taskId, task, taskStatus, taskDetail, taskError, isLoadingTask } =
-    useTaskPolling();
+  const {
+    taskId,
+    task,
+    taskStatus,
+    taskDetail,
+    taskStartupProgress,
+    taskError,
+    isLoadingTask,
+  } = useTaskPolling();
   const attachmentFailure = usePendingTaskAttachmentsStore((state) =>
     taskId ? state.byTaskId[taskId] : undefined,
   );
@@ -86,6 +93,7 @@ export function TaskStartupProgress() {
           : undefined
       }
       status={taskStatus}
+      startupProgress={taskStartupProgress}
       error={error}
       onEdit={failed || attachmentFailure?.error ? editFailedStart : undefined}
       onRetry={

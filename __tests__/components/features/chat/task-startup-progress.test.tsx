@@ -84,6 +84,37 @@ it("keeps explaining connection while a ready task is handing off", async () => 
   );
 });
 
+it("shows structured sandbox progress instead of a generic startup error", async () => {
+  vi.mocked(AgentServerConversationService.getStartTask).mockResolvedValue({
+    ...task,
+    status: "WAITING_FOR_SANDBOX",
+    detail: "An unexpected error occurred",
+    sandbox_id: "sandbox-123",
+    sandbox_startup_progress: {
+      phase: "PROVISIONING_NODE",
+      status: "PROGRESSING",
+      message: "Scaling Windows sandbox capacity",
+      reason: "AUTOSCALER_TRIGGERED",
+      started_at: "2026-11-16T00:00:00Z",
+      updated_at: "2026-11-16T00:00:10Z",
+      phase_started_at: "2026-11-16T00:00:05Z",
+      elapsed_seconds: 10,
+      phase_elapsed_seconds: 5,
+      inactivity_seconds: 0,
+    },
+  } as never);
+
+  mount();
+
+  expect(
+    await screen.findByText("Scaling Windows sandbox capacity"),
+  ).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("An unexpected error occurred"),
+  ).not.toBeInTheDocument();
+});
+
 it("expands observed startup steps and keeps failures actionable when collapsed", async () => {
   client.setQueryData(["start-task", "123"], task);
   mount();
@@ -197,6 +228,33 @@ describe("startup error recovery", () => {
       target: "home",
     });
     expect(useConversationStore.getState().files).toEqual([file]);
+  });
+
+  it("preserves safe terminal detail and the sandbox reference", async () => {
+    vi.mocked(AgentServerConversationService.getStartTask).mockResolvedValue({
+      ...task,
+      status: "ERROR",
+      detail: "The runtime image could not be pulled (reference: sandbox-123)",
+      sandbox_id: "sandbox-123",
+      sandbox_startup_progress: {
+        phase: "FAILED",
+        status: "FAILED",
+        message: "The runtime image could not be pulled",
+        reason: "IMAGE_PULL_ERROR",
+        started_at: "2026-11-16T00:00:00Z",
+        updated_at: "2026-11-16T00:01:00Z",
+        phase_started_at: "2026-11-16T00:00:30Z",
+        elapsed_seconds: 60,
+        phase_elapsed_seconds: 30,
+        inactivity_seconds: 0,
+      },
+    } as never);
+
+    mount();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The runtime image could not be pulled (reference: sandbox-123)",
+    );
   });
   it("opens an existing conversation after upload failure and restores the draft once", async () => {
     queue();

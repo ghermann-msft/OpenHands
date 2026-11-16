@@ -1359,8 +1359,8 @@ rules:
     resources: ["sandboxes"]
     verbs: ["get", "list", "watch", "patch"]
   - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get"]
+    resources: ["pods", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -1907,6 +1907,8 @@ export function renderSandboxServerResources(
     environment === "candidate"
       ? `            - name: OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT
               value: "600"
+            - name: OH_APP_CONVERSATION_SANDBOX_STARTUP_INACTIVITY_TIMEOUT
+              value: "120"
 `
       : "";
   return `apiVersion: apps/v1
@@ -2361,8 +2363,8 @@ rules:
     resources: ["sandboxes"]
     verbs: ["get", "list", "watch", "patch"]
   - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get"]
+    resources: ["pods", "persistentvolumeclaims", "events"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { AppConversationStartTaskStatus } from "#/api/conversation-service/agent-server-conversation-service.types";
+import type {
+  AppConversationStartTaskStatus,
+  SandboxStartupProgress,
+} from "#/api/conversation-service/agent-server-conversation-service.types";
 
 const STORAGE_KEY = "openhands-session-activity";
 const MAX_CONVERSATIONS = 100;
@@ -11,6 +14,8 @@ export interface SessionActivity {
   phase: "pending" | "connecting" | "complete" | "failed";
   steps: AppConversationStartTaskStatus[];
   currentStatus?: AppConversationStartTaskStatus;
+  startupSteps?: SandboxStartupProgress[];
+  currentStartupProgress?: SandboxStartupProgress;
   open: boolean;
   detailsOpen?: boolean;
   afterEventId?: string;
@@ -46,7 +51,20 @@ function readEntries(value: unknown): Record<string, SessionActivity[]> {
             ) &&
             typeof entry.open === "boolean" &&
             Array.isArray(entry.steps) &&
-            entry.steps.every((step: unknown) => typeof step === "string"),
+            entry.steps.every((step: unknown) => typeof step === "string") &&
+            (!entry.startupSteps ||
+              (Array.isArray(entry.startupSteps) &&
+                entry.startupSteps.every(
+                  (step: unknown) =>
+                    step &&
+                    typeof step === "object" &&
+                    "phase" in step &&
+                    typeof step.phase === "string" &&
+                    "status" in step &&
+                    typeof step.status === "string" &&
+                    "message" in step &&
+                    typeof step.message === "string",
+                ))),
         ),
     ),
   );
@@ -60,6 +78,7 @@ interface SessionActivityState {
     afterEventId?: string,
   ) => void;
   observe: (key: string, status: AppConversationStartTaskStatus) => void;
+  observeStartup: (key: string, progress: SandboxStartupProgress) => void;
   complete: (key: string, id: string) => void;
   transfer: (from: string, to: string) => void;
   setOpen: (key: string, id: string, open: boolean) => void;
@@ -119,6 +138,39 @@ export const useSessionActivityStore = create<SessionActivityState>()(
                 ? "connecting"
                 : status === "ERROR"
                   ? "failed"
+                  : "pending",
+          };
+          return {
+            entries: {
+              ...state.entries,
+              [key]: [...entries.slice(0, -1), next],
+            },
+          };
+        }),
+      observeStartup: (key, progress) =>
+        set((state) => {
+          const entries = state.entries[key];
+          const last = entries?.at(-1);
+          if (!last) return state;
+          const previous = last.startupSteps ?? [];
+          const matchingIndex = previous.findIndex(
+            (step) => step.phase === progress.phase,
+          );
+          const startupSteps =
+            matchingIndex === -1
+              ? [...previous, progress]
+              : previous.map((step, index) =>
+                  index === matchingIndex ? progress : step,
+                );
+          const next: SessionActivity = {
+            ...last,
+            startupSteps,
+            currentStartupProgress: progress,
+            phase:
+              progress.status === "FAILED"
+                ? "failed"
+                : progress.status === "READY"
+                  ? "connecting"
                   : "pending",
           };
           return {

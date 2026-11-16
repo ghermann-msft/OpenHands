@@ -5,7 +5,12 @@ import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import { DisclosureCaret } from "#/components/shared/disclosure-caret";
 import type { SessionActivity } from "#/stores/session-activity-store";
-import type { AppConversationStartTaskStatus } from "#/api/conversation-service/agent-server-conversation-service.types";
+import type {
+  AppConversationStartTaskStatus,
+  SandboxStartupPhase,
+  SandboxStartupProgress,
+} from "#/api/conversation-service/agent-server-conversation-service.types";
+import type { TFunction } from "i18next";
 
 const phaseLabels: Partial<
   Record<AppConversationStartTaskStatus, { live: I18nKey; detail: I18nKey }>
@@ -48,6 +53,40 @@ export function sessionActivityLiveTitle(session: SessionActivity): I18nKey {
   return (status && phaseLabels[status]?.live) || sessionActivityTitle(session);
 }
 
+function sandboxProgressFallback(progress: SandboxStartupProgress): I18nKey {
+  const phase: SandboxStartupPhase = progress.phase;
+  switch (phase) {
+    case "WAITING_FOR_CAPACITY":
+    case "PROVISIONING_NODE":
+    case "SCHEDULING":
+    case "PULLING_IMAGE":
+      return I18nKey.COMMON$WAITING_FOR_SANDBOX;
+    case "PROVISIONING_STORAGE":
+      return I18nKey.EVENT_GROUP$PREPARING_WORKSPACE;
+    case "STARTING_CONTAINER":
+      return I18nKey.COMMON$STARTING;
+    case "WAITING_FOR_AGENT_SERVER":
+      return I18nKey.CHAT_INTERFACE$CONNECTING;
+    case "READY":
+      return I18nKey.CONVERSATION$READY;
+    case "FAILED":
+      return I18nKey.COMMON$ERROR;
+  }
+}
+
+export function sessionActivityLiveLabel(
+  session: SessionActivity,
+  t: TFunction,
+): string {
+  const progress = session.currentStartupProgress;
+  if (progress?.message.trim()) return progress.message;
+  return t(
+    progress
+      ? sandboxProgressFallback(progress)
+      : sessionActivityLiveTitle(session),
+  );
+}
+
 export function sessionActivityTitle(session: SessionActivity): I18nKey {
   if (session.phase === "failed") return I18nKey.COMMON$ERROR;
   if (session.phase === "pending" || session.phase === "connecting")
@@ -80,14 +119,26 @@ export function SessionActivityDetails({
       }),
     ),
   ];
-  const details = steps.length ? (
+  const startupDetails = (session.startupSteps ?? []).map(
+    (progress) =>
+      progress.message.trim() || t(sandboxProgressFallback(progress)),
+  );
+  const taskDetails = steps
+    .filter(
+      (step) =>
+        !startupDetails.length ||
+        step !== I18nKey.EVENT_GROUP$SANDBOX_CONNECTION,
+    )
+    .map((step) => t(step));
+  const detailsList = [...new Set([...startupDetails, ...taskDetails])];
+  const details = detailsList.length ? (
     <ul className="space-y-1 text-muted">
-      {steps.map((step) => (
-        <li key={step}>{t(step)}</li>
+      {detailsList.map((step) => (
+        <li key={step}>{step}</li>
       ))}
     </ul>
   ) : (
-    <p className="text-muted">{t(sessionActivityLiveTitle(session))}</p>
+    <p className="text-muted">{sessionActivityLiveLabel(session, t)}</p>
   );
   return (
     <div className="py-2" data-testid="session-activity-details">

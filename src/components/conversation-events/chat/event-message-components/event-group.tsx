@@ -1,7 +1,7 @@
 import type { SessionActivity } from "#/stores/session-activity-store";
 import {
+  sessionActivityLiveLabel,
   sessionActivityTitle,
-  sessionActivityLiveTitle,
 } from "./session-activity";
 import React from "react";
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
@@ -154,7 +154,7 @@ export function EventGroup({
   }
 
   if (session && session.phase !== "complete")
-    summary = t(sessionActivityLiveTitle(session));
+    summary = sessionActivityLiveLabel(session, t);
   const timestampLabel = formatEventTimestamp(
     singleTool?.timestamp,
     i18n?.language,

@@ -152,6 +152,7 @@ beforeEach(() => {
     task: undefined,
     taskStatus: undefined,
     taskDetail: undefined,
+    taskStartupProgress: undefined,
     taskError: null,
     isLoadingTask: false,
     repositoryInfo: {
@@ -190,6 +191,7 @@ describe("ChatInterface - Chat Suggestions", () => {
       task: undefined,
       taskStatus: undefined,
       taskDetail: undefined,
+      taskStartupProgress: undefined,
       taskError: null,
       isLoadingTask: false,
       repositoryInfo: {
@@ -263,6 +265,7 @@ describe("ChatInterface - Chat Suggestions", () => {
       task: undefined,
       taskStatus: "WORKING",
       taskDetail: undefined,
+      taskStartupProgress: undefined,
       taskError: null,
       isLoadingTask: false,
       repositoryInfo: {
@@ -285,6 +288,7 @@ describe("ChatInterface - Chat Suggestions", () => {
       task: undefined,
       taskStatus: "READY",
       taskDetail: undefined,
+      taskStartupProgress: undefined,
       taskError: null,
       isLoadingTask: false,
       repositoryInfo: {

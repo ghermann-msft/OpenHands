@@ -8,11 +8,15 @@ import { useTranslation } from "react-i18next";
 import { LoaderCircle } from "lucide-react";
 import { DisclosureCaret } from "#/components/shared/disclosure-caret";
 import { I18nKey } from "#/i18n/declaration";
-import type { AppConversationStartTaskStatus } from "#/api/conversation-service/agent-server-conversation-service.types";
+import type {
+  AppConversationStartTaskStatus,
+  SandboxStartupProgress,
+} from "#/api/conversation-service/agent-server-conversation-service.types";
 import { getTaskStatusI18nKey } from "#/utils/status";
 
 interface Props {
   status?: AppConversationStartTaskStatus;
+  startupProgress?: SandboxStartupProgress | null;
   error?: string | null;
   onEdit?: () => void;
   editLabel?: string;
@@ -22,6 +26,7 @@ interface Props {
 /** Show server-reported progress without guessing completed or skipped steps. */
 export function ConversationStartupProgress({
   status,
+  startupProgress,
   error,
   onEdit,
   editLabel,
@@ -38,9 +43,11 @@ export function ConversationStartupProgress({
       : status
         ? getTaskStatusI18nKey(status)
         : I18nKey.HOME$CREATING_CONVERSATION;
-  const [observedSteps, setObservedSteps] = useState([label]);
-  if (!observedSteps.includes(label)) {
-    setObservedSteps([...observedSteps, label]);
+  const progressLabel =
+    startupProgress?.message.trim() || t(error ? I18nKey.COMMON$ERROR : label);
+  const [observedSteps, setObservedSteps] = useState([progressLabel]);
+  if (!observedSteps.includes(progressLabel)) {
+    setObservedSteps([...observedSteps, progressLabel]);
   }
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
@@ -48,7 +55,7 @@ export function ConversationStartupProgress({
   const expandable = observedSteps.length > 1;
   const title = (
     <span role="status" aria-busy={isRunning} className="truncate">
-      {t(error ? I18nKey.COMMON$ERROR : label)}
+      {progressLabel}
     </span>
   );
   const spinner = isRunning ? (
@@ -111,7 +118,7 @@ export function ConversationStartupProgress({
             >
               {observedSteps.map((step) => (
                 <div key={step} className="px-3 py-2">
-                  {t(step)}
+                  {step}
                 </div>
               ))}
             </div>
