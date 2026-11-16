@@ -47,7 +47,7 @@
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
-    "windowsRuntimeImporter": "openhands-halo-windows-runtime-importer-mi",
+    "windowsRuntimeImporter": "uh-halo-runtime-importer-mi",
     "postgresBootstrap": "openhands-halo-postgres-bootstrap-mi"
   },
   "build": {
