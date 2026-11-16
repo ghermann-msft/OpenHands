@@ -47,12 +47,15 @@
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
+    "windowsRuntimeImporter": "openhands-halo-windows-runtime-importer-mi",
     "postgresBootstrap": "openhands-halo-postgres-bootstrap-mi"
   },
   "build": {
     "namespace": "openhands-halo-build",
     "serviceAccount": "halo-image-builder",
     "federatedCredential": "halo-image-builder",
+    "windowsRuntimeImporterServiceAccount": "halo-windows-runtime-importer",
+    "windowsRuntimeImporterFederatedCredential": "halo-windows-runtime-importer",
     "repository": "openhands-halo",
     "cacheTag": "buildcache-amd64",
     "agentServerRepository": "openhands-agent-server",
@@ -93,7 +96,9 @@
     "nodeTaintValue": "services"
   },
   "windowsRuntime": {
-    "imageRepository": "ghcr.io/ghermann-msft/agent-server",
+    "sourceImageRepository": "ghcr.io/ghermann-msft/agent-server",
+    "repository": "openhands-agent-server-windows",
+    "imageRepository": "uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows",
     "runtimeIdentity": "windows-server-2025-amd64",
     "platform": "windows/amd64",
     "workspacePath": "C:\\workspace",

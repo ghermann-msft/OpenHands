@@ -27,6 +27,14 @@ does not match the configured isolation boundary. Routine `build`,
 `deploy-candidate`, and `promote` commands use only Kubernetes access and do
 not repeat the Azure, Entra, Key Vault, or Front Door bootstrap.
 
+Windows Agent Server images use public GHCR only as the build handoff.
+`preflight-windows` runs a server-side ACR import of the exact GHCR digest
+through a dedicated federated workload identity with the
+`Container Registry Data Importer and Data Reader` role, verifies that ACR
+retained the same digest, and then pre-pulls that immutable ACR reference on
+the Windows pool. Runtime templates never pull the Windows image from GHCR and
+do not use registry credentials or image pull secrets.
+
 `deploy-candidate` installs that digest into the isolated PPE namespace,
 mounting Key Vault secrets through the Azure Secrets Store CSI driver, and
 waits for the StatefulSet and PPE endpoint to become ready.

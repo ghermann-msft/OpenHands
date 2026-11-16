@@ -33,6 +33,7 @@ import {
   renderSecretProviderClass,
   renderSandboxSpecBootstrapConfigMap,
   renderWorkspaceStorageClass,
+  renderWindowsRuntimeImport,
   renderWindowsRuntimePreflight,
   runtimeNodePoolAutoscalerArgs,
   validateWindowsRuntimeNodePool,
@@ -42,6 +43,7 @@ import {
   windowsRuntimeTemplateName,
   windowsRuntimeNodePoolCreateArgs,
   windowsRuntimeImageFromKubectlResult,
+  windowsRuntimeImportTag,
   windowsPreflightJobResult,
   parseRollbackDigests,
 } from "../../scripts/halo-deploy.mjs";
@@ -389,7 +391,9 @@ describe("Halo deployment automation", () => {
         },
         digest,
       ),
-    ).toBe(`ghcr.io/ghermann-msft/agent-server@${digest}`);
+    ).toBe(
+      `uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows@${digest}`,
+    );
     expect(() =>
       windowsRuntimeImageFromKubectlResult(
         {
@@ -420,7 +424,7 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).toContain("name: openhands-agent-server-windows-build");
     expect(resources).toContain(
-      `image: ghcr.io/ghermann-msft/agent-server@${windowsDigest}`,
+      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows@${windowsDigest}`,
     );
     expect(resources).toContain("kubernetes.io/os: windows");
     expect(resources).toContain("agentpool: halo25");
@@ -453,11 +457,28 @@ describe("Halo deployment automation", () => {
     expect(windowsTemplates).not.toContain("containerPort: 8001");
   });
 
-  it("preflights the exact Windows image and Workload Identity token", () => {
+  it("imports the exact public Windows digest into ACR with workload identity", () => {
+    const job = renderWindowsRuntimeImport(digest);
+
+    expect(windowsRuntimeImportTag(digest)).toBe(`sha256-${"a".repeat(64)}`);
+    expect(job).toContain(
+      `--source ghcr.io/ghermann-msft/agent-server@${digest}`,
+    );
+    expect(job).toContain(
+      `--image openhands-agent-server-windows:sha256-${"a".repeat(64)}`,
+    );
+    expect(job).toContain(`--name openhands-agent-server-windows@${digest}`);
+    expect(job).toContain(`test "$imported_digest" = "${digest}"`);
+    expect(job).toContain("serviceAccountName: halo-windows-runtime-importer");
+    expect(job).toContain('azure.workload.identity/use: "true"');
+    expect(job).not.toContain("imagePullSecrets:");
+  });
+
+  it("preflights the exact ACR Windows image and Workload Identity token", () => {
     const job = renderWindowsRuntimePreflight("candidate", digest);
 
     expect(job).toContain(
-      `image: ghcr.io/ghermann-msft/agent-server@${digest}`,
+      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows@${digest}`,
     );
     expect(job).toContain("activeDeadlineSeconds: 1800");
     expect(job).toContain("agentpool: halo25");
@@ -714,7 +735,7 @@ describe("Halo deployment automation", () => {
       "name: AGENT_SERVER_IMAGE\n              value: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-runtime@sha256:",
     );
     expect(resources).toContain(
-      "name: OH_WINDOWS_AGENT_SERVER_IMAGE\n              value: ghcr.io/ghermann-msft/agent-server@sha256:",
+      "name: OH_WINDOWS_AGENT_SERVER_IMAGE\n              value: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows@sha256:",
     );
     expect(resources).toContain(
       "name: OH_SANDBOX_SPEC_BOOTSTRAP_FILE\n              value: /etc/openhands/sandbox-specs.json",

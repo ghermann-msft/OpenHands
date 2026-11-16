@@ -1427,6 +1427,9 @@ ${agentSandboxBinding("primary")}`;
 function bootstrapBuild() {
   ensureBuildNodePool();
   const builder = identity(config.identities.builder);
+  const windowsRuntimeImporter = ensureIdentity(
+    config.identities.windowsRuntimeImporter,
+  );
   const acrId = az(
     [
       "acr",
@@ -1447,6 +1450,11 @@ function bootstrapBuild() {
     role: "AcrPush",
     scope: acrId,
   });
+  ensureRole({
+    principalId: windowsRuntimeImporter.principalId,
+    role: "Container Registry Data Importer and Data Reader",
+    scope: acrId,
+  });
   ensureFederatedCredential({
     identityName: config.identities.builder,
     credentialName: config.build.federatedCredential,
@@ -1457,6 +1465,17 @@ function bootstrapBuild() {
     config.build.namespace,
     config.build.serviceAccount,
     builder.clientId,
+  );
+  ensureFederatedCredential({
+    identityName: config.identities.windowsRuntimeImporter,
+    credentialName: config.build.windowsRuntimeImporterFederatedCredential,
+    namespace: config.build.namespace,
+    serviceAccount: config.build.windowsRuntimeImporterServiceAccount,
+  });
+  ensureNamespaceAndServiceAccount(
+    config.build.namespace,
+    config.build.windowsRuntimeImporterServiceAccount,
+    windowsRuntimeImporter.clientId,
   );
   return builder;
 }
@@ -1858,6 +1877,65 @@ spec:
 `;
 }
 
+export function windowsRuntimeImportTag(windowsRuntimeDigest) {
+  return `sha256-${normalizeDigest(windowsRuntimeDigest).slice("sha256:".length)}`;
+}
+
+export function renderWindowsRuntimeImport(windowsRuntimeDigest) {
+  const digest = normalizeDigest(windowsRuntimeDigest);
+  const runtime = config.windowsRuntime;
+  const source = externalImageReference(runtime.sourceImageRepository, digest);
+  const tag = windowsRuntimeImportTag(digest);
+  return `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openhands-windows-runtime-import
+  namespace: ${config.build.namespace}
+spec:
+  activeDeadlineSeconds: 1800
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+        app.kubernetes.io/name: openhands-windows-runtime-import
+    spec:
+      restartPolicy: Never
+      serviceAccountName: ${config.build.windowsRuntimeImporterServiceAccount}
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        agentpool: ${config.build.nodePool}
+      tolerations:
+        - key: ${config.build.nodeTaintKey}
+          operator: Equal
+          value: ${config.build.nodeTaintValue}
+          effect: NoSchedule
+      containers:
+        - name: import-runtime
+          image: ${config.build.azureCliImage}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              token="$(cat "$AZURE_FEDERATED_TOKEN_FILE")"
+              az login --service-principal --username "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" --federated-token "$token" --output none
+              az acr import \
+                --name ${config.azure.acrName} \
+                --source ${source} \
+                --image ${runtime.repository}:${tag} \
+                --force \
+                --output none
+              imported_digest="$(az acr manifest show-metadata \
+                --registry ${config.azure.acrName} \
+                --name ${runtime.repository}@${digest} \
+                --query digest \
+                --output tsv)"
+              test "$imported_digest" = "${digest}"
+              printf 'WINDOWS_RUNTIME_ACR_IMAGE=%s\\n' "${runtime.imageRepository}@${digest}"
+`;
+}
+
 export function renderSandboxServerResources(
   environment,
   digest,
@@ -2071,9 +2149,57 @@ spec:
 function reportWindowsRuntimePreflightFailure(environment) {
   const namespace = config.environments[environment].namespace;
   for (const args of [
-    ["-n", namespace, "get", "pods", "-l", "job-name=openhands-windows-runtime-preflight", "-o", "wide"],
+    [
+      "-n",
+      namespace,
+      "get",
+      "pods",
+      "-l",
+      "job-name=openhands-windows-runtime-preflight",
+      "-o",
+      "wide",
+    ],
     ["-n", namespace, "describe", "job", "openhands-windows-runtime-preflight"],
-    ["-n", namespace, "logs", "job/openhands-windows-runtime-preflight", "--all-containers=true"],
+    [
+      "-n",
+      namespace,
+      "logs",
+      "job/openhands-windows-runtime-preflight",
+      "--all-containers=true",
+    ],
+  ]) {
+    const result = tryRun("kubectl", args);
+    if (result.stdout) process.stderr.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+  }
+}
+
+function reportWindowsRuntimeImportFailure() {
+  for (const args of [
+    [
+      "-n",
+      config.build.namespace,
+      "get",
+      "pods",
+      "-l",
+      "job-name=openhands-windows-runtime-import",
+      "-o",
+      "wide",
+    ],
+    [
+      "-n",
+      config.build.namespace,
+      "describe",
+      "job",
+      "openhands-windows-runtime-import",
+    ],
+    [
+      "-n",
+      config.build.namespace,
+      "logs",
+      "job/openhands-windows-runtime-import",
+      "--all-containers=true",
+    ],
   ]) {
     const result = tryRun("kubectl", args);
     if (result.stdout) process.stderr.write(result.stdout);
@@ -2099,6 +2225,62 @@ export function windowsPreflightJobResult(job) {
     };
   }
   return { status: "pending" };
+}
+
+async function waitForWindowsRuntimeImport() {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const job = JSON.parse(
+      kubectl(
+        [
+          "-n",
+          config.build.namespace,
+          "get",
+          "job",
+          "openhands-windows-runtime-import",
+          "-o",
+          "json",
+        ],
+        { capture: true },
+      ),
+    );
+    const result = windowsPreflightJobResult(job);
+    if (result.status === "complete") return;
+    if (result.status === "failed") throw new Error(result.detail);
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  throw new Error(
+    "Timed out after 1800 seconds waiting for the Windows runtime ACR import",
+  );
+}
+
+async function importWindowsRuntime(windowsRuntimeDigest) {
+  kubectl([
+    "-n",
+    config.build.namespace,
+    "delete",
+    "job",
+    "openhands-windows-runtime-import",
+    "--ignore-not-found",
+    "--wait=true",
+  ]);
+  kubectl(["apply", "-f", "-"], {
+    input: renderWindowsRuntimeImport(windowsRuntimeDigest),
+  });
+  try {
+    await waitForWindowsRuntimeImport();
+    kubectl([
+      "-n",
+      config.build.namespace,
+      "logs",
+      "job/openhands-windows-runtime-import",
+      "--all-containers=true",
+    ]);
+  } catch (error) {
+    reportWindowsRuntimeImportFailure();
+    throw new Error(
+      `Windows runtime ACR import failed; the profile remains undeployed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 async function waitForWindowsRuntimePreflight(environment) {
@@ -2130,6 +2312,7 @@ async function waitForWindowsRuntimePreflight(environment) {
 
 async function preflightWindowsRuntime(environment, windowsRuntimeDigest) {
   const namespace = config.environments[environment].namespace;
+  await importWindowsRuntime(windowsRuntimeDigest);
   kubectl([
     "-n",
     namespace,
