@@ -199,6 +199,137 @@ describe("InstallServerModal", () => {
     );
   });
 
+  it("installs Atlassian Rovo with structured Basic credentials", async () => {
+    const atlassian = MCP_MARKETPLACE.find(
+      (entry) => entry.id === "atlassian-rovo",
+    )!;
+    const testSpy = vi.spyOn(McpService, "testServer");
+    const saveSpy = vi
+      .spyOn(SettingsService, "saveSettings")
+      .mockResolvedValue(true);
+
+    renderWith(
+      <InstallServerModal
+        existingServers={[]}
+        entry={atlassian}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByTestId("mcp-install-modal");
+
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+    expect(testSpy).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId("mcp-install-field-email"), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-token"), {
+      target: { value: "atlassian-mcp-token" },
+    });
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+    await waitFor(() =>
+      expect(testSpy).toHaveBeenCalledWith({
+        id: "",
+        type: "shttp",
+        name: "atlassian-rovo",
+        url: "https://mcp.atlassian.com/v2/mcp",
+        auth: {
+          strategy: "basic",
+          username: "user@example.com",
+          password: "atlassian-mcp-token",
+        },
+      }),
+    );
+    await waitFor(() => expect(saveSpy).toHaveBeenCalledTimes(1));
+    expect(saveSpy.mock.calls[0][0]).toMatchObject({
+      agent_settings_diff: {
+        mcp_config: {
+          "atlassian-rovo": {
+            auth: {
+              strategy: "basic",
+              username: "user@example.com",
+              password: "atlassian-mcp-token",
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("rotates an installed Atlassian token through the catalog form", async () => {
+    const atlassian = MCP_MARKETPLACE.find(
+      (entry) => entry.id === "atlassian-rovo",
+    )!;
+    const storedServer = {
+      transport: "streamable-http" as const,
+      url: "https://mcp.atlassian.com/v2/mcp",
+      auth: {
+        strategy: "basic" as const,
+        username: "user@example.com",
+        password: "**********",
+      },
+    };
+    vi.spyOn(SettingsService, "getSettings").mockResolvedValue({
+      ...MOCK_DEFAULT_USER_SETTINGS,
+      agent_settings: {
+        ...MOCK_DEFAULT_USER_SETTINGS.agent_settings,
+        mcp_config: { "atlassian-rovo": storedServer },
+      },
+    });
+    const testSpy = vi.spyOn(McpService, "testServer");
+    const patchSpy = vi
+      .spyOn(SettingsService, "patchMcpServer")
+      .mockResolvedValue(true);
+
+    renderWith(
+      <InstallServerModal
+        existingServers={[
+          {
+            id: "atlassian-rovo",
+            type: "shttp",
+            name: "atlassian-rovo",
+            url: storedServer.url,
+            auth: storedServer.auth,
+          },
+        ]}
+        entry={atlassian}
+        serverToReplace={{
+          id: "atlassian-rovo",
+          type: "shttp",
+          name: "atlassian-rovo",
+          url: storedServer.url,
+          auth: storedServer.auth,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByTestId("mcp-install-field-email")).toHaveValue(
+      "user@example.com",
+    );
+    await waitFor(() => expect(SettingsService.getSettings).toHaveBeenCalled());
+    expect(screen.getByTestId("mcp-install-field-token")).toHaveValue("");
+    fireEvent.change(screen.getByTestId("mcp-install-field-token"), {
+      target: { value: "replacement-token" },
+    });
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+    await waitFor(() => expect(testSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(patchSpy).toHaveBeenCalledWith(
+        "atlassian-rovo",
+        expect.objectContaining({
+          auth: {
+            strategy: "basic",
+            username: "user@example.com",
+            password: "replacement-token",
+          },
+        }),
+      ),
+    );
+  });
+
   it("does not seed a stdio catalog server's health on cloud backends", async () => {
     // Arrange: stdio servers cannot be probed off-sandbox, so their cloud
     // pre-save test is synthetic and must not become a health verdict.

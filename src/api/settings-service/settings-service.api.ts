@@ -285,14 +285,15 @@ export const headersFromMcpAuth = (
 };
 
 /**
- * Convert SDK `auth` credentials to the cloud's header-only storage shape.
+ * Convert legacy SDK `auth` credentials to the cloud's header-only storage
+ * shape.
  *
- * An `oauth2` credential is the exception and is sent as-is: the app server
- * stores its token state under `auth.state` (restoring redacted parts by
- * key) and the sandbox refreshes the access token from it. Flattening it to
- * a bearer header drops the refresh token, so the server stops working once
- * the access token expires. A header the old flattening stored is tombstoned
- * like any other header the credential no longer produces.
+ * `oauth2` and `basic` credentials are sent as-is. The app server stores their
+ * secret fields under `auth` and restores redacted parts by key. Flattening
+ * OAuth drops refresh state; flattening Basic drops the username Canvas needs
+ * to present and rotate the connection without exposing its password.
+ * A header an older Canvas stored is tombstoned like any other header the
+ * credential no longer produces.
  *
  * Only the entries in `value` are converted. The cloud `POST /api/v1/settings`
  * applies an `mcp_config` map WITHOUT a `null` entry as a full-catalog
@@ -361,7 +362,8 @@ const cloudCompatibleMcpConfig = async (
       }
       if (!isRecord(server.auth)) return [name, server];
 
-      const keepsAuth = server.auth.strategy === "oauth2";
+      const keepsAuth =
+        server.auth.strategy === "oauth2" || server.auth.strategy === "basic";
       const authHeaders: Record<string, string> | null = keepsAuth
         ? {}
         : headersFromMcpAuth(server.auth);

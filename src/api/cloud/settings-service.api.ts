@@ -266,8 +266,6 @@ export interface CloudIntegrationsConfig {
   isServiceAccountsEnabled: boolean;
   /** Whether this deployment exposes Canvas's hosted integrations surface. */
   isCanvasIntegrationsEnabled?: boolean;
-  /** Whether users can connect Atlassian Cloud with an API token. */
-  isAtlassianApiTokenEnabled?: boolean;
   /** Whether native git providers can be linked through OAuth. */
   isOauthV2LoginEnabled?: boolean;
   /** Absolute GitHub App installation/configuration URL, when configured. */
@@ -287,7 +285,6 @@ export async function fetchCloudIntegrationsConfig(): Promise<CloudIntegrationsC
       enable_org_mcp_servers?: boolean;
       enable_service_accounts?: boolean;
       enable_canvas_integrations?: boolean;
-      enable_atlassian_api_token?: boolean;
       enable_oauth_v2_login?: boolean;
       github_app_install_url?: string;
     };
@@ -309,8 +306,6 @@ export async function fetchCloudIntegrationsConfig(): Promise<CloudIntegrationsC
       config.feature_flags?.enable_service_accounts === true,
     isCanvasIntegrationsEnabled:
       config.feature_flags?.enable_canvas_integrations === true,
-    isAtlassianApiTokenEnabled:
-      config.feature_flags?.enable_atlassian_api_token === true,
     isOauthV2LoginEnabled: config.feature_flags?.enable_oauth_v2_login === true,
     githubAppInstallUrl:
       config.feature_flags?.github_app_install_url?.trim() || null,

@@ -20,6 +20,7 @@ import type { MCPAuthCredential } from "#/types/mcp-auth";
 import { seedMcpServerHealth } from "#/api/mcp-health/probe-mcp-server-health";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useAddMcpServer } from "#/hooks/mutation/use-add-mcp-server";
+import { useUpdateMcpServer } from "#/hooks/mutation/use-update-mcp-server";
 import {
   isNativeGitCandidate,
   useNativeGitIntegrations,
@@ -77,6 +78,8 @@ interface InstallServerModalProps {
   existingServers: MCPServerConfig[];
   onClose: () => void;
   onSuccess?: (entry: MarketplaceEntry) => void;
+  /** Replace one installed server instead of appending another instance. */
+  serverToReplace?: MCPServerConfig;
   /**
    * When true, an entry that has an MCP option opens on its MCP form without
    * offering the instance's native integration. Defaults to false.
@@ -105,6 +108,12 @@ function isOAuthOption(
   return !!option && option.auth.strategy === "oauth2";
 }
 
+function isBasicOption(
+  option: McpMarketplaceConnectionOption | undefined,
+): boolean {
+  return !!option && option.auth.strategy === "basic";
+}
+
 function isCredentialOptional(option: McpMarketplaceConnectionOption): boolean {
   if (option.transport.kind === "stdio") {
     return option.auth.apiKeyOptional ?? false;
@@ -123,7 +132,7 @@ function getRemoteHeaderFields(
 
 function getOptionLabelKey(option: McpMarketplaceConnectionOption): I18nKey {
   if (option.auth.strategy === "oauth2") return I18nKey.MCP$OPTION_OAUTH;
-  if (["api_key", "bearer"].includes(option.auth.strategy)) {
+  if (["api_key", "bearer", "basic"].includes(option.auth.strategy)) {
     return I18nKey.MCP$OPTION_API_KEY;
   }
   return option.transport.kind === "stdio"
@@ -133,6 +142,7 @@ function getOptionLabelKey(option: McpMarketplaceConnectionOption): I18nKey {
 
 function makeInitialState(
   option: McpMarketplaceConnectionOption | undefined,
+  serverToReplace?: MCPServerConfig,
 ): FieldState {
   const values: Record<string, string> = {};
   const savedAsSecret: Record<string, boolean> = {};
@@ -152,6 +162,15 @@ function makeInitialState(
       values[field.key] = "";
       savedAsSecret[field.key] = field.type === "password";
     }
+    const basic =
+      option?.auth.strategy === "basic" ? option.auth.basic : undefined;
+    if (basic) {
+      values[basic.username.key] =
+        serverToReplace?.auth?.strategy === "basic"
+          ? serverToReplace.auth.username
+          : "";
+      values[basic.password.key] = "";
+    }
     if (optionNeedsCredentialField(option)) {
       values.api_key = "";
       if (option?.auth.credentialSecretName) {
@@ -163,21 +182,21 @@ function makeInitialState(
   return { values, errors: {}, savedAsSecret };
 }
 
-// The marketplace install modal is intentionally add-only: clicking
-// a catalog tile always appends a new server (the user might want
-// two Slack workspaces, two Postgres connections, etc.) even when
-// one of the same template kind is already installed. Editing an
-// existing server is reached via the installed-server-card's edit
-// button, which opens `CustomServerEditor` instead.
+// Catalog tiles remain add-only so users can install multiple instances. A
+// first-class integration surface may pass `serverToReplace` to rotate one
+// known connection through the same catalog-defined fields and validation.
 export function InstallServerModal({
   entry,
   existingServers,
   onClose,
   onSuccess,
+  serverToReplace,
   mcpOnly = false,
 }: InstallServerModalProps) {
   const { t } = useTranslation("openhands");
   const { mutate: addMcpServer, isPending: isAdding } = useAddMcpServer();
+  const { mutate: updateMcpServer, isPending: isUpdating } =
+    useUpdateMcpServer();
   const { mutate: testMcpServer, isPending: isTesting } = useTestMcpServer();
   const saveFieldsAsSecrets = useSaveFieldsAsSecrets();
   const { backend } = useActiveBackend();
@@ -193,7 +212,7 @@ export function InstallServerModal({
   const option = options[selectedOptionIndex];
 
   const [state, setState] = React.useState<FieldState>(() =>
-    makeInitialState(option),
+    makeInitialState(option, serverToReplace),
   );
   // Always holds the latest state so async callbacks (onSuccess) never read
   // stale closure values, even under React concurrent-mode scheduling.
@@ -231,7 +250,11 @@ export function InstallServerModal({
     !!native && (!option || selectedConnection === "native");
 
   const isPending =
-    isTesting || isAuthorizingOAuth || isAdding || isFinalizingInstall;
+    isTesting ||
+    isAuthorizingOAuth ||
+    isAdding ||
+    isUpdating ||
+    isFinalizingInstall;
 
   const setValue = (key: string, value: string) => {
     setState((prev) => ({
@@ -244,7 +267,7 @@ export function InstallServerModal({
 
   const selectOption = (index: number) => {
     setSelectedOptionIndex(index);
-    setState(makeInitialState(options[index]));
+    setState(makeInitialState(options[index], serverToReplace));
     setGlobalError(null);
   };
 
@@ -297,6 +320,48 @@ export function InstallServerModal({
   };
 
   const submitServer = (payload: MCPServerConfig) => {
+    const persistServer = (
+      serverToSave: MCPServerConfig,
+      result: Parameters<typeof seedMcpServerHealth>[1],
+    ) => {
+      const onSaved = () => {
+        if (!isSyntheticTest) {
+          seedMcpServerHealth(
+            serverToSave,
+            result,
+            serverToReplace
+              ? existingServers.filter(
+                  (existing) => existing.id !== serverToReplace.id,
+                )
+              : existingServers,
+          );
+        }
+        displaySuccessToast(t(I18nKey.MCP$INSTALL_SUCCESS));
+        setIsFinalizingInstall(true);
+        void (async () => {
+          try {
+            await saveSelectedSecrets();
+          } finally {
+            onSuccess?.(entry);
+            onClose();
+          }
+        })();
+      };
+      const onError = (err: unknown) => {
+        const message = retrieveAxiosErrorMessage(err as AxiosError);
+        setGlobalError(message || t(I18nKey.ERROR$GENERIC));
+      };
+
+      if (serverToReplace) {
+        updateMcpServer(
+          { serverId: serverToReplace.id, server: serverToSave },
+          { onSuccess: onSaved, onError },
+        );
+      } else {
+        addMcpServer(serverToSave, { onSuccess: onSaved, onError });
+      }
+    };
+
     if (payload.auth?.strategy === "oauth2") {
       setIsAuthorizingOAuth(true);
       void McpService.authorizeOAuth(payload)
@@ -318,27 +383,7 @@ export function InstallServerModal({
                 auth: { ...payload.auth!, state: result.oauth_state },
               }
             : payload;
-          addMcpServer(serverToSave, {
-            onSuccess: () => {
-              if (!isSyntheticTest) {
-                seedMcpServerHealth(serverToSave, result, existingServers);
-              }
-              displaySuccessToast(t(I18nKey.MCP$INSTALL_SUCCESS));
-              setIsFinalizingInstall(true);
-              void (async () => {
-                try {
-                  await saveSelectedSecrets();
-                } finally {
-                  onSuccess?.(entry);
-                  onClose();
-                }
-              })();
-            },
-            onError: (err: unknown) => {
-              const message = retrieveAxiosErrorMessage(err as AxiosError);
-              setGlobalError(message || t(I18nKey.ERROR$GENERIC));
-            },
-          });
+          persistServer(serverToSave, result);
         })
         .catch((err: unknown) => {
           const message = retrieveAxiosErrorMessage(err as AxiosError);
@@ -368,27 +413,7 @@ export function InstallServerModal({
                 auth: { ...payload.auth, state: result.oauth_state },
               }
             : payload;
-        addMcpServer(serverToSave, {
-          onSuccess: () => {
-            if (!isSyntheticTest) {
-              seedMcpServerHealth(serverToSave, result, existingServers);
-            }
-            displaySuccessToast(t(I18nKey.MCP$INSTALL_SUCCESS));
-            setIsFinalizingInstall(true);
-            void (async () => {
-              try {
-                await saveSelectedSecrets();
-              } finally {
-                onSuccess?.(entry);
-                onClose();
-              }
-            })();
-          },
-          onError: (err: unknown) => {
-            const message = retrieveAxiosErrorMessage(err as AxiosError);
-            setGlobalError(message || t(I18nKey.ERROR$GENERIC));
-          },
-        });
+        persistServer(serverToSave, result);
       },
       onError: (err: unknown) => {
         const message = retrieveAxiosErrorMessage(err as AxiosError);
@@ -414,6 +439,8 @@ export function InstallServerModal({
       ? (state.values.url?.trim() ?? "")
       : template.url;
     const oauthMode = isOAuthOption(option);
+    const basicMode = isBasicOption(option);
+    const basic = option.auth.basic;
     const needsCredential = optionNeedsCredentialField(option);
     const headerFields = getRemoteHeaderFields(option);
     const headerErrors: Record<string, string | null> = {};
@@ -432,6 +459,19 @@ export function InstallServerModal({
     for (const field of headerFields) {
       if (field.required && !(state.values[field.key] ?? "").trim()) {
         headerErrors[field.key] = t(I18nKey.MCP$ERROR_FIELD_REQUIRED);
+      }
+    }
+    if (basicMode) {
+      if (!basic) {
+        setGlobalError(
+          t(I18nKey.MCP$INSTALL_UNAVAILABLE, { name: entry.name }),
+        );
+        return;
+      }
+      for (const field of [basic.username, basic.password]) {
+        if (!(state.values[field.key] ?? "").trim()) {
+          headerErrors[field.key] = t(I18nKey.MCP$ERROR_FIELD_REQUIRED);
+        }
       }
     }
     if (
@@ -461,6 +501,12 @@ export function InstallServerModal({
         strategy: "oauth2",
         ...(oauthAuthentication && { authentication: oauthAuthentication }),
       };
+    } else if (basicMode && basic) {
+      auth = {
+        strategy: "basic",
+        username: state.values[basic.username.key].trim(),
+        password: state.values[basic.password.key].trim(),
+      };
     } else if (needsCredential && apiKey) {
       auth =
         option.auth.strategy === "api_key"
@@ -476,13 +522,13 @@ export function InstallServerModal({
       auth = { strategy: "header", headers: fieldHeaders };
     }
     const payload: MCPServerConfig = {
-      id: "",
+      id: serverToReplace?.id ?? "",
       type: template.kind,
       // Name remote servers after the catalog slug (e.g. "github") so they
       // get a referenceable, LLM-tool-safe mcp_config key instead of the
       // auto-generated "sse"/"shttp" fallback. Stdio installs already carry
       // serverName from the catalog.
-      name: toMcpServerName(entry.id),
+      name: serverToReplace?.name ?? toMcpServerName(entry.id),
       url,
       ...(auth && { auth }),
       ...(hasFieldHeaders &&
@@ -528,9 +574,9 @@ export function InstallServerModal({
     }
 
     const payload: MCPServerConfig = {
-      id: "",
+      id: serverToReplace?.id ?? "",
       type: "stdio",
-      name: stdio.serverName,
+      name: serverToReplace?.name ?? stdio.serverName,
       command: stdio.command,
       args: [...stdio.args, ...extraArgs],
       ...(Object.keys(env).length > 0 && { env }),
@@ -557,6 +603,10 @@ export function InstallServerModal({
   const renderFields = () => {
     if (template?.kind === "shttp" || template?.kind === "sse") {
       const oauthMode = isOAuthOption(option);
+      const basic =
+        isBasicOption(option) && option?.auth.basic
+          ? option.auth.basic
+          : undefined;
       const shouldRenderCredential = optionNeedsCredentialField(option);
       const apiKeyOptional = option ? isCredentialOptional(option) : false;
       const credentialSecretName = option?.auth.credentialSecretName;
@@ -609,6 +659,32 @@ export function InstallServerModal({
               )}
             </div>
           ))}
+          {basic &&
+            [basic.username, basic.password].map((field) => (
+              <div key={field.key} className="flex flex-col gap-1">
+                <SettingsInput
+                  testId={`mcp-install-field-${field.key}`}
+                  name={field.key}
+                  type={field.type}
+                  label={field.label}
+                  value={state.values[field.key] ?? ""}
+                  onChange={(value) => setValue(field.key, value)}
+                  placeholder={field.placeholder}
+                  required
+                  className="w-full"
+                />
+                {field.helperText && (
+                  <p className="text-xs text-tertiary-alt">
+                    {renderHelperText(field.helperText)}
+                  </p>
+                )}
+                {state.errors[field.key] && (
+                  <p className="text-xs text-feedback-error">
+                    {state.errors[field.key]}
+                  </p>
+                )}
+              </div>
+            ))}
           {oauthMode ? (
             <div
               data-testid="mcp-install-oauth-info"
@@ -905,9 +981,11 @@ export function InstallServerModal({
                 >
                   {isTesting || isAuthorizingOAuth
                     ? t(I18nKey.MCP$VERIFYING)
-                    : isAdding || isFinalizingInstall
+                    : isAdding || isUpdating || isFinalizingInstall
                       ? t(I18nKey.SETTINGS$SAVING)
-                      : t(I18nKey.MCP$INSTALL_BUTTON)}
+                      : serverToReplace
+                        ? t(I18nKey.SETTINGS$SAVE_CHANGES)
+                        : t(I18nKey.MCP$INSTALL_BUTTON)}
                 </BrandButton>
               </div>
             </>

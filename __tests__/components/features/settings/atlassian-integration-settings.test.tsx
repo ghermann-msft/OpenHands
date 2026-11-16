@@ -1,176 +1,152 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  connectAtlassianIntegration,
-  disconnectAtlassianIntegration,
-  fetchAtlassianIntegration,
-} from "#/api/cloud/atlassian-integration-service.api";
 import { AtlassianIntegrationSettings } from "#/components/features/settings/integrations/atlassian-integration-settings";
 
-const config = vi.hoisted(() => ({
-  enabled: true,
+const mocks = vi.hoisted(() => ({
+  canvasIntegrationsEnabled: true,
+  settings: {
+    mcp_config: {},
+  } as {
+    mcp_config: Record<string, unknown>;
+  },
+  deleteMcpServer: vi.fn(),
 }));
 
 vi.mock("#/contexts/active-backend-context", () => ({
   useActiveBackend: () => ({
     backend: { id: "halo", kind: "cloud", connectionRevision: 2 },
-    orgId: null,
   }),
 }));
 
 vi.mock("#/hooks/query/use-cloud-integrations-config", () => ({
   useCloudIntegrationsConfig: () => ({
     data: {
-      isCanvasIntegrationsEnabled: true,
-      isAtlassianApiTokenEnabled: config.enabled,
+      isCanvasIntegrationsEnabled: mocks.canvasIntegrationsEnabled,
     },
+    isPending: false,
   }),
 }));
 
-vi.mock("#/api/cloud/atlassian-integration-service.api", () => ({
-  fetchAtlassianIntegration: vi.fn(),
-  connectAtlassianIntegration: vi.fn(),
-  disconnectAtlassianIntegration: vi.fn(),
+vi.mock("#/hooks/query/use-settings", () => ({
+  useSettings: () => ({
+    data: mocks.settings,
+    isLoading: false,
+  }),
 }));
 
-function renderSettings() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <AtlassianIntegrationSettings />
-    </QueryClientProvider>,
-  );
-}
+vi.mock("#/hooks/mutation/use-delete-mcp-server", () => ({
+  useDeleteMcpServer: () => ({
+    mutate: mocks.deleteMcpServer,
+    isPending: false,
+  }),
+}));
+
+vi.mock("#/components/features/mcp-page", () => ({
+  InstallServerModal: ({
+    entry,
+    mcpOnly,
+    serverToReplace,
+  }: {
+    entry: { id: string };
+    mcpOnly?: boolean;
+    serverToReplace?: { id: string };
+  }) => (
+    <div
+      data-testid="install-server-modal"
+      data-entry-id={entry.id}
+      data-mcp-only={String(mcpOnly)}
+      data-server-id={serverToReplace?.id}
+    />
+  ),
+}));
 
 describe("AtlassianIntegrationSettings", () => {
   beforeEach(() => {
-    config.enabled = true;
-    vi.mocked(fetchAtlassianIntegration).mockReset();
-    vi.mocked(connectAtlassianIntegration).mockReset();
-    vi.mocked(disconnectAtlassianIntegration).mockReset();
+    mocks.canvasIntegrationsEnabled = true;
+    mocks.settings = { mcp_config: {} };
+    mocks.deleteMcpServer.mockReset();
   });
 
-  it("stays hidden when the backend does not advertise token support", () => {
-    config.enabled = false;
+  it("stays hidden when the backend disables Canvas integrations", () => {
+    mocks.canvasIntegrationsEnabled = false;
 
-    renderSettings();
+    render(<AtlassianIntegrationSettings />);
 
     expect(
       screen.queryByTestId("atlassian-integration-settings"),
     ).not.toBeInTheDocument();
-    expect(fetchAtlassianIntegration).not.toHaveBeenCalled();
   });
 
-  it("saves Jira and Confluence credentials independently", async () => {
+  it("opens the generic MCP installer for Atlassian Rovo", async () => {
     const user = userEvent.setup();
-    vi.mocked(fetchAtlassianIntegration).mockResolvedValue({
-      jira: { connected: false, site_url: null, email: null },
-      confluence: { connected: false, site_url: null, email: null },
-    });
-    vi.mocked(connectAtlassianIntegration).mockResolvedValue({
-      connected: true,
-      site_url: "https://example.atlassian.net",
-      email: "user@example.com",
-    });
-    renderSettings();
+    render(<AtlassianIntegrationSettings />);
 
-    await user.type(
-      await screen.findByTestId("atlassian-jira-site-url"),
-      "https://example.atlassian.net",
+    await user.click(screen.getByTestId("atlassian-connect"));
+
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-entry-id",
+      "atlassian-rovo",
     );
-    await user.type(
-      screen.getByTestId("atlassian-jira-email"),
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-mcp-only",
+      "true",
+    );
+  });
+
+  it("shows the connected Basic-auth identity and disconnects the generic MCP server", async () => {
+    const user = userEvent.setup();
+    mocks.settings = {
+      mcp_config: {
+        "atlassian-rovo": {
+          transport: "streamable-http",
+          url: "https://mcp.atlassian.com/v2/mcp",
+          auth: {
+            strategy: "basic",
+            username: "user@example.com",
+            password: "**********",
+          },
+        },
+      },
+    };
+    render(<AtlassianIntegrationSettings />);
+
+    expect(screen.getByTestId("atlassian-connected-email")).toHaveTextContent(
       "user@example.com",
     );
-    await user.type(
-      screen.getByTestId("atlassian-jira-api-token"),
-      "jira-token",
-    );
-    await user.click(screen.getByTestId("atlassian-jira-connect"));
+    await user.click(screen.getByTestId("atlassian-disconnect"));
 
-    await waitFor(() =>
-      expect(connectAtlassianIntegration).toHaveBeenCalledWith("jira", {
-        site_url: "https://example.atlassian.net",
-        email: "user@example.com",
-        api_token: "jira-token",
+    expect(mocks.deleteMcpServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "atlassian-rovo",
+        url: "https://mcp.atlassian.com/v2/mcp",
       }),
-    );
-    expect(connectAtlassianIntegration).not.toHaveBeenCalledWith(
-      "confluence",
-      expect.anything(),
+      expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
 
-  it("disconnects Jira without changing Confluence", async () => {
+  it("opens the generic server editor for an installed connection", async () => {
     const user = userEvent.setup();
-    vi.mocked(fetchAtlassianIntegration).mockResolvedValue({
-      jira: {
-        connected: true,
-        site_url: "https://example.atlassian.net",
-        email: "user@example.com",
+    mocks.settings = {
+      mcp_config: {
+        "atlassian-rovo": {
+          transport: "streamable-http",
+          url: "https://mcp.atlassian.com/v2/mcp",
+          auth: {
+            strategy: "basic",
+            username: "user@example.com",
+            password: "**********",
+          },
+        },
       },
-      confluence: {
-        connected: true,
-        site_url: "https://example.atlassian.net",
-        email: "user@example.com",
-      },
-    });
-    vi.mocked(disconnectAtlassianIntegration).mockResolvedValue();
-    renderSettings();
+    };
+    render(<AtlassianIntegrationSettings />);
 
-    await user.click(
-      await screen.findByTestId("atlassian-jira-disconnect"),
-    );
+    await user.click(screen.getByTestId("atlassian-edit"));
 
-    await waitFor(() =>
-      expect(disconnectAtlassianIntegration).toHaveBeenCalledWith("jira"),
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-server-id",
+      "atlassian-rovo",
     );
-    expect(disconnectAtlassianIntegration).not.toHaveBeenCalledWith(
-      "confluence",
-    );
-  });
-
-  it("keeps only the failing product form open", async () => {
-    const user = userEvent.setup();
-    vi.mocked(fetchAtlassianIntegration).mockResolvedValue({
-      jira: { connected: false, site_url: null, email: null },
-      confluence: {
-        connected: true,
-        site_url: "https://example.atlassian.net",
-        email: "user@example.com",
-      },
-    });
-    vi.mocked(connectAtlassianIntegration).mockRejectedValue(
-      new Error("Jira authentication failed."),
-    );
-    renderSettings();
-
-    await user.type(
-      await screen.findByTestId("atlassian-jira-site-url"),
-      "https://example.atlassian.net",
-    );
-    await user.type(
-      screen.getByTestId("atlassian-jira-email"),
-      "user@example.com",
-    );
-    await user.type(
-      screen.getByTestId("atlassian-jira-api-token"),
-      "bad-token",
-    );
-    await user.click(screen.getByTestId("atlassian-jira-connect"));
-
-    expect(
-      await screen.findByText("Jira authentication failed."),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("atlassian-jira-api-token")).toHaveValue(
-      "bad-token",
-    );
-    expect(
-      screen.queryByTestId("atlassian-confluence-api-token"),
-    ).not.toBeInTheDocument();
   });
 });

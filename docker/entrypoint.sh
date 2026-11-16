@@ -576,9 +576,7 @@ if [ -n "$SANDBOX_SERVER_URL" ]; then
     exit 1
   fi
   STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1=${SANDBOX_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1/integrations/atlassian=http://127.0.0.1:${AGENT_SERVER_PORT}")
   STATIC_SERVER_CLOUD_ARGS+=(--route "/oauth=${SANDBOX_SERVER_URL}")
-  STATIC_SERVER_CLOUD_ARGS+=(--web-client-feature-flag "enable_atlassian_api_token")
   STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")
   STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode none)
   if [ "$AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL" = "false" ]; then

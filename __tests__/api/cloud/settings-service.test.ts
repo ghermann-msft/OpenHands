@@ -89,14 +89,12 @@ describe("cloud settings", () => {
     stubGet("/api/v1/web-client/config", {
       feature_flags: {
         enable_canvas_integrations: true,
-        enable_atlassian_api_token: true,
       },
     });
 
     const result = await fetchCloudIntegrationsConfig();
 
     expect(result.isCanvasIntegrationsEnabled).toBe(true);
-    expect(result.isAtlassianApiTokenEnabled).toBe(true);
   });
 
   it("probes a cookie-auth cloud session through the current user endpoint", async () => {

@@ -882,6 +882,44 @@ describe("SettingsService", () => {
     });
   });
 
+  it("keeps Basic MCP credentials structured when saving mcp_config to cloud", async () => {
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+
+    await SettingsService.saveSettings({
+      agent_settings_diff: {
+        mcp_config: {
+          atlassian: {
+            transport: "http",
+            url: "https://mcp.atlassian.com/v2/mcp",
+            auth: {
+              strategy: "basic",
+              username: "user@example.com",
+              password: "atlassian-api-token",
+            },
+          },
+        },
+      },
+    });
+
+    expect(mockSaveCloudSettings).toHaveBeenCalledTimes(1);
+    expect(mockSaveCloudSettings).toHaveBeenCalledWith({
+      agent_settings_diff: {
+        mcp_config: {
+          atlassian: {
+            transport: "http",
+            url: "https://mcp.atlassian.com/v2/mcp",
+            auth: {
+              strategy: "basic",
+              username: "user@example.com",
+              password: "atlassian-api-token",
+            },
+          },
+        },
+      },
+    });
+  });
+
   it("tombstones a legacy bearer header when a cloud MCP keeps its OAuth credential", async () => {
     setRegisteredBackends([cloudBackend]);
     setActiveSelection({ backendId: cloudBackend.id });
@@ -1248,8 +1286,7 @@ describe("SettingsService", () => {
         const body = (await request.json()) as Record<string, unknown>;
         patchBodies.push(body);
         const agentDiff = body.agent_settings_diff as
-          | { mcp_config?: unknown }
-          | undefined;
+          { mcp_config?: unknown } | undefined;
         const mcp = agentDiff?.mcp_config;
         if (
           mcp &&
