@@ -1687,6 +1687,39 @@ ${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n  
 `;
 }
 
+export function renderHindsightBrokerSecretProviderClass(
+  environment,
+  runtimeClientId,
+) {
+  const env = config.environments[environment];
+  if (!env.hindsight?.enabled) return "";
+  const entries = [
+    ["hindsightApiKey", env.hindsight.secrets.apiKey],
+    ["hindsightBankSecret", env.hindsight.secrets.bankSecret],
+    [
+      "hindsightTrustedPrincipalsJson",
+      env.hindsight.secrets.trustedPrincipalsJson,
+    ],
+    ["hindsightScopeBindingsJson", env.hindsight.secrets.scopeBindingsJson],
+  ];
+  return `apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: openhands-hindsight-broker-secrets
+  namespace: ${env.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${quote(runtimeClientId)}
+    keyvaultName: ${quote(config.azure.keyVaultName)}
+    tenantId: ${quote(config.azure.tenantId)}
+    objects: |
+      array:
+${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n          objectAlias: ${alias}\n          objectType: secret`).join("\n")}
+`;
+}
+
 export function renderPostgresBootstrapSecretProviderClass(bootstrapClientId) {
   const entries = Object.entries(config.environments)
     .filter(([, env]) => env.hindsight?.enabled)
@@ -1720,6 +1753,11 @@ function hindsightBrokerEnv(environment) {
               value: "false"
 `;
   }
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(hindsight.deploymentId)) {
+    throw new Error(
+      `${environment} Hindsight deploymentId must be a stable lowercase identifier`,
+    );
+  }
   return `            - name: OH_HINDSIGHT_ENABLED
               value: "true"
             - name: OH_HINDSIGHT_FAIL_OPEN
@@ -1728,8 +1766,16 @@ function hindsightBrokerEnv(environment) {
               value: ${quote(String(hindsight.linuxOnly))}
             - name: OH_HINDSIGHT_BASE_URL
               value: http://${config.hindsight.serviceName}:${config.hindsight.port}
+            - name: OH_HINDSIGHT_DEPLOYMENT_ID
+              value: ${quote(hindsight.deploymentId)}
             - name: OH_HINDSIGHT_API_KEY_FILE
               value: /mnt/hindsight-secrets/hindsightApiKey
+            - name: OH_HINDSIGHT_BANK_SECRET_FILE
+              value: /mnt/hindsight-secrets/hindsightBankSecret
+            - name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE
+              value: /mnt/hindsight-secrets/hindsightTrustedPrincipalsJson
+            - name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE
+              value: /mnt/hindsight-secrets/hindsightScopeBindingsJson
             - name: OH_HINDSIGHT_AUTOMATIC_RECALL_DEFAULT_MAX_TOKENS
               value: "${config.hindsight.recall.defaultTokenCeiling}"
             - name: OH_HINDSIGHT_AUTOMATIC_RECALL_ADAPTIVE_MAX_TOKENS
@@ -2427,7 +2473,7 @@ export function renderSandboxServerResources(
             driver: secrets-store.csi.k8s.io
             readOnly: true
             volumeAttributes:
-              secretProviderClass: openhands-hindsight-secrets
+              secretProviderClass: openhands-hindsight-broker-secrets
 `
     : "";
   return `apiVersion: apps/v1
@@ -3663,6 +3709,13 @@ function bootstrapEnvironment(environment) {
   if (hindsightSecretProviderClass) {
     kubectl(["apply", "-f", "-"], { input: hindsightSecretProviderClass });
   }
+  const hindsightBrokerSecretProviderClass =
+    renderHindsightBrokerSecretProviderClass(environment, runtime.clientId);
+  if (hindsightBrokerSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], {
+      input: hindsightBrokerSecretProviderClass,
+    });
+  }
   kubectl(["apply", "-f", "-"], {
     input: renderConversationStorageClass(),
   });
@@ -4487,6 +4540,13 @@ async function deploy(
   );
   if (hindsightSecretProviderClass) {
     kubectl(["apply", "-f", "-"], { input: hindsightSecretProviderClass });
+  }
+  const hindsightBrokerSecretProviderClass =
+    renderHindsightBrokerSecretProviderClass(environment, clientId);
+  if (hindsightBrokerSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], {
+      input: hindsightBrokerSecretProviderClass,
+    });
   }
   kubectl([
     "-n",

@@ -32,6 +32,7 @@ import {
   renderFrontDoorSecurityPolicy,
   renderFrontDoorWafPolicy,
   renderHelmValues,
+  renderHindsightBrokerSecretProviderClass,
   renderHindsightResources,
   renderHindsightSecretProviderClass,
   renderPostgresBootstrapJob,
@@ -965,10 +966,29 @@ describe("Halo deployment automation", () => {
       "name: OH_HINDSIGHT_BASE_URL\n              value: http://openhands-hindsight:8888",
     );
     expect(resources).toContain(
+      'name: OH_HINDSIGHT_DEPLOYMENT_ID\n              value: "halo-ppe"',
+    );
+    expect(resources).toContain(
       "name: OH_HINDSIGHT_API_KEY_FILE\n              value: /mnt/hindsight-secrets/hindsightApiKey",
     );
     expect(resources).toContain(
-      "secretProviderClass: openhands-hindsight-secrets",
+      "name: OH_HINDSIGHT_BANK_SECRET_FILE\n              value: /mnt/hindsight-secrets/hindsightBankSecret",
+    );
+    expect(resources).toContain(
+      "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE\n              value: /mnt/hindsight-secrets/hindsightTrustedPrincipalsJson",
+    );
+    expect(resources).toContain(
+      "name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE\n              value: /mnt/hindsight-secrets/hindsightScopeBindingsJson",
+    );
+    expect(resources).toContain(
+      "secretProviderClass: openhands-hindsight-broker-secrets",
+    );
+    expect(resources).not.toContain("name: OH_HINDSIGHT_BANK_SECRET\n");
+    expect(resources).not.toContain(
+      "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON\n",
+    );
+    expect(resources).not.toContain(
+      "name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON\n",
     );
     expect(resources).toContain(
       'name: OH_HINDSIGHT_FAIL_OPEN\n              value: "true"',
@@ -995,6 +1015,16 @@ describe("Halo deployment automation", () => {
         digest,
       ),
     ).toContain('name: OH_HINDSIGHT_ENABLED\n              value: "false"');
+    expect(
+      renderSandboxServerResources(
+        "primary",
+        `sha256:${"b".repeat(64)}`,
+        `sha256:${"d".repeat(64)}`,
+        `sha256:${"a".repeat(64)}`,
+        "runtime-client-id",
+        `sha256:${"e".repeat(64)}`,
+      ),
+    ).not.toContain("OH_HINDSIGHT_DEPLOYMENT_ID");
     expect(resources).toContain("containerPort: 3000");
     expect(resources).toContain("path: /ready");
     expect(resources).toContain("kind: Service");
@@ -1146,9 +1176,31 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-hindsight-database-password");
     expect(spc).toContain("halo-ppe-hindsight-api-key");
     expect(spc).toContain("halo-ppe-hindsight-llm-api-key");
+    expect(spc).not.toContain("halo-ppe-hindsight-bank-secret");
+    expect(spc).not.toContain("halo-ppe-hindsight-trusted-principals-json");
+    expect(spc).not.toContain("halo-ppe-hindsight-scope-bindings-json");
     expect(spc).not.toContain("secretObjects:");
     expect(
       renderHindsightSecretProviderClass("primary", "runtime-client-id"),
+    ).toBe("");
+  });
+
+  it("isolates broker-only Hindsight secrets in a file-backed CSI mount", () => {
+    const spc = renderHindsightBrokerSecretProviderClass(
+      "candidate",
+      "runtime-client-id",
+    );
+
+    expect(spc).toContain("name: openhands-hindsight-broker-secrets");
+    expect(spc).toContain("halo-ppe-hindsight-api-key");
+    expect(spc).toContain("halo-ppe-hindsight-bank-secret");
+    expect(spc).toContain("halo-ppe-hindsight-trusted-principals-json");
+    expect(spc).toContain("halo-ppe-hindsight-scope-bindings-json");
+    expect(spc).not.toContain("halo-ppe-hindsight-database-password");
+    expect(spc).not.toContain("halo-ppe-hindsight-llm-api-key");
+    expect(spc).not.toContain("secretObjects:");
+    expect(
+      renderHindsightBrokerSecretProviderClass("primary", "runtime-client-id"),
     ).toBe("");
   });
 

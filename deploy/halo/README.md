@@ -150,6 +150,9 @@ Create these PPE Key Vault secrets before `bootstrap`:
 - `halo-ppe-hindsight-database-password`
 - `halo-ppe-hindsight-api-key`
 - `halo-ppe-hindsight-llm-api-key`
+- `halo-ppe-hindsight-bank-secret`
+- `halo-ppe-hindsight-trusted-principals-json`
+- `halo-ppe-hindsight-scope-bindings-json`
 
 The LLM key is the Azure OpenAI resource key for `mortmain-openai2`; it is
 mounted only into Hindsight. Hindsight uses the full API image so embeddings
@@ -163,6 +166,22 @@ an explicit deep recall/reflect ceiling of 4,096. A Hindsight outage must not
 block normal conversation startup or messages. Any agent-facing deep-recall
 request shape belongs in `OpenHands/software-agent-sdk`; Sandbox Server must
 consume that canonical contract rather than creating a second wire format.
+The deployment-owned `OH_HINDSIGHT_DEPLOYMENT_ID=halo-ppe` derives the typed
+server-wide bank and is configured only on Sandbox Server. Every authenticated
+bound session may recall and retain server-wide memory. Callers cannot supply
+or override the deployment or bank identifier.
+The broker reads the Hindsight bearer key, bank secret, and trusted-principals
+JSON exclusively from `OH_HINDSIGHT_API_KEY_FILE`,
+`OH_HINDSIGHT_BANK_SECRET_FILE`, and
+`OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE`. Project and organization bindings
+come from `OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE`. These files use a dedicated
+broker-only CSI mount; their values are never environment variables or sandbox
+configuration. The trusted-principals file is a JSON object mapping each
+trusted app-server user ID to `{"tenant_id":"<uuid>","object_id":"<uuid>"}`.
+The scope-bindings file is
+`{"repositories":{"github:owner/repo":{"project_id":"stable-project-id","organization_id":"stable-org-id","members":["<tenant-uuid>:<object-uuid>"]}}}`.
+Sandbox Server derives the repository key from trusted conversation metadata,
+verifies membership, and never accepts caller-provided scope IDs.
 
 `bootstrap` also enforces the Entra contract for each environment: a v2
 `access_as_user` scope preauthorized to the same confidential client. This
