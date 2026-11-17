@@ -179,10 +179,21 @@ These files use a dedicated broker-only CSI mount; their values are never
 environment variables or sandbox configuration. The trusted-principals file is
 a JSON object mapping each trusted app-server user ID to
 `{"tenant_id":"<uuid>","object_id":"<uuid>"}`. The scope-bindings file is
-`{"repositories":{"github:owner/repo":{"organization_id":"stable-org-id","members":["<tenant-uuid>:<object-uuid>"]}}}`.
-Sandbox Server derives repository and workspace identity from trusted
-conversation metadata, verifies membership, and never accepts caller-provided
-scope IDs.
+`{"organizations":{"personal-user-id":{"display_name":"Personal","kind":"personal","members":["<tenant-uuid>:<object-uuid>"]},"halo-studios":{"display_name":"Halo Studios","kind":"shared","members":["<tenant-uuid>:<object-uuid>"]}},"repositories":{"github:owner/repo":{"organization_ids":["personal-user-id","halo-studios"]}}}`.
+Stable organization IDs, membership, and repository allowlists are
+authorization data; display names and kinds are metadata. Sandbox Server
+derives repository and workspace identity from trusted conversation metadata,
+verifies the selected organization against both membership and the repository
+allowlist, and never accepts caller-provided scope IDs.
+
+The current broker accepts the selected organization as the ordered trusted
+control-plane scope `{type:"organization",id:"<stable-id>"}`. The durable
+upstream contract must add a typed `organization_id` to
+`AppConversationInfo`/conversation metadata and require the broker scope to
+match it. Canvas already models an active organization for Cloud backends in
+the lower-left backend selector, but Halo still needs a control-plane
+organization-list contract that exposes Personal and Halo Studios and binds
+the selected stable ID when creating a conversation.
 
 `bootstrap` also enforces the Entra contract for each environment: a v2
 `access_as_user` scope preauthorized to the same confidential client. This
