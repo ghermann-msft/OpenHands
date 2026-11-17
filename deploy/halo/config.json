@@ -28,6 +28,31 @@
         "cidr": "10.1.0.7/32",
         "protocol": "TCP",
         "port": 1666
+      },
+      {
+        "cidr": "10.1.0.7/32",
+        "protocol": "TCP",
+        "port": 1667
+      },
+      {
+        "cidr": "10.0.0.4/32",
+        "protocol": "TCP",
+        "port": 1666
+      },
+      {
+        "cidr": "10.0.0.4/32",
+        "protocol": "TCP",
+        "port": 1667
+      },
+      {
+        "cidr": "10.2.0.4/32",
+        "protocol": "TCP",
+        "port": 1666
+      },
+      {
+        "cidr": "10.2.0.4/32",
+        "protocol": "TCP",
+        "port": 1667
       }
     ],
     "idleTimeoutMinutes": 10
