@@ -72,9 +72,9 @@
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
-    "agentServerSdkRef": "2767366da92681ab9c937afb44a2c23d9ae929e9",
+    "agentServerSdkRef": "b8fbfe3cd9058d5bb097411bf027400746801646",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "f746a1e1df2cd61f366bb24086ebee402fdc55dc"
+    "sandboxServerRef": "e1ad6524c6c3c90b41663edd4366f422a5867e39"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
@@ -162,7 +162,7 @@
   },
   "windowsWorkspaceStorage": {
     "storageClass": "openhands-halo-windows-workspace-disk",
-    "size": "100Gi",
+    "size": "2Ti",
     "skuName": "Premium_LRS",
     "fileSystem": "ntfs"
   },
@@ -181,6 +181,39 @@
     "storageSizeGb": 32,
     "bootstrapServiceAccount": "halo-postgres-bootstrap",
     "bootstrapFederatedCredential": "halo-postgres-bootstrap"
+  },
+  "hindsight": {
+    "source": {
+      "repository": "https://github.com/vectorize-io/hindsight",
+      "revision": "b5f5968ebf2a7dbe6363809fac0b31e428008171",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/vectorize-io/hindsight/blob/b5f5968ebf2a7dbe6363809fac0b31e428008171/LICENSE"
+    },
+    "image": {
+      "repository": "ghcr.io/vectorize-io/hindsight-api",
+      "version": "1.2.1",
+      "digest": "sha256:662109ece429871a81e036427fb93fbb09ba9dc4b01d320d356f114c0e1aedd8",
+      "publishedAt": "2026-11-10T14:34:26Z"
+    },
+    "serviceName": "openhands-hindsight",
+    "port": 8888,
+    "databaseSchema": "hindsight",
+    "tenantExtension": "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension",
+    "llmProvider": "openai",
+    "llmBaseUrl": "https://mortmain-openai2.openai.azure.com/openai/v1",
+    "llmModel": "gpt-5.6-sol",
+    "postgresCidr": "10.70.15.0/24",
+    "recall": {
+      "defaultTokenCeiling": 1024,
+      "adaptiveTokenCeiling": 2048,
+      "deepTokenCeiling": 4096
+    },
+    "resources": {
+      "cpuRequest": "500m",
+      "cpuLimit": "2",
+      "memoryRequest": "1Gi",
+      "memoryLimit": "4Gi"
+    }
   },
   "sandboxServer": {
     "serviceName": "openhands-sandbox-server",
@@ -259,7 +292,7 @@
         "memoryRequest": "4Gi",
         "memoryLimit": "8Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "100Gi",
+        "storageSize": "2Ti",
         "nodePool": "halo25",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
@@ -287,7 +320,7 @@
         "memoryRequest": "16Gi",
         "memoryLimit": "32Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "100Gi",
+        "storageSize": "2Ti",
         "nodePool": "halo25",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
@@ -316,7 +349,7 @@
         "memoryRequest": "8Gi",
         "memoryLimit": "16Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "100Gi",
+        "storageSize": "2Ti",
         "nodePool": "halo25",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
@@ -365,6 +398,26 @@
         "automationKvSecret": "halo-ppe-automation-kv-secret",
         "trustedIdentityAssertion": "halo-ppe-trusted-identity-assertion",
         "jwtSecret": "halo-ppe-sandbox-jwt-secret"
+      },
+      "hindsight": {
+        "enabled": true,
+        "failOpen": true,
+        "linuxOnly": true,
+        "deploymentId": "halo-ppe",
+        "database": "openhands_hindsight_ppe",
+        "databaseUser": "openhands_hindsight_ppe",
+        "secrets": {
+          "databasePassword": "halo-ppe-hindsight-database-password",
+          "apiKey": "halo-ppe-hindsight-api-key",
+          "llmApiKey": "halo-ppe-hindsight-llm-api-key",
+          "bankSecret": "halo-ppe-hindsight-bank-secret",
+          "scopeBindingsJson": "halo-ppe-hindsight-scope-bindings-json"
+        }
+      },
+      "rbac": {
+        "secrets": {
+          "bootstrapJson": "halo-ppe-rbac-bootstrap-json"
+        }
       }
     },
     "primary": {
@@ -397,6 +450,21 @@
         "automationKvSecret": "halo-primary-automation-kv-secret",
         "trustedIdentityAssertion": "halo-primary-trusted-identity-assertion",
         "jwtSecret": "halo-primary-sandbox-jwt-secret"
+      },
+      "hindsight": {
+        "enabled": false,
+        "failOpen": true,
+        "linuxOnly": true,
+        "deploymentId": null,
+        "database": null,
+        "databaseUser": null,
+        "secrets": {
+          "databasePassword": null,
+          "apiKey": null,
+          "llmApiKey": null,
+          "bankSecret": null,
+          "scopeBindingsJson": null
+        }
       }
     }
   }

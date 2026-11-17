@@ -728,6 +728,25 @@ export function postgresServerCreateArgs(
   ];
 }
 
+export function postgresServerAuthUpdateArgs() {
+  return [
+    "postgres",
+    "flexible-server",
+    "update",
+    "--resource-group",
+    config.postgres.resourceGroup,
+    "--name",
+    config.postgres.serverName,
+    "--set",
+    "authConfig.activeDirectoryAuth=Enabled",
+    `authConfig.tenantId=${config.azure.tenantId}`,
+    "--password-auth",
+    "Enabled",
+    "--output",
+    "none",
+  ];
+}
+
 export function validateBuildNodePool(nodePool) {
   const build = config.build;
   const expectedLabel = build.nodeTaintValue;
@@ -1322,6 +1341,35 @@ export function buildDigestsFromPodList(podList) {
   throw new Error("Build Job did not publish immutable image digests");
 }
 
+export function validateHindsightPostgresConfig() {
+  const major = Number.parseInt(String(config.postgres.version), 10);
+  if (!Number.isInteger(major) || major < 15) {
+    throw new Error(
+      `Hindsight requires PostgreSQL 15 or newer; Halo config has ${config.postgres.version}`,
+    );
+  }
+  const [address, prefix] = String(config.hindsight.postgresCidr ?? "").split(
+    "/",
+  );
+  if (
+    isIP(address) !== 4 ||
+    !/^(?:[0-9]|[12][0-9]|3[0-2])$/.test(prefix ?? "")
+  ) {
+    throw new Error(
+      `Hindsight PostgreSQL network CIDR is invalid: ${config.hindsight.postgresCidr}`,
+    );
+  }
+}
+
+export function postgresExtensionsParameterValue(currentValue) {
+  const extensions = String(currentValue ?? "")
+    .split(",")
+    .map((extension) => extension.trim().toUpperCase())
+    .filter(Boolean);
+  if (!extensions.includes("VECTOR")) extensions.push("VECTOR");
+  return extensions.join(",");
+}
+
 export function renderArcControllerValues() {
   const ci = config.ci;
   return `fullnameOverride: ${ci.controllerRelease}
@@ -1610,6 +1658,331 @@ ${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n  
 `;
 }
 
+export function renderHindsightSecretProviderClass(
+  environment,
+  runtimeClientId,
+) {
+  const env = config.environments[environment];
+  if (!env.hindsight?.enabled) return "";
+  const entries = [
+    ["hindsightDatabasePassword", env.hindsight.secrets.databasePassword],
+    ["hindsightApiKey", env.hindsight.secrets.apiKey],
+    ["hindsightLlmApiKey", env.hindsight.secrets.llmApiKey],
+  ];
+  return `apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: openhands-hindsight-secrets
+  namespace: ${env.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${quote(runtimeClientId)}
+    keyvaultName: ${quote(config.azure.keyVaultName)}
+    tenantId: ${quote(config.azure.tenantId)}
+    objects: |
+      array:
+${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n          objectAlias: ${alias}\n          objectType: secret`).join("\n")}
+`;
+}
+
+export function renderHindsightBrokerSecretProviderClass(
+  environment,
+  runtimeClientId,
+) {
+  const env = config.environments[environment];
+  if (!env.hindsight?.enabled) return "";
+  const entries = [
+    ["hindsightApiKey", env.hindsight.secrets.apiKey],
+    ["hindsightBankSecret", env.hindsight.secrets.bankSecret],
+    ["hindsightScopeBindingsJson", env.hindsight.secrets.scopeBindingsJson],
+  ];
+  return `apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: openhands-hindsight-broker-secrets
+  namespace: ${env.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${quote(runtimeClientId)}
+    keyvaultName: ${quote(config.azure.keyVaultName)}
+    tenantId: ${quote(config.azure.tenantId)}
+    objects: |
+      array:
+${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n          objectAlias: ${alias}\n          objectType: secret`).join("\n")}
+`;
+}
+
+export function renderRbacBootstrapSecretProviderClass(
+  environment,
+  runtimeClientId,
+) {
+  const env = config.environments[environment];
+  const bootstrapJson = env.rbac?.secrets?.bootstrapJson;
+  if (!bootstrapJson) return "";
+  return `apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: openhands-rbac-bootstrap-secrets
+  namespace: ${env.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${quote(runtimeClientId)}
+    keyvaultName: ${quote(config.azure.keyVaultName)}
+    tenantId: ${quote(config.azure.tenantId)}
+    objects: |
+      array:
+        - |
+          objectName: ${bootstrapJson}
+          objectAlias: rbacBootstrapJson
+          objectType: secret
+`;
+}
+
+export function renderPostgresBootstrapSecretProviderClass(bootstrapClientId) {
+  const entries = Object.entries(config.environments)
+    .filter(([, env]) => env.hindsight?.enabled)
+    .map(([environment, env]) => [
+      `${environment}HindsightDatabasePassword`,
+      env.hindsight.secrets.databasePassword,
+    ]);
+  return `apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: openhands-halo-postgres-bootstrap-secrets
+  namespace: ${config.build.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${quote(bootstrapClientId)}
+    keyvaultName: ${quote(config.azure.keyVaultName)}
+    tenantId: ${quote(config.azure.tenantId)}
+    objects: |
+      array:
+${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n          objectAlias: ${alias}\n          objectType: secret`).join("\n")}
+`;
+}
+
+function hindsightBrokerEnv(environment) {
+  const env = config.environments[environment];
+  const hindsight = env.hindsight;
+  if (!hindsight?.enabled) {
+    return `            - name: OH_HINDSIGHT_ENABLED
+              value: "false"
+`;
+  }
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(hindsight.deploymentId)) {
+    throw new Error(
+      `${environment} Hindsight deploymentId must be a stable lowercase identifier`,
+    );
+  }
+  return `            - name: OH_HINDSIGHT_ENABLED
+              value: "true"
+            - name: OH_HINDSIGHT_FAIL_OPEN
+              value: ${quote(String(hindsight.failOpen))}
+            - name: OH_HINDSIGHT_LINUX_ONLY
+              value: ${quote(String(hindsight.linuxOnly))}
+            - name: OH_HINDSIGHT_BASE_URL
+              value: http://${config.hindsight.serviceName}:${config.hindsight.port}
+            - name: OH_HINDSIGHT_BROKER_URL
+              value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
+            - name: OH_HINDSIGHT_DEPLOYMENT_ID
+              value: ${quote(hindsight.deploymentId)}
+            - name: OH_HINDSIGHT_API_KEY_FILE
+              value: /mnt/hindsight-secrets/hindsightApiKey
+            - name: OH_HINDSIGHT_BANK_SECRET_FILE
+              value: /mnt/hindsight-secrets/hindsightBankSecret
+            - name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE
+              value: /mnt/hindsight-secrets/hindsightScopeBindingsJson
+            - name: OH_HINDSIGHT_AUTOMATIC_RECALL_DEFAULT_MAX_TOKENS
+              value: "${config.hindsight.recall.defaultTokenCeiling}"
+            - name: OH_HINDSIGHT_AUTOMATIC_RECALL_ADAPTIVE_MAX_TOKENS
+              value: "${config.hindsight.recall.adaptiveTokenCeiling}"
+            - name: OH_HINDSIGHT_DEEP_RECALL_MAX_TOKENS
+              value: "${config.hindsight.recall.deepTokenCeiling}"
+`;
+}
+
+export function renderHindsightResources(environment) {
+  const env = config.environments[environment];
+  const hindsight = env.hindsight;
+  if (!hindsight?.enabled) return "";
+  validateHindsightPostgresConfig();
+  const image = externalImageReference(
+    config.hindsight.image.repository,
+    config.hindsight.image.digest,
+  );
+  return `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${config.hindsight.serviceName}
+  namespace: ${env.namespace}
+  labels:
+    app.kubernetes.io/name: ${config.hindsight.serviceName}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${config.hindsight.serviceName}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${config.hindsight.serviceName}
+        azure.workload.identity/use: "true"
+      annotations:
+        openhands.dev/hindsight-license-reviewed-revision: ${quote(config.hindsight.source.revision)}
+        openhands.dev/hindsight-license: ${quote(config.hindsight.source.license)}
+    spec:
+      serviceAccountName: ${env.serviceAccount}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 75
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        agentpool: ${config.runtime.nodePool}
+      tolerations:
+        - key: ${config.runtime.nodeTaintKey}
+          operator: Equal
+          value: ${config.runtime.nodeTaintValue}
+          effect: NoSchedule
+      containers:
+        - name: hindsight
+          image: ${image}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              export HINDSIGHT_DATABASE_PASSWORD="$(cat /mnt/hindsight-secrets/hindsightDatabasePassword)"
+              encoded_password="$(python -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["HINDSIGHT_DATABASE_PASSWORD"], safe=""))')"
+              export HINDSIGHT_API_DATABASE_URL="postgresql://${hindsight.databaseUser}:$encoded_password@${config.postgres.fqdn}:5432/${hindsight.database}?ssl=require"
+              export HINDSIGHT_API_TENANT_API_KEY="$(cat /mnt/hindsight-secrets/hindsightApiKey)"
+              export HINDSIGHT_API_LLM_API_KEY="$(cat /mnt/hindsight-secrets/hindsightLlmApiKey)"
+              exec /app/start-all.sh
+          ports:
+            - name: http
+              containerPort: ${config.hindsight.port}
+          env:
+            - name: HINDSIGHT_API_DATABASE_SCHEMA
+              value: ${config.hindsight.databaseSchema}
+            - name: HINDSIGHT_API_RUN_MIGRATIONS_ON_STARTUP
+              value: "true"
+            - name: HINDSIGHT_API_VECTOR_EXTENSION
+              value: pgvector
+            - name: HINDSIGHT_API_TENANT_EXTENSION
+              value: ${config.hindsight.tenantExtension}
+            - name: HINDSIGHT_API_LLM_PROVIDER
+              value: ${config.hindsight.llmProvider}
+            - name: HINDSIGHT_API_LLM_BASE_URL
+              value: ${config.hindsight.llmBaseUrl}
+            - name: HINDSIGHT_API_LLM_MODEL
+              value: ${config.hindsight.llmModel}
+            - name: HINDSIGHT_API_WORKER_ID
+              value: halo-${environment}
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: ${config.hindsight.resources.cpuRequest}
+              memory: ${config.hindsight.resources.memoryRequest}
+            limits:
+              cpu: ${quote(config.hindsight.resources.cpuLimit)}
+              memory: ${config.hindsight.resources.memoryLimit}
+          volumeMounts:
+            - name: hindsight-secrets-store
+              mountPath: /mnt/hindsight-secrets
+              readOnly: true
+      volumes:
+        - name: hindsight-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: openhands-hindsight-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${config.hindsight.serviceName}
+  namespace: ${env.namespace}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ${config.hindsight.serviceName}
+  ports:
+    - name: http
+      port: ${config.hindsight.port}
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${config.hindsight.serviceName}
+  namespace: ${env.namespace}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ${config.hindsight.serviceName}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ${config.sandboxServer.serviceName}
+      ports:
+        - protocol: TCP
+          port: ${config.hindsight.port}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: ${config.hindsight.postgresCidr}
+      ports:
+        - protocol: TCP
+          port: 5432
+    - ports:
+        - protocol: TCP
+          port: 443
+`;
+}
+
 export function renderHelmValues(environment, digest, runtimeClientId) {
   const env = config.environments[environment];
   normalizeDigest(digest);
@@ -1772,6 +2145,8 @@ function sandboxSpecBootstrapProfiles(
   );
   return config.agentSandbox.profileSeeds.map((profile) => {
     const isWindows = profile.os === "windows";
+    const enableDeferredInit =
+      !isWindows && config.environments[environment].hindsight?.enabled;
     const bootstrapProfile = {
       id: profile.id,
       display_name: profile.name,
@@ -1858,6 +2233,7 @@ function sandboxSpecBootstrapProfiles(
             OH_SANDBOX_OPERATING_SYSTEM: "windows",
           }
         : {
+            ...(enableDeferredInit ? { OH_DEFERRED_INIT: "true" } : {}),
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: "/workspace/project",
@@ -2122,6 +2498,42 @@ export function renderSandboxServerResources(
               value: "600"
 `
       : "";
+  const hindsightEnv = hindsightBrokerEnv(environment);
+  const hindsightVolumeMount = env.hindsight?.enabled
+    ? `            - name: hindsight-secrets-store
+              mountPath: /mnt/hindsight-secrets
+              readOnly: true
+`
+    : "";
+  const hindsightVolume = env.hindsight?.enabled
+    ? `        - name: hindsight-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: openhands-hindsight-broker-secrets
+`
+    : "";
+  const rbacBootstrapEnv = env.rbac?.secrets?.bootstrapJson
+    ? `            - name: OH_RBAC_BOOTSTRAP_JSON_FILE
+              value: /mnt/rbac-bootstrap-secrets/rbacBootstrapJson
+`
+    : "";
+  const rbacBootstrapVolumeMount = env.rbac?.secrets?.bootstrapJson
+    ? `            - name: rbac-bootstrap-secrets-store
+              mountPath: /mnt/rbac-bootstrap-secrets
+              readOnly: true
+`
+    : "";
+  const rbacBootstrapVolume = env.rbac?.secrets?.bootstrapJson
+    ? `        - name: rbac-bootstrap-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: openhands-rbac-bootstrap-secrets
+`
+    : "";
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -2236,7 +2648,7 @@ ${githubOAuthEnv}            - name: OH_SANDBOX_KIND
               value: https://${env.frontDoorHost}
             - name: OH_PERMITTED_CORS_ORIGINS_0
               value: https://${env.frontDoorHost}
-          readinessProbe:
+${rbacBootstrapEnv}${hindsightEnv}          readinessProbe:
             httpGet:
               path: /ready
               port: http
@@ -2259,11 +2671,11 @@ ${githubOAuthEnv}            - name: OH_SANDBOX_KIND
             - name: sandbox-spec-bootstrap
               mountPath: /etc/openhands
               readOnly: true
-      volumes:
+${rbacBootstrapVolumeMount}${hindsightVolumeMount}      volumes:
         - name: sandbox-spec-bootstrap
           configMap:
             name: openhands-sandbox-spec-bootstrap
----
+${rbacBootstrapVolume}${hindsightVolume}---
 apiVersion: v1
 kind: Service
 metadata:
@@ -2509,6 +2921,25 @@ function renderSandboxProfileTemplate(
         runAsGroup: 10001
         fsGroup: 10001
 `;
+  const linuxWorkspaceInit = isWindows
+    ? ""
+    : `      initContainers:
+        - name: workspace-permissions
+          image: ${image}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              mkdir -p /workspace/project /workspace/worktrees
+              chown 10001:10001 /workspace/project /workspace/worktrees
+              chmod 2775 /workspace/project /workspace/worktrees
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+`;
   const vscodePort = isWindows
     ? ""
     : `            - containerPort: 8001
@@ -2631,7 +3062,7 @@ ${
           operator: Equal
           value: ${profile.nodeTaintValue}
           effect: NoSchedule
-${linuxSecurityContext}      containers:
+${linuxSecurityContext}${linuxWorkspaceInit}      containers:
         - name: agent-server
           image: ${image}
 ${windowsEnvironment}          args: ["--host", "0.0.0.0", "--port", "8000"]
@@ -2759,6 +3190,36 @@ export function renderPostgresBootstrapJob(runtimeIdentities) {
                 'GRANT USAGE, CREATE ON SCHEMA public TO "${env.runtimeIdentity}"'`;
     })
     .join("\n");
+  const hindsightRoles = Object.entries(config.environments)
+    .filter(([, env]) => env.hindsight?.enabled)
+    .map(([environment, env]) => {
+      const hindsight = env.hindsight;
+      return `              hindsight_password="$(cat /hindsight-secrets/${environment}HindsightDatabasePassword)"
+              psql --set ON_ERROR_STOP=1 <<'SQL'
+              DO $$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM pg_catalog.pg_roles
+                  WHERE rolname = '${hindsight.databaseUser}'
+                ) THEN
+                  CREATE ROLE "${hindsight.databaseUser}" LOGIN;
+                END IF;
+              END
+              $$;
+              SQL
+              psql --set ON_ERROR_STOP=1 --set=hindsight_password="$hindsight_password" <<'SQL'
+              ALTER ROLE "${hindsight.databaseUser}" WITH LOGIN PASSWORD :'hindsight_password';
+              SQL
+              psql --set ON_ERROR_STOP=1 --command \\
+                'ALTER DATABASE ${hindsight.database} OWNER TO "${hindsight.databaseUser}"'
+              psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
+                'CREATE EXTENSION IF NOT EXISTS vector'
+              psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
+                'CREATE SCHEMA IF NOT EXISTS ${config.hindsight.databaseSchema} AUTHORIZATION "${hindsight.databaseUser}"'
+              psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
+                'GRANT ALL ON SCHEMA ${config.hindsight.databaseSchema} TO "${hindsight.databaseUser}"'`;
+    })
+    .join("\n");
   return `apiVersion: batch/v1
 kind: Job
 metadata:
@@ -2813,6 +3274,7 @@ spec:
             - |
               export PGPASSWORD="$(cat /auth/token)"
 ${roles}
+${hindsightRoles}
           env:
             - name: PGHOST
               value: ${postgres.fqdn}
@@ -2828,10 +3290,19 @@ ${roles}
             - name: auth
               mountPath: /auth
               readOnly: true
+            - name: hindsight-secrets
+              mountPath: /hindsight-secrets
+              readOnly: true
       volumes:
         - name: auth
           emptyDir:
             medium: Memory
+        - name: hindsight-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: openhands-halo-postgres-bootstrap-secrets
 `;
 }
 
@@ -3308,6 +3779,20 @@ function bootstrapEnvironment(environment) {
   kubectl(["apply", "-f", "-"], {
     input: renderSecretProviderClass(environment, runtime.clientId),
   });
+  const hindsightSecretProviderClass = renderHindsightSecretProviderClass(
+    environment,
+    runtime.clientId,
+  );
+  if (hindsightSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], { input: hindsightSecretProviderClass });
+  }
+  const hindsightBrokerSecretProviderClass =
+    renderHindsightBrokerSecretProviderClass(environment, runtime.clientId);
+  if (hindsightBrokerSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], {
+      input: hindsightBrokerSecretProviderClass,
+    });
+  }
   kubectl(["apply", "-f", "-"], {
     input: renderConversationStorageClass(),
   });
@@ -3593,6 +4078,7 @@ function ensurePostgresNetwork() {
 
 async function bootstrapPostgres() {
   const postgres = config.postgres;
+  validateHindsightPostgresConfig();
   const bootstrapIdentity = ensureIdentity(config.identities.postgresBootstrap);
   ensureFederatedCredential({
     identityName: config.identities.postgresBootstrap,
@@ -3605,6 +4091,31 @@ async function bootstrapPostgres() {
     postgres.bootstrapServiceAccount,
     bootstrapIdentity.clientId,
   );
+  const vaultId = az(
+    [
+      "keyvault",
+      "show",
+      "--resource-group",
+      config.azure.resourceGroup,
+      "--name",
+      config.azure.keyVaultName,
+      "--query",
+      "id",
+      "--output",
+      "tsv",
+    ],
+    { capture: true },
+  );
+  ensureRole({
+    principalId: bootstrapIdentity.principalId,
+    role: "Key Vault Secrets User",
+    scope: vaultId,
+  });
+  kubectl(["apply", "-f", "-"], {
+    input: renderPostgresBootstrapSecretProviderClass(
+      bootstrapIdentity.clientId,
+    ),
+  });
   const network = ensurePostgresNetwork();
   const server = tryRun("az", [
     "postgres",
@@ -3625,23 +4136,9 @@ async function bootstrapPostgres() {
         network.privateDnsZoneId,
       ),
     );
+    az(postgresServerAuthUpdateArgs());
   } else {
-    az([
-      "postgres",
-      "flexible-server",
-      "update",
-      "--resource-group",
-      postgres.resourceGroup,
-      "--name",
-      postgres.serverName,
-      "--set",
-      "authConfig.activeDirectoryAuth=Enabled",
-      `authConfig.tenantId=${config.azure.tenantId}`,
-      "--password-auth",
-      "Disabled",
-      "--output",
-      "none",
-    ]);
+    az(postgresServerAuthUpdateArgs());
     const admin = az(
       [
         "postgres",
@@ -3680,7 +4177,46 @@ async function bootstrapPostgres() {
       ]);
     }
   }
-  for (const env of Object.values(config.environments)) {
+  const currentExtensions = az(
+    [
+      "postgres",
+      "flexible-server",
+      "parameter",
+      "show",
+      "--resource-group",
+      postgres.resourceGroup,
+      "--server-name",
+      postgres.serverName,
+      "--name",
+      "azure.extensions",
+      "--query",
+      "value",
+      "--output",
+      "tsv",
+    ],
+    { capture: true },
+  );
+  az([
+    "postgres",
+    "flexible-server",
+    "parameter",
+    "set",
+    "--resource-group",
+    postgres.resourceGroup,
+    "--server-name",
+    postgres.serverName,
+    "--name",
+    "azure.extensions",
+    "--value",
+    postgresExtensionsParameterValue(currentExtensions),
+    "--output",
+    "none",
+  ]);
+  const databases = Object.values(config.environments).flatMap((env) => [
+    env.database,
+    ...(env.hindsight?.enabled ? [env.hindsight.database] : []),
+  ]);
+  for (const databaseName of databases) {
     const database = az(
       [
         "postgres",
@@ -3692,7 +4228,7 @@ async function bootstrapPostgres() {
         "--server-name",
         postgres.serverName,
         "--query",
-        `[?name=='${env.database}'].name | [0]`,
+        `[?name=='${databaseName}'].name | [0]`,
         "--output",
         "tsv",
       ],
@@ -3709,7 +4245,7 @@ async function bootstrapPostgres() {
         "--server-name",
         postgres.serverName,
         "--name",
-        env.database,
+        databaseName,
         "--output",
         "none",
       ]);
@@ -4075,6 +4611,27 @@ async function deploy(
   kubectl(["apply", "-f", "-"], {
     input: renderSecretProviderClass(environment, clientId),
   });
+  const hindsightSecretProviderClass = renderHindsightSecretProviderClass(
+    environment,
+    clientId,
+  );
+  if (hindsightSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], { input: hindsightSecretProviderClass });
+  }
+  const hindsightBrokerSecretProviderClass =
+    renderHindsightBrokerSecretProviderClass(environment, clientId);
+  if (hindsightBrokerSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], {
+      input: hindsightBrokerSecretProviderClass,
+    });
+  }
+  const rbacBootstrapSecretProviderClass =
+    renderRbacBootstrapSecretProviderClass(environment, clientId);
+  if (rbacBootstrapSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], {
+      input: rbacBootstrapSecretProviderClass,
+    });
+  }
   kubectl([
     "-n",
     env.namespace,
@@ -4152,6 +4709,35 @@ async function deploy(
     "statefulset/openhands-halo",
     "--timeout=15m",
   ]);
+  const hindsightResources = renderHindsightResources(environment);
+  if (hindsightResources) {
+    kubectl(["apply", "-f", "-"], { input: hindsightResources });
+    const hindsightRollout = tryRun("kubectl", [
+      "-n",
+      env.namespace,
+      "rollout",
+      "status",
+      `deployment/${config.hindsight.serviceName}`,
+      "--timeout=15m",
+    ]);
+    if (hindsightRollout.status !== 0) {
+      console.warn(
+        `Optional Hindsight rollout is not ready; continuing fail-open: ${hindsightRollout.stderr.trim() || hindsightRollout.stdout.trim()}`,
+      );
+    }
+  } else {
+    for (const kind of ["deployment", "service", "networkpolicy"]) {
+      kubectl([
+        "-n",
+        env.namespace,
+        "delete",
+        kind,
+        config.hindsight.serviceName,
+        "--ignore-not-found",
+        "--wait=false",
+      ]);
+    }
+  }
   kubectl(["apply", "-f", "-"], {
     input: renderSandboxServerResources(
       environment,
@@ -4187,6 +4773,11 @@ async function deploy(
   console.log(
     `${environment.toUpperCase()}_WINDOWS_RUNTIME_IMAGE=${externalImageReference(config.windowsRuntime.imageRepository, windowsRuntimeDigest)}`,
   );
+  if (env.hindsight?.enabled) {
+    console.log(
+      `${environment.toUpperCase()}_HINDSIGHT_IMAGE=${externalImageReference(config.hindsight.image.repository, config.hindsight.image.digest)}`,
+    );
+  }
 }
 
 export function windowsRuntimeTemplateName() {
@@ -4488,6 +5079,20 @@ function status() {
     console.log(
       `${name}: ${result.status === 0 ? result.stdout.trim() : "not deployed"}`,
     );
+    if (env.hindsight?.enabled) {
+      const hindsight = tryRun("kubectl", [
+        "-n",
+        env.namespace,
+        "get",
+        "deployment",
+        config.hindsight.serviceName,
+        "-o",
+        "jsonpath={.spec.template.spec.containers[0].image}",
+      ]);
+      console.log(
+        `${name} hindsight: ${hindsight.status === 0 ? hindsight.stdout.trim() : "not deployed"}`,
+      );
+    }
   }
 }
 

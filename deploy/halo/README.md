@@ -119,6 +119,96 @@ so agent workloads cannot call the Kubernetes API.
 All names and non-secret Azure identifiers live in `deploy/halo/config.json`.
 Secret values stay in Azure Key Vault.
 
+## Candidate Hindsight memory service
+
+Halo PPE deploys Hindsight as a candidate-only Linux service. The API image is
+the immutable `ghcr.io/vectorize-io/hindsight-api:1.2.1` manifest digest
+recorded in `deploy/halo/config.json`; that release was published on
+2026-11-10. The source and licensing review is pinned to
+`vectorize-io/hindsight@b5f5968ebf2a7dbe6363809fac0b31e428008171`.
+Its `LICENSE` is MIT and its README identifies the project as MIT. Halo does
+not copy Hindsight source.
+
+The service has no ingress and only a ClusterIP. A NetworkPolicy permits API
+traffic only from the trusted Sandbox Server pod, while the existing sandbox
+template can reach Sandbox Server but not Hindsight. Hindsight requires a
+bearer key on every data request; only Sandbox Server and the Hindsight pod
+receive that Key Vault-backed secret. The URL and key are never rendered into
+sandbox templates or sandbox environment variables.
+
+PPE uses a separate `openhands_hindsight_ppe` database, role, and `hindsight`
+schema on the existing private PostgreSQL 16 Flexible Server. `bootstrap`
+validates PostgreSQL 15+, allowlists the `VECTOR` extension, creates the
+database/role/schema, and installs pgvector. Password authentication remains
+enabled only because Hindsight does not natively refresh Azure Database for
+PostgreSQL workload-identity tokens; the password stays in Key Vault and the
+server remains private. The bootstrap and runtime pods read secrets through
+Azure Workload Identity and the Secrets Store CSI driver.
+
+Create these PPE Key Vault secrets before `bootstrap`:
+
+- `halo-ppe-hindsight-database-password`
+- `halo-ppe-hindsight-api-key`
+- `halo-ppe-hindsight-llm-api-key`
+- `halo-ppe-hindsight-bank-secret`
+- `halo-ppe-hindsight-scope-bindings-json`
+
+The LLM key is the Azure OpenAI resource key for `mortmain-openai2`; it is
+mounted only into Hindsight. Hindsight uses the full API image so embeddings
+and reranking remain local to the service.
+
+Sandbox Server is the authorization broker and owns durable bank identity,
+retain/recall calls, and fail-open behavior. Its deployment contract enables
+Hindsight only in PPE and only for Linux OpenHands conversations, with
+automatic recall ceilings of 1,024 tokens by default and 2,048 adaptively, and
+an explicit deep recall/reflect ceiling of 4,096. A Hindsight outage must not
+block normal conversation startup or messages. Any agent-facing deep-recall
+request shape belongs in `OpenHands/software-agent-sdk`; Sandbox Server must
+consume that canonical contract rather than creating a second wire format.
+The deployment-owned `OH_HINDSIGHT_DEPLOYMENT_ID=halo-ppe` derives the typed
+server-wide bank and is configured only on Sandbox Server. Every authenticated
+bound session may recall and retain server-wide memory. Callers cannot supply
+or override the deployment or bank identifier.
+The broker reads the Hindsight bearer key and bank secret exclusively from
+`OH_HINDSIGHT_API_KEY_FILE` and `OH_HINDSIGHT_BANK_SECRET_FILE`. Organization
+definitions and repository/workspace associations come from
+`OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE`. These files use a dedicated
+broker-only CSI mount; their values are never environment variables or sandbox
+configuration. The scope-bindings file is
+`{"organizations":{"personal-user-id":{"display_name":"Personal","kind":"personal"},"halo-studios":{"display_name":"Halo Studios","kind":"shared"}},"repositories":{"github:owner/repo":{"organization_ids":["personal-user-id","halo-studios"]}}}`.
+Stable organization IDs and repository allowlists are trusted deployment data;
+display names and kinds are metadata. Membership, roles, permissions, and
+allowed users are not deployment data: OpenHands RBAC owns them. Sandbox
+Server derives repository and workspace identity from trusted conversation
+metadata, verifies the selected organization against the repository allowlist
+and signed OpenHands RBAC context, and never accepts caller-provided scope IDs.
+
+Candidate Linux OpenHands profiles set `OH_DEFERRED_INIT=true`. Sandbox Server
+keeps `OH_HINDSIGHT_BROKER_URL=http://openhands-sandbox-server:3000` in its
+trusted control-plane environment and passes the broker URL, identity, and
+authorized scope only through the authenticated `/api/init` payload. The
+dynamically injected `OH_SESSION_API_KEYS_0` remains the Agent Server bootstrap
+credential used for `X-Init-API-Key`. Windows and ACP profiles are outside this
+PoC and do not enable deferred init. Hindsight service credentials, bank
+secrets, and scope configuration never enter the payload or sandbox specs.
+
+Entra authenticates immutable tenant/object identity only; Halo does not use
+Entra group claims as its application authorization database. The durable
+OpenHands UserAuth/RBAC contract must authorize that identity and bind trusted
+`tenant_id`, `object_id`, `organization_id`, `role`, and `permissions` fields
+to `AppConversationInfo`/conversation metadata. The broker fails closed unless
+that context is present, requires `hindsight:recall` or `hindsight:retain` for
+the corresponding organization/repository/workspace operation, and requires
+its ordered `{type:"organization",id:"<stable-id>"}` scope to match the signed
+RBAC context. Server scope follows the explicit all-authenticated-session
+recall/retain policy but still requires immutable authenticated identity.
+Canvas already models an active organization for Cloud backends in the
+lower-left backend selector, but Halo still needs a control-plane
+organization-list contract that exposes Personal and Halo Studios and binds
+the selected stable ID when creating a conversation. No deployment membership
+file remains; any initial membership seeding belongs to an OpenHands RBAC seed
+or migration, not the Hindsight broker.
+
 `bootstrap` also enforces the Entra contract for each environment: a v2
 `access_as_user` scope preauthorized to the same confidential client. This
 avoids an interactive permission-consent prompt without granting Microsoft

@@ -167,6 +167,25 @@ jobs:
             "$base_url/api/v1/sandboxes")"
           test "$status" = "401"
 
+      - name: Verify private Hindsight boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url=http://openhands-hindsight.openhands-halo-ppe.svc.cluster.local:8888
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error "$base_url/health"; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              echo "::error::Private Hindsight service did not become ready"
+              exit 1
+            fi
+            sleep 5
+          done
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "$base_url/v1/default/banks")"
+          test "$status" = "401"
+
   promote-candidate:
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy-and-promote'
     needs:
