@@ -1729,19 +1729,19 @@ extraVolumeMounts:
 
 function sandboxSpecBootstrapProfiles(
   environment,
-  agentServerDigest,
+  sandboxRuntimeDigest,
   windowsRuntimeDigest,
 ) {
   const linuxImage = imageReference(
     config.azure.acrLoginServer,
-    config.build.agentServerRepository,
-    agentServerDigest,
+    config.build.sandboxRuntimeRepository,
+    sandboxRuntimeDigest,
   );
   const windowsImage = externalImageReference(
     config.windowsRuntime.imageRepository,
     windowsRuntimeDigest,
   );
-  const bootstrapRevision = `${agentServerDigest}:${windowsRuntimeDigest}`;
+  const bootstrapRevision = `${sandboxRuntimeDigest}:${windowsRuntimeDigest}`;
   return config.agentSandbox.profileSeeds.map((profile) => {
     const isWindows = profile.os === "windows";
     return {
@@ -1850,13 +1850,13 @@ function sandboxSpecBootstrapProfiles(
 
 export function renderSandboxSpecBootstrapConfigMap(
   environment,
-  agentServerDigest,
+  sandboxRuntimeDigest,
   windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
   const json = sandboxSpecBootstrapJson(
     environment,
-    agentServerDigest,
+    sandboxRuntimeDigest,
     windowsRuntimeDigest,
   )
     .split("\n")
@@ -2627,14 +2627,14 @@ spec:
 
 export function renderAgentSandboxResources(
   environment,
-  agentServerDigest,
+  sandboxRuntimeDigest,
   windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
   const linuxAgentServerImage = imageReference(
     config.azure.acrLoginServer,
-    config.build.agentServerRepository,
-    agentServerDigest,
+    config.build.sandboxRuntimeRepository,
+    sandboxRuntimeDigest,
   );
   const windowsAgentServerImage = externalImageReference(
     config.windowsRuntime.imageRepository,
@@ -4056,14 +4056,14 @@ async function deploy(
   kubectl(["apply", "-f", "-"], {
     input: renderSandboxSpecBootstrapConfigMap(
       environment,
-      agentServerDigest,
+      sandboxRuntimeDigest,
       windowsRuntimeDigest,
     ),
   });
   kubectl(["apply", "-f", "-"], {
     input: renderAgentSandboxResources(
       environment,
-      agentServerDigest,
+      sandboxRuntimeDigest,
       windowsRuntimeDigest,
     ),
   });

@@ -554,6 +554,12 @@ describe("Halo deployment automation", () => {
     );
 
     expect(configMap).toContain('"working_dir": "/workspace/project"');
+    expect(configMap).toContain(
+      `\"image\": \"uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-runtime@${digest}\"`,
+    );
+    expect(configMap).not.toContain(
+      `\"image\": \"uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${digest}\"`,
+    );
     expect(configMap).toContain('"workspace_mount_path": "/workspace"');
     expect(configMap).toContain('"durable_state_dir": "/openhands"');
     expect(configMap).toContain('"durable_mount_path": "/openhands"');
@@ -879,11 +885,11 @@ describe("Halo deployment automation", () => {
   });
 
   it("renders isolated agent-sandbox resources for each environment", () => {
-    const agentServerDigest = `sha256:${"c".repeat(64)}`;
+    const sandboxRuntimeDigest = `sha256:${"c".repeat(64)}`;
     const windowsRuntimeDigest = `sha256:${"e".repeat(64)}`;
     const resources = renderAgentSandboxResources(
       "candidate",
-      agentServerDigest,
+      sandboxRuntimeDigest,
       windowsRuntimeDigest,
     );
 
@@ -896,7 +902,10 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("envVarsInjectionPolicy: Allowed");
     expect(resources).toContain("service: true");
     expect(resources).toContain(
-      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${agentServerDigest}`,
+      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-runtime@${sandboxRuntimeDigest}`,
+    );
+    expect(resources).not.toContain(
+      `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${sandboxRuntimeDigest}`,
     );
     expect(resources).not.toContain("AGENT_CANVAS_BACKEND");
     expect(resources).not.toContain("agent-canvas-session-key");
