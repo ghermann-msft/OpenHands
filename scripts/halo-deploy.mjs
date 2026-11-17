@@ -1862,7 +1862,7 @@ spec:
             - |
               export HINDSIGHT_DATABASE_PASSWORD="$(cat /mnt/hindsight-secrets/hindsightDatabasePassword)"
               encoded_password="$(python -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["HINDSIGHT_DATABASE_PASSWORD"], safe=""))')"
-              export HINDSIGHT_API_DATABASE_URL="postgresql://${hindsight.databaseUser}:$encoded_password@${config.postgres.fqdn}:5432/${hindsight.database}?ssl=require"
+              export HINDSIGHT_API_DATABASE_URL="postgresql://${hindsight.databaseUser}:$encoded_password@${config.postgres.fqdn}:5432/${hindsight.database}?sslmode=require"
               export HINDSIGHT_API_TENANT_API_KEY="$(cat /mnt/hindsight-secrets/hindsightApiKey)"
               export HINDSIGHT_API_LLM_API_KEY="$(cat /mnt/hindsight-secrets/hindsightLlmApiKey)"
               exec /app/start-all.sh
@@ -1870,6 +1870,8 @@ spec:
             - name: http
               containerPort: ${config.hindsight.port}
           env:
+            - name: PGSSLMODE
+              value: require
             - name: HINDSIGHT_API_DATABASE_SCHEMA
               value: ${config.hindsight.databaseSchema}
             - name: HINDSIGHT_API_RUN_MIGRATIONS_ON_STARTUP
@@ -1888,7 +1890,7 @@ spec:
               value: halo-${environment}
           startupProbe:
             httpGet:
-              path: /health/live
+              path: /health
               port: http
             periodSeconds: 10
             failureThreshold: 60

@@ -172,7 +172,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach e1ad6524c6c3c90b41663edd4366f422a5867e39",
+      "git checkout --detach 0f262a3f6e44bd4257f2b3fbb107590350c9ecb2",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -845,6 +845,12 @@ describe("Halo deployment automation", () => {
       'HINDSIGHT_API_DATABASE_URL="postgresql://openhands_hindsight_ppe:',
     );
     expect(resources).toContain(
+      "/openhands_hindsight_ppe?sslmode=require",
+    );
+    expect(resources).toContain(
+      "name: PGSSLMODE\n              value: require",
+    );
+    expect(resources).toContain(
       "name: HINDSIGHT_API_DATABASE_SCHEMA\n              value: hindsight",
     );
     expect(resources).toContain(
@@ -862,6 +868,9 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).toContain(
       "secretProviderClass: openhands-hindsight-secrets",
+    );
+    expect(resources).toContain(
+      "startupProbe:\n            httpGet:\n              path: /health",
     );
     expect(resources).toContain("path: /health/live");
     expect(resources).toContain("path: /health");
