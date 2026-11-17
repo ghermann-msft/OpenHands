@@ -37043,6 +37043,24 @@
     "ca": "Tanca la sessió",
     "id": "Keluar"
   },
+  "ACCOUNT$SIGN_OUT": {
+    "en": "Sign out",
+    "ja": "サインアウト",
+    "zh-CN": "退出登录",
+    "zh-TW": "登出",
+    "ko-KR": "로그아웃",
+    "no": "Logg ut",
+    "it": "Esci",
+    "pt": "Sair",
+    "es": "Cerrar sesión",
+    "ar": "تسجيل الخروج",
+    "fr": "Se déconnecter",
+    "tr": "Çıkış yap",
+    "de": "Abmelden",
+    "uk": "Вийти",
+    "ca": "Tanca la sessió",
+    "id": "Keluar"
+  },
   "BACKEND$DIGITALOCEAN_SWITCH_CONNECTION": {
     "en": "Connection",
     "ja": "接続",

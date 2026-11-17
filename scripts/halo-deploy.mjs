@@ -1762,6 +1762,8 @@ function hindsightBrokerEnv(environment) {
               value: ${quote(String(hindsight.linuxOnly))}
             - name: OH_HINDSIGHT_BASE_URL
               value: http://${config.hindsight.serviceName}:${config.hindsight.port}
+            - name: OH_HINDSIGHT_BROKER_URL
+              value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
             - name: OH_HINDSIGHT_DEPLOYMENT_ID
               value: ${quote(hindsight.deploymentId)}
             - name: OH_HINDSIGHT_API_KEY_FILE
@@ -2039,6 +2041,8 @@ config:
       value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
     - name: AGENT_CANVAS_CLOUD_URL
       value: https://${env.frontDoorHost}
+    - name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE
+      value: required
     - name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL
       value: "false"
     - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE
@@ -2111,10 +2115,11 @@ function sandboxSpecBootstrapProfiles(
     config.windowsRuntime.imageRepository,
     windowsRuntimeDigest,
   );
-  const bootstrapRevision = `${sandboxRuntimeDigest}:${windowsRuntimeDigest}`;
   return config.agentSandbox.profileSeeds.map((profile) => {
     const isWindows = profile.os === "windows";
-    return {
+    const enableDeferredInit =
+      !isWindows && config.environments[environment].hindsight?.enabled;
+    const bootstrapProfile = {
       id: profile.id,
       display_name: profile.name,
       description: null,
@@ -2189,7 +2194,6 @@ function sandboxSpecBootstrapProfiles(
       startup_timeout_seconds: isWindows ? 600 : 300,
       initial_env: isWindows
         ? {
-            PATH: WINDOWS_RUNTIME_PATH,
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: config.windowsRuntime.workingDir,
@@ -2201,6 +2205,7 @@ function sandboxSpecBootstrapProfiles(
             OH_SANDBOX_OPERATING_SYSTEM: "windows",
           }
         : {
+            ...(enableDeferredInit ? { OH_DEFERRED_INIT: "true" } : {}),
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: "/workspace/project",
@@ -2214,7 +2219,12 @@ function sandboxSpecBootstrapProfiles(
         ? config.windowsRuntime.workingDir
         : "/workspace/project",
       command: null,
-      bootstrap_revision: bootstrapRevision,
+    };
+    return {
+      ...bootstrapProfile,
+      bootstrap_revision: `sha256:${createHash("sha256")
+        .update(JSON.stringify(bootstrapProfile))
+        .digest("hex")}`,
     };
   });
 }
@@ -2857,6 +2867,25 @@ function renderSandboxProfileTemplate(
         runAsGroup: 10001
         fsGroup: 10001
 `;
+  const linuxWorkspaceInit = isWindows
+    ? ""
+    : `      initContainers:
+        - name: workspace-permissions
+          image: ${image}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              mkdir -p /workspace/project /workspace/worktrees
+              chown 10001:10001 /workspace/project /workspace/worktrees
+              chmod 2775 /workspace/project /workspace/worktrees
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+`;
   const vscodePort = isWindows
     ? ""
     : `            - containerPort: 8001
@@ -2979,7 +3008,7 @@ ${
           operator: Equal
           value: ${profile.nodeTaintValue}
           effect: NoSchedule
-${linuxSecurityContext}      containers:
+${linuxSecurityContext}${linuxWorkspaceInit}      containers:
         - name: agent-server
           image: ${image}
 ${windowsEnvironment}          args: ["--host", "0.0.0.0", "--port", "8000"]

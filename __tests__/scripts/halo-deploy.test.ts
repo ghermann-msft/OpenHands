@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -622,9 +623,7 @@ describe("Halo deployment automation", () => {
       '"node.kubernetes.io/windows-build": "10.0.26100"',
     );
     expect(configMap).toContain('"initial_env": {');
-    expect(configMap).toContain(
-      '"PATH": "C:\\\\Windows\\\\System32;C:\\\\Windows;C:\\\\Windows\\\\System32\\\\Wbem;C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0;C:\\\\MinGit\\\\cmd;C:\\\\MinGit\\\\mingw64\\\\bin"',
-    );
+    expect(configMap).not.toContain('"PATH":');
     expect(configMap).toContain('"OH_ENABLE_VNC": "0"');
     expect(configMap).toContain('"LOG_JSON": "true"');
     expect(configMap).toContain('"PYTHONUNBUFFERED": "1"');
@@ -632,6 +631,7 @@ describe("Halo deployment automation", () => {
     expect(configMap).not.toContain('"state_path"');
     expect(configMap).not.toContain("OH_SESSION_API_KEYS_0");
     expect(configMap).not.toContain("OH_SECRET_KEY");
+    expect(configMap).not.toContain("OH_HINDSIGHT");
     expect(configMap).toContain(
       '"OH_CONVERSATION_WORKTREE_ROOT": "C:\\\\workspace\\\\worktrees"',
     );
@@ -651,6 +651,32 @@ describe("Halo deployment automation", () => {
     expect(configMap).toContain(
       '"OH_CONVERSATIONS_PATH": "C:\\\\OpenHands\\\\{sandbox_id}\\\\conversations"',
     );
+
+    const profiles = JSON.parse(
+      configMap
+        .split("  sandbox-specs.json: |\n", 2)[1]
+        .split("\n")
+        .map((line) => line.replace(/^ {4}/, ""))
+        .join("\n"),
+    ) as Array<Record<string, unknown>>;
+    for (const profile of profiles) {
+      const initialEnv = profile.initial_env as Record<string, string>;
+      if (profile.operating_system === "linux") {
+        expect(initialEnv.OH_DEFERRED_INIT).toBe("true");
+      } else {
+        expect(initialEnv).not.toHaveProperty("OH_DEFERRED_INIT");
+      }
+      const { bootstrap_revision: revision, ...contract } = profile;
+      expect(revision).toBe(
+        `sha256:${createHash("sha256")
+          .update(JSON.stringify(contract))
+          .digest("hex")}`,
+      );
+    }
+
+    expect(
+      renderSandboxSpecBootstrapConfigMap("primary", digest, windowsDigest),
+    ).not.toContain("OH_DEFERRED_INIT");
   });
 
   it("renders an NTFS workspace storage class for Windows sandboxes", () => {
@@ -780,6 +806,9 @@ describe("Halo deployment automation", () => {
     );
     expect(values).toContain(
       "name: AGENT_CANVAS_CLOUD_URL\n      value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
+    );
+    expect(values).toContain(
+      "name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE\n      value: required",
     );
     expect(values).toContain(
       'name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL\n      value: "false"',
@@ -966,6 +995,9 @@ describe("Halo deployment automation", () => {
       "name: OH_HINDSIGHT_BASE_URL\n              value: http://openhands-hindsight:8888",
     );
     expect(resources).toContain(
+      "name: OH_HINDSIGHT_BROKER_URL\n              value: http://openhands-sandbox-server:3000",
+    );
+    expect(resources).toContain(
       'name: OH_HINDSIGHT_DEPLOYMENT_ID\n              value: "halo-ppe"',
     );
     expect(resources).toContain(
@@ -1044,6 +1076,7 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).not.toContain("HINDSIGHT");
     expect(resources).not.toContain("openhands-hindsight");
+    expect(resources).not.toContain("OH_HINDSIGHT_BROKER_URL");
     expect(resources).toContain("kind: SandboxTemplate");
     expect(resources).toContain("volumeClaimTemplatesPolicy: Overrides");
     expect(resources).toContain("namespace: openhands-halo-ppe");
@@ -1058,6 +1091,25 @@ describe("Halo deployment automation", () => {
     expect(resources).not.toContain("AGENT_CANVAS_BACKEND");
     expect(resources).not.toContain("agent-canvas-session-key");
     expect(resources).toContain("workingDir: /workspace/project");
+    const sandboxTemplates = resources
+      .split("---")
+      .filter((document) => document.includes("kind: SandboxTemplate"));
+    for (const template of sandboxTemplates) {
+      if (template.includes("openhands.dev/os: linux")) {
+        expect(template).toContain("name: workspace-permissions");
+        expect(template).toContain(
+          "mkdir -p /workspace/project /workspace/worktrees",
+        );
+        expect(template).toContain(
+          "chown 10001:10001 /workspace/project /workspace/worktrees",
+        );
+        expect(template).toContain(
+          "chmod 2775 /workspace/project /workspace/worktrees",
+        );
+      } else {
+        expect(template).not.toContain("name: workspace-permissions");
+      }
+    }
     expect(resources).toContain(
       "name: openhands-state\n              mountPath: /openhands\n              subPathExpr: $(OH_SANDBOX_ID)",
     );

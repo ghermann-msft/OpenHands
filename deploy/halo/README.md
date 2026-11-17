@@ -183,6 +183,15 @@ Server derives repository and workspace identity from trusted conversation
 metadata, verifies the selected organization against the repository allowlist
 and signed OpenHands RBAC context, and never accepts caller-provided scope IDs.
 
+Candidate Linux OpenHands profiles set `OH_DEFERRED_INIT=true`. Sandbox Server
+keeps `OH_HINDSIGHT_BROKER_URL=http://openhands-sandbox-server:3000` in its
+trusted control-plane environment and passes the broker URL, identity, and
+authorized scope only through the authenticated `/api/init` payload. The
+dynamically injected `OH_SESSION_API_KEYS_0` remains the Agent Server bootstrap
+credential used for `X-Init-API-Key`. Windows and ACP profiles are outside this
+PoC and do not enable deferred init. Hindsight service credentials, bank
+secrets, and scope configuration never enter the payload or sandbox specs.
+
 Entra authenticates immutable tenant/object identity only; Halo does not use
 Entra group claims as its application authorization database. The durable
 OpenHands UserAuth/RBAC contract must authorize that identity and bind trusted
