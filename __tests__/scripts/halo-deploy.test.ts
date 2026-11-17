@@ -18,6 +18,8 @@ import {
   natGatewayPublicIpCreateArgs,
   natGatewaySubnetUpdateArgs,
   normalizeDigest,
+  postgresExtensionsParameterValue,
+  postgresServerAuthUpdateArgs,
   postgresServerCreateArgs,
   renderArcControllerValues,
   renderArcRunnerRbac,
@@ -30,7 +32,10 @@ import {
   renderFrontDoorSecurityPolicy,
   renderFrontDoorWafPolicy,
   renderHelmValues,
+  renderHindsightResources,
+  renderHindsightSecretProviderClass,
   renderPostgresBootstrapJob,
+  renderPostgresBootstrapSecretProviderClass,
   renderSandboxServerResources,
   renderSecretProviderClass,
   renderSandboxSpecBootstrapConfigMap,
@@ -41,6 +46,7 @@ import {
   validateWindowsRuntimeNodePool,
   validateNatGatewayPublicIp,
   validateBuildNodePool,
+  validateHindsightPostgresConfig,
   validateWindowsNodePoolName,
   windowsRuntimeTemplateName,
   windowsRuntimeNodePoolAutoscalerArgs,
@@ -735,6 +741,7 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-sandbox-jwt-secret");
     expect(spc).toContain("halo-ppe-github-app-client-id");
     expect(spc).toContain("halo-ppe-github-app-client-secret");
+    expect(spc).not.toContain("hindsight");
     expect(values).toContain(`digest: ${digest}`);
     expect(values).toContain("serviceAccount:\n  create: false");
     expect(values).toContain("value: azure/gpt-5.6-sol");
@@ -784,6 +791,51 @@ describe("Halo deployment automation", () => {
     );
     expect(values).not.toContain("AGENT_CANVAS_WORKSPACE_RUNTIME_NAMESPACE");
     expect(values).not.toContain("halo-primary-entra-client-secret");
+  });
+
+  it("renders candidate-only private Hindsight behind Sandbox Server", () => {
+    const resources = renderHindsightResources("candidate");
+
+    expect(resources).toContain(
+      "image: ghcr.io/vectorize-io/hindsight-api@sha256:662109ece429871a81e036427fb93fbb09ba9dc4b01d320d356f114c0e1aedd8",
+    );
+    expect(resources).toContain(
+      'openhands.dev/hindsight-license-reviewed-revision: "b5f5968ebf2a7dbe6363809fac0b31e428008171"',
+    );
+    expect(resources).toContain('openhands.dev/hindsight-license: "MIT"');
+    expect(resources).toContain("automountServiceAccountToken: false");
+    expect(resources).toContain(
+      'HINDSIGHT_API_DATABASE_URL="postgresql://openhands_hindsight_ppe:',
+    );
+    expect(resources).toContain(
+      "name: HINDSIGHT_API_DATABASE_SCHEMA\n              value: hindsight",
+    );
+    expect(resources).toContain(
+      "name: HINDSIGHT_API_VECTOR_EXTENSION\n              value: pgvector",
+    );
+    expect(resources).toContain(
+      "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension",
+    );
+    expect(resources).toContain(
+      "cat /mnt/hindsight-secrets/hindsightDatabasePassword",
+    );
+    expect(resources).toContain("cat /mnt/hindsight-secrets/hindsightApiKey");
+    expect(resources).toContain(
+      "cat /mnt/hindsight-secrets/hindsightLlmApiKey",
+    );
+    expect(resources).toContain(
+      "secretProviderClass: openhands-hindsight-secrets",
+    );
+    expect(resources).toContain("path: /health/live");
+    expect(resources).toContain("path: /health");
+    expect(resources).toContain("type: ClusterIP");
+    expect(resources).toContain("kind: NetworkPolicy");
+    expect(resources).toContain(
+      "app.kubernetes.io/name: openhands-sandbox-server",
+    );
+    expect(resources).toContain("cidr: 10.70.15.0/24");
+    expect(resources).not.toContain("kind: Ingress");
+    expect(renderHindsightResources("primary")).toBe("");
   });
 
   it("renders a passwordless workload-identity Sandbox Server", () => {
@@ -906,6 +958,43 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "name: OH_GITHUB_OAUTH_SUCCESS_URL\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/settings/app",
     );
+    expect(resources).toContain(
+      'name: OH_HINDSIGHT_ENABLED\n              value: "true"',
+    );
+    expect(resources).toContain(
+      "name: OH_HINDSIGHT_BASE_URL\n              value: http://openhands-hindsight:8888",
+    );
+    expect(resources).toContain(
+      "name: OH_HINDSIGHT_API_KEY_FILE\n              value: /mnt/hindsight-secrets/hindsightApiKey",
+    );
+    expect(resources).toContain(
+      "secretProviderClass: openhands-hindsight-secrets",
+    );
+    expect(resources).toContain(
+      'name: OH_HINDSIGHT_FAIL_OPEN\n              value: "true"',
+    );
+    expect(resources).toContain(
+      'name: OH_HINDSIGHT_LINUX_ONLY\n              value: "true"',
+    );
+    expect(resources).toContain(
+      'name: OH_HINDSIGHT_AUTOMATIC_RECALL_DEFAULT_MAX_TOKENS\n              value: "1024"',
+    );
+    expect(resources).toContain(
+      'name: OH_HINDSIGHT_AUTOMATIC_RECALL_ADAPTIVE_MAX_TOKENS\n              value: "2048"',
+    );
+    expect(resources).toContain(
+      'name: OH_HINDSIGHT_DEEP_RECALL_MAX_TOKENS\n              value: "4096"',
+    );
+    expect(
+      renderSandboxServerResources(
+        "primary",
+        `sha256:${"b".repeat(64)}`,
+        `sha256:${"d".repeat(64)}`,
+        `sha256:${"a".repeat(64)}`,
+        "runtime-client-id",
+        digest,
+      ),
+    ).toContain('name: OH_HINDSIGHT_ENABLED\n              value: "false"');
     expect(resources).toContain("containerPort: 3000");
     expect(resources).toContain("path: /ready");
     expect(resources).toContain("kind: Service");
@@ -923,6 +1012,8 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "apiVersion: extensions.agents.x-k8s.io/v1beta1",
     );
+    expect(resources).not.toContain("HINDSIGHT");
+    expect(resources).not.toContain("openhands-hindsight");
     expect(resources).toContain("kind: SandboxTemplate");
     expect(resources).toContain("volumeClaimTemplatesPolicy: Overrides");
     expect(resources).toContain("namespace: openhands-halo-ppe");
@@ -969,7 +1060,7 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("name: openhands-halo");
   });
 
-  it("creates private Entra-only PostgreSQL and bootstraps runtime roles", () => {
+  it("creates private PostgreSQL and bootstraps isolated Hindsight storage", () => {
     const bootstrapIdentity = {
       name: "openhands-halo-postgres-bootstrap-mi",
       principalId: "bootstrap-object-id",
@@ -989,6 +1080,9 @@ describe("Halo deployment automation", () => {
     expect(args).toContain("Enabled");
     expect(args).toContain("--password-auth");
     expect(args).toContain("Disabled");
+    expect(postgresServerAuthUpdateArgs()).toEqual(
+      expect.arrayContaining(["--password-auth", "Enabled"]),
+    );
     expect(args).toContain("bootstrap-object-id");
     expect(args).toContain("--subnet");
     expect(args).toContain("--private-dns-zone");
@@ -1009,7 +1103,53 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       'GRANT USAGE, CREATE ON SCHEMA public TO "openhands-halo-primary-runtime-mi"',
     );
-    expect(job).not.toContain("DB_PASS");
+    expect(job).toContain(
+      "cat /hindsight-secrets/candidateHindsightDatabasePassword",
+    );
+    expect(job).toContain('CREATE ROLE "openhands_hindsight_ppe" LOGIN');
+    expect(job).toContain(
+      'ALTER DATABASE openhands_hindsight_ppe OWNER TO "openhands_hindsight_ppe"',
+    );
+    expect(job).toContain("CREATE EXTENSION IF NOT EXISTS vector");
+    expect(job).toContain(
+      'CREATE SCHEMA IF NOT EXISTS hindsight AUTHORIZATION "openhands_hindsight_ppe"',
+    );
+    expect(job).toContain(
+      "secretProviderClass: openhands-halo-postgres-bootstrap-secrets",
+    );
+    expect(job).not.toContain("halo-ppe-hindsight-database-password");
+    expect(postgresExtensionsParameterValue("PG_STAT_STATEMENTS")).toBe(
+      "PG_STAT_STATEMENTS,VECTOR",
+    );
+    expect(postgresExtensionsParameterValue("VECTOR")).toBe("VECTOR");
+    expect(validateHindsightPostgresConfig()).toBeUndefined();
+  });
+
+  it("renders bootstrap-only access to the Hindsight database password", () => {
+    const spc = renderPostgresBootstrapSecretProviderClass(
+      "bootstrap-client-id",
+    );
+
+    expect(spc).toContain("namespace: openhands-halo-build");
+    expect(spc).toContain('clientID: "bootstrap-client-id"');
+    expect(spc).toContain("halo-ppe-hindsight-database-password");
+    expect(spc).not.toContain("halo-primary-hindsight");
+  });
+
+  it("isolates Hindsight runtime secrets from the Canvas secret mount", () => {
+    const spc = renderHindsightSecretProviderClass(
+      "candidate",
+      "runtime-client-id",
+    );
+
+    expect(spc).toContain("name: openhands-hindsight-secrets");
+    expect(spc).toContain("halo-ppe-hindsight-database-password");
+    expect(spc).toContain("halo-ppe-hindsight-api-key");
+    expect(spc).toContain("halo-ppe-hindsight-llm-api-key");
+    expect(spc).not.toContain("secretObjects:");
+    expect(
+      renderHindsightSecretProviderClass("primary", "runtime-client-id"),
+    ).toBe("");
   });
 
   it("uses retained Azure Files storage for conversation state", () => {
