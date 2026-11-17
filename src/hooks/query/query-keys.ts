@@ -10,6 +10,8 @@ export const QUERY_KEYS = {
   WEB_CLIENT_CONFIG: ["web-client-config"] as const,
   /** Same-origin OpenHands app cookie authentication status */
   MAIN_APP_COOKIE_AUTH: ["main-app-cookie-auth"] as const,
+  /** Current authenticated user from the Entra BFF */
+  MAIN_APP_USER: ["main-app-user"] as const,
 } as const;
 
 export const SETTINGS_QUERY_KEYS = {

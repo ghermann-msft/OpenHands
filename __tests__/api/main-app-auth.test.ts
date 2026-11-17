@@ -6,16 +6,21 @@ import {
   authenticateWithMainAppCookie,
   MAIN_APP_ANALYTICS_EVENTS_PATH,
   MAIN_APP_AUTHENTICATE_PATH,
+  MAIN_APP_CURRENT_USER_PATH,
+  MAIN_APP_LOGOUT_PATH,
+  getCurrentMainAppUser,
   reportCanvasAuthenticated,
 } from "#/api/main-app-auth";
 
 vi.mock("axios", () => ({
   default: {
+    get: vi.fn(),
     post: vi.fn(),
     isAxiosError: vi.fn(),
   },
 }));
 
+const getMock = vi.mocked(axios.get);
 const postMock = vi.mocked(axios.post);
 const isAxiosErrorMock = vi.mocked(axios.isAxiosError);
 
@@ -56,11 +61,9 @@ describe("main app cookie authentication", () => {
     await expect(authenticateWithMainAppCookie()).resolves.toBe(false);
 
     expect(postMock).toHaveBeenCalledOnce();
-    expect(postMock).toHaveBeenCalledWith(
-      MAIN_APP_AUTHENTICATE_PATH,
-      null,
-      { withCredentials: true },
-    );
+    expect(postMock).toHaveBeenCalledWith(MAIN_APP_AUTHENTICATE_PATH, null, {
+      withCredentials: true,
+    });
   });
 
   it("isolates analytics failures from application startup", async () => {
@@ -76,5 +79,22 @@ describe("main app cookie authentication", () => {
     await reportCanvasAuthenticated();
 
     expect(postMock).toHaveBeenCalledOnce();
+  });
+
+  it("loads the current Entra user from the main app", async () => {
+    const user = {
+      id: "user-1",
+      name: "Grace Hopper",
+      username: "grace@example.com",
+      tenantId: "tenant-1",
+    };
+    getMock.mockResolvedValue({ data: user });
+
+    await expect(getCurrentMainAppUser()).resolves.toEqual(user);
+
+    expect(getMock).toHaveBeenCalledWith(MAIN_APP_CURRENT_USER_PATH, {
+      withCredentials: true,
+    });
+    expect(MAIN_APP_LOGOUT_PATH).toBe("/auth/logout");
   });
 });

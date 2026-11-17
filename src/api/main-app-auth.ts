@@ -4,8 +4,17 @@ import { getLockedCloudAuthMode } from "./agent-server-config";
 
 export const MAIN_APP_AUTHENTICATE_PATH = "/api/authenticate";
 export const MAIN_APP_ANALYTICS_EVENTS_PATH = "/api/analytics/events";
+export const MAIN_APP_CURRENT_USER_PATH = "/auth/me";
 export const MAIN_APP_LOGIN_PATH = "/login";
 export const MAIN_APP_LOGIN_REDIRECT_PARAM = "returnTo";
+export const MAIN_APP_LOGOUT_PATH = "/auth/logout";
+
+export interface MainAppUser {
+  id: string;
+  name: string | null;
+  username: string | null;
+  tenantId: string;
+}
 
 const LOCAL_BROWSER_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -59,6 +68,13 @@ export async function authenticateWithMainAppCookie(): Promise<boolean> {
     }
     throw error;
   }
+}
+
+export async function getCurrentMainAppUser(): Promise<MainAppUser> {
+  const response = await axios.get<MainAppUser>(MAIN_APP_CURRENT_USER_PATH, {
+    withCredentials: true,
+  });
+  return response.data;
 }
 
 export function buildMainAppLoginRedirect(

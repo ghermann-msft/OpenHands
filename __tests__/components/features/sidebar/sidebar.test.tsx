@@ -22,6 +22,8 @@ import {
 import { getPinnedHomeRouteKey } from "#/hooks/use-pinned-home-route";
 import translations from "#/i18n/translation.json";
 
+const useMainAppUserMock = vi.hoisted(() => vi.fn());
+
 // The global `useTranslation` mock in `vitest.setup.ts` returns the key
 // as-is. Override it here so `t(...)` resolves keys via the source-of-truth
 // `translation.json` (English values), letting the test assert real
@@ -44,6 +46,10 @@ vi.mock("react-i18next", async () => {
 
 vi.mock("#/hooks/query/use-config", () => ({
   useConfig: () => ({ data: { feature_flags: {} } }),
+}));
+
+vi.mock("#/hooks/query/use-main-app-user", () => ({
+  useMainAppUser: useMainAppUserMock,
 }));
 
 vi.mock("#/hooks/query/use-settings", () => ({
@@ -240,6 +246,7 @@ function renderSidebar(currentPath: string) {
 describe("Sidebar", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useMainAppUserMock.mockReturnValue({ data: undefined });
     // Zustand store is a module singleton; reset it so collapsed state from
     // a prior test doesn't bleed into this one.
     useSidebarStore.setState({ collapsed: false });
@@ -477,6 +484,59 @@ describe("Sidebar", () => {
     expect(versionTile.compareDocumentPosition(backendSelector)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+  });
+
+  it("shows the signed-in Entra user and logout link when expanded", () => {
+    useMainAppUserMock.mockReturnValue({
+      data: {
+        id: "user-1",
+        name: "Grace Hopper",
+        username: "grace@example.com",
+        tenantId: "tenant-1",
+      },
+    });
+
+    renderSidebar("/conversations");
+
+    expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+    expect(screen.getByText("grace@example.com")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-sign-out")).toHaveAttribute(
+      "href",
+      "/auth/logout",
+    );
+  });
+
+  it("keeps the signed-in identity accessible when collapsed", () => {
+    useSidebarStore.setState({ collapsed: true });
+    useMainAppUserMock.mockReturnValue({
+      data: {
+        id: "user-1",
+        name: "Grace Hopper",
+        username: "grace@example.com",
+        tenantId: "tenant-1",
+      },
+    });
+
+    renderSidebar("/conversations");
+
+    expect(
+      screen.getByRole("link", { name: /Grace Hopper.*Sign out/ }),
+    ).toHaveAttribute("href", "/auth/logout");
+  });
+
+  it("falls back to the immutable user id when Entra omits profile labels", () => {
+    useMainAppUserMock.mockReturnValue({
+      data: {
+        id: "user-1",
+        name: null,
+        username: null,
+        tenantId: "tenant-1",
+      },
+    });
+
+    renderSidebar("/conversations");
+
+    expect(screen.getByText("user-1")).toBeInTheDocument();
   });
 
   it("hides the version tile when the sidebar is collapsed", () => {

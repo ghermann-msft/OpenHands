@@ -1696,6 +1696,8 @@ config:
       value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
     - name: AGENT_CANVAS_CLOUD_URL
       value: https://${env.frontDoorHost}
+    - name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE
+      value: required
     - name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL
       value: "false"
     - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE
@@ -1768,10 +1770,9 @@ function sandboxSpecBootstrapProfiles(
     config.windowsRuntime.imageRepository,
     windowsRuntimeDigest,
   );
-  const bootstrapRevision = `${sandboxRuntimeDigest}:${windowsRuntimeDigest}`;
   return config.agentSandbox.profileSeeds.map((profile) => {
     const isWindows = profile.os === "windows";
-    return {
+    const bootstrapProfile = {
       id: profile.id,
       display_name: profile.name,
       description: null,
@@ -1846,7 +1847,6 @@ function sandboxSpecBootstrapProfiles(
       startup_timeout_seconds: isWindows ? 600 : 300,
       initial_env: isWindows
         ? {
-            PATH: WINDOWS_RUNTIME_PATH,
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: config.windowsRuntime.workingDir,
@@ -1871,7 +1871,12 @@ function sandboxSpecBootstrapProfiles(
         ? config.windowsRuntime.workingDir
         : "/workspace/project",
       command: null,
-      bootstrap_revision: bootstrapRevision,
+    };
+    return {
+      ...bootstrapProfile,
+      bootstrap_revision: `sha256:${createHash("sha256")
+        .update(JSON.stringify(bootstrapProfile))
+        .digest("hex")}`,
     };
   });
 }
@@ -1985,7 +1990,13 @@ spec:
               if (-not (Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
                 throw "powershell.exe is not discoverable through PATH"
               }
-              Write-Output "Windows runtime image pull and Workload Identity token injection verified"
+              if (-not (Get-Command p4.exe -ErrorAction SilentlyContinue)) {
+                throw "p4.exe is not discoverable through PATH"
+              }
+              if (-not (Get-Command p4-mcp-server.exe -ErrorAction SilentlyContinue)) {
+                throw "p4-mcp-server.exe is not discoverable through PATH"
+              }
+              Write-Output "Windows runtime image, Perforce tools, and Workload Identity token injection verified"
 `;
 }
 

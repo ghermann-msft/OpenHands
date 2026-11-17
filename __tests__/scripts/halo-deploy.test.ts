@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -537,6 +538,10 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       "Get-Command powershell.exe -ErrorAction SilentlyContinue",
     );
+    expect(job).toContain("Get-Command p4.exe -ErrorAction SilentlyContinue");
+    expect(job).toContain(
+      "Get-Command p4-mcp-server.exe -ErrorAction SilentlyContinue",
+    );
     expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
     expect(job).toContain('azure.workload.identity/use: "true"');
     expect(job).toContain("serviceAccountName: openhands-halo");
@@ -615,9 +620,7 @@ describe("Halo deployment automation", () => {
       '"node.kubernetes.io/windows-build": "10.0.26100"',
     );
     expect(configMap).toContain('"initial_env": {');
-    expect(configMap).toContain(
-      '"PATH": "C:\\\\Windows\\\\System32;C:\\\\Windows;C:\\\\Windows\\\\System32\\\\Wbem;C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0;C:\\\\MinGit\\\\cmd;C:\\\\MinGit\\\\mingw64\\\\bin"',
-    );
+    expect(configMap).not.toContain('"PATH":');
     expect(configMap).toContain('"OH_ENABLE_VNC": "0"');
     expect(configMap).toContain('"LOG_JSON": "true"');
     expect(configMap).toContain('"PYTHONUNBUFFERED": "1"');
@@ -644,6 +647,22 @@ describe("Halo deployment automation", () => {
     expect(configMap).toContain(
       '"OH_CONVERSATIONS_PATH": "C:\\\\OpenHands\\\\{sandbox_id}\\\\conversations"',
     );
+
+    const profiles = JSON.parse(
+      configMap
+        .split("  sandbox-specs.json: |\n", 2)[1]
+        .split("\n")
+        .map((line) => line.replace(/^ {4}/, ""))
+        .join("\n"),
+    ) as Array<Record<string, unknown>>;
+    for (const profile of profiles) {
+      const { bootstrap_revision: revision, ...contract } = profile;
+      expect(revision).toBe(
+        `sha256:${createHash("sha256")
+          .update(JSON.stringify(contract))
+          .digest("hex")}`,
+      );
+    }
   });
 
   it("renders an NTFS workspace storage class for Windows sandboxes", () => {
@@ -772,6 +791,9 @@ describe("Halo deployment automation", () => {
     );
     expect(values).toContain(
       "name: AGENT_CANVAS_CLOUD_URL\n      value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
+    );
+    expect(values).toContain(
+      "name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE\n      value: required",
     );
     expect(values).toContain(
       'name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL\n      value: "false"',

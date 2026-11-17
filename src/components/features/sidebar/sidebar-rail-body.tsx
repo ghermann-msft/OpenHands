@@ -30,6 +30,7 @@ import { CommandMenuTrigger } from "#/components/features/command-menu/command-m
 import { AgentCanvasVersionTile } from "#/components/features/settings/agent-canvas-version-tile";
 import { SidebarConversationList } from "./sidebar-conversation-list";
 import { SidebarOnboardingChecklist } from "./sidebar-onboarding-checklist";
+import { SidebarUserAccount } from "./sidebar-user-account";
 import AutomationsIcon from "#/icons/automations.svg?react";
 import {
   SIDEBAR_COLLAPSE_TOGGLE_OVERLAY_CLASS,
@@ -291,6 +292,7 @@ export function SidebarRailBody({
             "mt-auto pb-2 cursor-pointer",
           )}
         >
+          <SidebarUserAccount collapsed />
           <StyledTooltip
             content={t(I18nKey.SIDEBAR$SETTINGS)}
             placement="right"
@@ -412,6 +414,7 @@ export function SidebarRailBody({
               "-ml-2.5 w-[calc(100%+0.625rem)] border-t border-border pt-2 px-2.5",
             )}
           >
+            <SidebarUserAccount collapsed={false} />
             <AgentCanvasVersionTile hideWhenUpToDate />
             <BackendSelector
               sidebarCollapsed={collapsed}

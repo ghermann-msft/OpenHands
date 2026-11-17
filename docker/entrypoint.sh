@@ -71,6 +71,8 @@
 #                          is routed there and AGENT_CANVAS_CLOUD_URL is required.
 #   AGENT_CANVAS_CLOUD_URL – Public Halo origin used to lock Canvas to the
 #                          Sandbox Server control plane.
+#   AGENT_CANVAS_CLOUD_ORGANIZATION_MODE – Whether the locked control plane
+#                          requires organization selection (required|none).
 #   AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL – Set to false when Canvas owns the
 #                          settings UI instead of a separate same-origin shell.
 #   AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE – Kubernetes namespace containing
@@ -568,6 +570,7 @@ fi
 # <<< docker-session-key-policy
 SANDBOX_SERVER_URL="${SANDBOX_SERVER_URL:-}"
 AGENT_CANVAS_CLOUD_URL="${AGENT_CANVAS_CLOUD_URL:-}"
+AGENT_CANVAS_CLOUD_ORGANIZATION_MODE="${AGENT_CANVAS_CLOUD_ORGANIZATION_MODE:-none}"
 AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL="${AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL:-true}"
 STATIC_SERVER_CLOUD_ARGS=()
 if [ -n "$SANDBOX_SERVER_URL" ]; then
@@ -576,9 +579,10 @@ if [ -n "$SANDBOX_SERVER_URL" ]; then
     exit 1
   fi
   STATIC_SERVER_CLOUD_ARGS+=(--route "/api/v1=${SANDBOX_SERVER_URL}")
+  STATIC_SERVER_CLOUD_ARGS+=(--route "/api/organizations=${SANDBOX_SERVER_URL}")
   STATIC_SERVER_CLOUD_ARGS+=(--route "/oauth=${SANDBOX_SERVER_URL}")
   STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")
-  STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode none)
+  STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode "$AGENT_CANVAS_CLOUD_ORGANIZATION_MODE")
   if [ "$AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL" = "false" ]; then
     STATIC_SERVER_CLOUD_ARGS+=(--no-external-settings-shell)
   fi
