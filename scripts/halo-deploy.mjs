@@ -1197,6 +1197,7 @@ spec:
                 --local dockerfile=/sandbox-server \\
                 --opt filename=containers/sandbox/Dockerfile \\
                 --opt platform=linux/amd64 \\
+                --opt build-arg:AGENT_SERVER_IMAGE=${config.azure.acrLoginServer}/${build.agentServerRepository}@$agent_server_digest \\
                 --import-cache type=registry,ref=${sandboxRuntimeCache} \\
                 --export-cache type=registry,ref=${sandboxRuntimeCache},mode=max,compression=zstd,ignore-error=true \\
                 --metadata-file "$sandbox_runtime_metadata" \\

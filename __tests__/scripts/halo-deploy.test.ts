@@ -181,6 +181,9 @@ describe("Halo deployment automation", () => {
       "name=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server:",
     );
     expect(job).toContain(
+      "--opt build-arg:AGENT_SERVER_IMAGE=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@$agent_server_digest",
+    );
+    expect(job).toContain(
       "git checkout --detach 2767366da92681ab9c937afb44a2c23d9ae929e9",
     );
     expect(job).toContain(
