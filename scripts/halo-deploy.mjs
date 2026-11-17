@@ -649,6 +649,30 @@ export function windowsRuntimeNodePoolCreateArgs() {
   ];
 }
 
+export function windowsRuntimeNodePoolAutoscalerArgs() {
+  const runtime = config.windowsRuntime;
+  return [
+    "aks",
+    "nodepool",
+    "update",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    config.azure.resourceGroup,
+    "--cluster-name",
+    config.azure.aksCluster,
+    "--name",
+    runtime.nodePool,
+    "--update-cluster-autoscaler",
+    "--min-count",
+    String(runtime.nodePoolMinCount),
+    "--max-count",
+    String(runtime.nodePoolMaxCount),
+    "--output",
+    "none",
+  ];
+}
+
 export function postgresServerCreateArgs(
   bootstrapIdentity,
   subnetId,
@@ -841,6 +865,8 @@ function ensureWindowsRuntimeNodePool() {
   );
   if (!existing || existing === "null") {
     az(windowsRuntimeNodePoolCreateArgs());
+  } else {
+    az(windowsRuntimeNodePoolAutoscalerArgs());
   }
   const nodePool = JSON.parse(
     az(
@@ -1820,6 +1846,7 @@ function sandboxSpecBootstrapProfiles(
       startup_timeout_seconds: isWindows ? 600 : 300,
       initial_env: isWindows
         ? {
+            PATH: WINDOWS_RUNTIME_PATH,
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: config.windowsRuntime.workingDir,
@@ -1935,6 +1962,9 @@ spec:
         - name: verify-runtime
           image: ${image}
           imagePullPolicy: Always
+          env:
+            - name: PATH
+              value: ${yamlSingleQuoted(WINDOWS_RUNTIME_PATH)}
           command:
             - C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe
             - -NoLogo
@@ -1951,6 +1981,9 @@ spec:
               $token = [IO.File]::ReadAllText($env:AZURE_FEDERATED_TOKEN_FILE)
               if ([string]::IsNullOrWhiteSpace($token)) {
                 throw "Azure Workload Identity token file is empty"
+              }
+              if (-not (Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
+                throw "powershell.exe is not discoverable through PATH"
               }
               Write-Output "Windows runtime image pull and Workload Identity token injection verified"
 `;
@@ -2075,7 +2108,7 @@ export function renderSandboxServerResources(
       ? `            - name: OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT
               value: "600"
             - name: OH_APP_CONVERSATION_SANDBOX_STARTUP_INACTIVITY_TIMEOUT
-              value: "120"
+              value: "600"
 `
       : "";
   return `apiVersion: apps/v1
@@ -2182,8 +2215,6 @@ ${githubOAuthEnv}            - name: OH_SANDBOX_KIND
               value: openhands.app_server.sandbox.kubernetes_sandbox_spec_service.KubernetesSandboxSpecServiceInjector
             - name: OH_SANDBOX_NAMESPACE
               value: ${env.namespace}
-            - name: OH_SANDBOX_WARM_POOL
-              value: ${config.agentSandbox.warmPool}
             - name: OH_SANDBOX_CLAIM_NAME_PREFIX
               value: ${sandbox.claimNamePrefix}
             - name: OH_SANDBOX_WEBHOOK_BASE_URL
@@ -2437,6 +2468,8 @@ function yamlSingleQuoted(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+const WINDOWS_RUNTIME_PATH = String.raw`C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\MinGit\cmd;C:\MinGit\mingw64\bin`;
+
 function renderSandboxProfileTemplate(
   env,
   profile,
@@ -2470,6 +2503,12 @@ function renderSandboxProfileTemplate(
     : `            - containerPort: 8001
               name: vscode
 `;
+  const windowsEnvironment = isWindows
+    ? `          env:
+            - name: PATH
+              value: ${yamlSingleQuoted(WINDOWS_RUNTIME_PATH)}
+`
+    : "";
   const privateEgress = (config.network.sandboxPrivateEgress ?? [])
     .map((rule) => {
       const [address, prefix] = String(rule.cidr ?? "").split("/");
@@ -2584,7 +2623,7 @@ ${
 ${linuxSecurityContext}      containers:
         - name: agent-server
           image: ${image}
-          args: ["--host", "0.0.0.0", "--port", "8000"]
+${windowsEnvironment}          args: ["--host", "0.0.0.0", "--port", "8000"]
           workingDir: ${renderedWorkingDir}
           ports:
             - containerPort: 8000

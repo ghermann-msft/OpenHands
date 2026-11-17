@@ -143,7 +143,7 @@
     "nodePool": "halo25",
     "nodePoolVmSize": "Standard_D8s_v5",
     "nodePoolMinCount": 0,
-    "nodePoolMaxCount": 3,
+    "nodePoolMaxCount": 10,
     "nodeSubnet": "aks-windows",
     "osSku": "Windows2025",
     "windowsBuild": "10.0.26100",
@@ -197,7 +197,6 @@
     "version": "v0.5.2",
     "releaseManifest": "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.5.2/sandbox-with-extensions.yaml",
     "template": "openhands-agent-server",
-    "warmPool": "openhands-pool",
     "profileSeeds": [
       {
         "id": "openhands-pool",
@@ -322,7 +321,7 @@
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
         "warmPoolReplicas": 0,
-        "maxConcurrency": 1,
+        "maxConcurrency": 10,
         "capabilities": [
           "windows",
           "build",

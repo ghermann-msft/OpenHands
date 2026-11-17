@@ -43,6 +43,7 @@ import {
   validateBuildNodePool,
   validateWindowsNodePoolName,
   windowsRuntimeTemplateName,
+  windowsRuntimeNodePoolAutoscalerArgs,
   windowsRuntimeNodePoolCreateArgs,
   windowsRuntimeImageFromKubectlResult,
   windowsRuntimeImportTag,
@@ -345,7 +346,7 @@ describe("Halo deployment automation", () => {
     expect(args).toContain("Windows2025");
     expect(args).toContain("Standard_D8s_v5");
     expect(args).toContain("0");
-    expect(args).toContain("3");
+    expect(args).toContain("10");
     expect(args).toContain("unrealhands.io/pool=halo-windows:NoSchedule");
     expect(args).toContain("disabled");
     expect(args).toContain(
@@ -360,7 +361,7 @@ describe("Halo deployment automation", () => {
         vmSize: "Standard_D8s_v5",
         enableAutoScaling: true,
         minCount: 0,
-        maxCount: 3,
+        maxCount: 10,
         nodeLabels: {
           "unrealhands.io/pool": "halo-windows",
         },
@@ -376,7 +377,7 @@ describe("Halo deployment automation", () => {
         vmSize: "Standard_D8s_v5",
         enableAutoScaling: true,
         minCount: 0,
-        maxCount: 3,
+        maxCount: 10,
         nodeLabels: {
           "unrealhands.io/pool": "halo-windows",
         },
@@ -394,6 +395,19 @@ describe("Halo deployment automation", () => {
     expect(() => validateWindowsNodePoolName("25halo")).toThrow(
       /start with a lowercase letter/,
     );
+  });
+
+  it("reconciles Windows runtime pool autoscaling capacity", () => {
+    const args = windowsRuntimeNodePoolAutoscalerArgs();
+
+    expect(args).toContain("halo25");
+    expect(args).toContain("--update-cluster-autoscaler");
+    expect(
+      args.slice(args.indexOf("--min-count"), args.indexOf("--min-count") + 2),
+    ).toEqual(["--min-count", "0"]);
+    expect(
+      args.slice(args.indexOf("--max-count"), args.indexOf("--max-count") + 2),
+    ).toEqual(["--max-count", "10"]);
   });
 
   it("requires the immutable Windows runtime digest in rollback metadata", () => {
@@ -462,6 +476,9 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("agentpool: halo25");
     expect(resources).toContain("workingDir: 'C:\\workspace\\project'");
     expect(resources).toContain("mountPath: 'C:\\workspace'");
+    expect(resources).toContain(
+      "value: 'C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\MinGit\\cmd;C:\\MinGit\\mingw64\\bin'",
+    );
     expect(resources).not.toContain("name: OH_SESSION_API_KEYS_0");
     expect(resources).not.toContain("name: OH_SECRET_KEY");
     expect(resources).toContain(
@@ -516,6 +533,9 @@ describe("Halo deployment automation", () => {
     expect(job).toContain("agentpool: halo25");
     expect(job).toContain(
       "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    );
+    expect(job).toContain(
+      "Get-Command powershell.exe -ErrorAction SilentlyContinue",
     );
     expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
     expect(job).toContain('azure.workload.identity/use: "true"');
@@ -595,6 +615,9 @@ describe("Halo deployment automation", () => {
       '"node.kubernetes.io/windows-build": "10.0.26100"',
     );
     expect(configMap).toContain('"initial_env": {');
+    expect(configMap).toContain(
+      '"PATH": "C:\\\\Windows\\\\System32;C:\\\\Windows;C:\\\\Windows\\\\System32\\\\Wbem;C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0;C:\\\\MinGit\\\\cmd;C:\\\\MinGit\\\\mingw64\\\\bin"',
+    );
     expect(configMap).toContain('"OH_ENABLE_VNC": "0"');
     expect(configMap).toContain('"LOG_JSON": "true"');
     expect(configMap).toContain('"PYTHONUNBUFFERED": "1"');
@@ -803,6 +826,7 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "name: OH_SANDBOX_SPEC_BOOTSTRAP_FILE\n              value: /etc/openhands/sandbox-specs.json",
     );
+    expect(resources).not.toContain("name: OH_SANDBOX_WARM_POOL");
     expect(resources).toContain(
       "name: OH_HALO_DURABLE_STATE_PVC\n              value: openhands-halo-conversations",
     );
@@ -810,7 +834,7 @@ describe("Halo deployment automation", () => {
       'name: OH_APP_CONVERSATION_SANDBOX_STARTUP_TIMEOUT\n              value: "600"',
     );
     expect(resources).toContain(
-      'name: OH_APP_CONVERSATION_SANDBOX_STARTUP_INACTIVITY_TIMEOUT\n              value: "120"',
+      'name: OH_APP_CONVERSATION_SANDBOX_STARTUP_INACTIVITY_TIMEOUT\n              value: "600"',
     );
     expect(
       renderSandboxServerResources(
