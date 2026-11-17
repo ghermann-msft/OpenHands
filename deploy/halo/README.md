@@ -151,7 +151,6 @@ Create these PPE Key Vault secrets before `bootstrap`:
 - `halo-ppe-hindsight-api-key`
 - `halo-ppe-hindsight-llm-api-key`
 - `halo-ppe-hindsight-bank-secret`
-- `halo-ppe-hindsight-trusted-principals-json`
 - `halo-ppe-hindsight-scope-bindings-json`
 
 The LLM key is the Azure OpenAI resource key for `mortmain-openai2`; it is
@@ -170,30 +169,36 @@ The deployment-owned `OH_HINDSIGHT_DEPLOYMENT_ID=halo-ppe` derives the typed
 server-wide bank and is configured only on Sandbox Server. Every authenticated
 bound session may recall and retain server-wide memory. Callers cannot supply
 or override the deployment or bank identifier.
-The broker reads the Hindsight bearer key, bank secret, and trusted-principals
-JSON exclusively from `OH_HINDSIGHT_API_KEY_FILE`,
-`OH_HINDSIGHT_BANK_SECRET_FILE`, and
-`OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE`. Organization and
-repository/workspace bindings come from `OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE`.
-These files use a dedicated broker-only CSI mount; their values are never
-environment variables or sandbox configuration. The trusted-principals file is
-a JSON object mapping each trusted app-server user ID to
-`{"tenant_id":"<uuid>","object_id":"<uuid>"}`. The scope-bindings file is
-`{"organizations":{"personal-user-id":{"display_name":"Personal","kind":"personal","members":["<tenant-uuid>:<object-uuid>"]},"halo-studios":{"display_name":"Halo Studios","kind":"shared","members":["<tenant-uuid>:<object-uuid>"]}},"repositories":{"github:owner/repo":{"organization_ids":["personal-user-id","halo-studios"]}}}`.
-Stable organization IDs, membership, and repository allowlists are
-authorization data; display names and kinds are metadata. Sandbox Server
-derives repository and workspace identity from trusted conversation metadata,
-verifies the selected organization against both membership and the repository
-allowlist, and never accepts caller-provided scope IDs.
+The broker reads the Hindsight bearer key and bank secret exclusively from
+`OH_HINDSIGHT_API_KEY_FILE` and `OH_HINDSIGHT_BANK_SECRET_FILE`. Organization
+definitions and repository/workspace associations come from
+`OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE`. These files use a dedicated
+broker-only CSI mount; their values are never environment variables or sandbox
+configuration. The scope-bindings file is
+`{"organizations":{"personal-user-id":{"display_name":"Personal","kind":"personal"},"halo-studios":{"display_name":"Halo Studios","kind":"shared"}},"repositories":{"github:owner/repo":{"organization_ids":["personal-user-id","halo-studios"]}}}`.
+Stable organization IDs and repository allowlists are trusted deployment data;
+display names and kinds are metadata. Membership, roles, permissions, and
+allowed users are not deployment data: OpenHands RBAC owns them. Sandbox
+Server derives repository and workspace identity from trusted conversation
+metadata, verifies the selected organization against the repository allowlist
+and signed OpenHands RBAC context, and never accepts caller-provided scope IDs.
 
-The current broker accepts the selected organization as the ordered trusted
-control-plane scope `{type:"organization",id:"<stable-id>"}`. The durable
-upstream contract must add a typed `organization_id` to
-`AppConversationInfo`/conversation metadata and require the broker scope to
-match it. Canvas already models an active organization for Cloud backends in
-the lower-left backend selector, but Halo still needs a control-plane
+Entra authenticates immutable tenant/object identity only; Halo does not use
+Entra group claims as its application authorization database. The durable
+OpenHands UserAuth/RBAC contract must authorize that identity and bind trusted
+`tenant_id`, `object_id`, `organization_id`, `role`, and `permissions` fields
+to `AppConversationInfo`/conversation metadata. The broker fails closed unless
+that context is present, requires `hindsight:recall` or `hindsight:retain` for
+the corresponding organization/repository/workspace operation, and requires
+its ordered `{type:"organization",id:"<stable-id>"}` scope to match the signed
+RBAC context. Server scope follows the explicit all-authenticated-session
+recall/retain policy but still requires immutable authenticated identity.
+Canvas already models an active organization for Cloud backends in the
+lower-left backend selector, but Halo still needs a control-plane
 organization-list contract that exposes Personal and Halo Studios and binds
-the selected stable ID when creating a conversation.
+the selected stable ID when creating a conversation. No deployment membership
+file remains; any initial membership seeding belongs to an OpenHands RBAC seed
+or migration, not the Hindsight broker.
 
 `bootstrap` also enforces the Entra contract for each environment: a v2
 `access_as_user` scope preauthorized to the same confidential client. This

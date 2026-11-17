@@ -411,7 +411,6 @@
           "apiKey": "halo-ppe-hindsight-api-key",
           "llmApiKey": "halo-ppe-hindsight-llm-api-key",
           "bankSecret": "halo-ppe-hindsight-bank-secret",
-          "trustedPrincipalsJson": "halo-ppe-hindsight-trusted-principals-json",
           "scopeBindingsJson": "halo-ppe-hindsight-scope-bindings-json"
         }
       }
@@ -459,7 +458,6 @@
           "apiKey": null,
           "llmApiKey": null,
           "bankSecret": null,
-          "trustedPrincipalsJson": null,
           "scopeBindingsJson": null
         }
       }

@@ -1696,10 +1696,6 @@ export function renderHindsightBrokerSecretProviderClass(
   const entries = [
     ["hindsightApiKey", env.hindsight.secrets.apiKey],
     ["hindsightBankSecret", env.hindsight.secrets.bankSecret],
-    [
-      "hindsightTrustedPrincipalsJson",
-      env.hindsight.secrets.trustedPrincipalsJson,
-    ],
     ["hindsightScopeBindingsJson", env.hindsight.secrets.scopeBindingsJson],
   ];
   return `apiVersion: secrets-store.csi.x-k8s.io/v1
@@ -1772,8 +1768,6 @@ function hindsightBrokerEnv(environment) {
               value: /mnt/hindsight-secrets/hindsightApiKey
             - name: OH_HINDSIGHT_BANK_SECRET_FILE
               value: /mnt/hindsight-secrets/hindsightBankSecret
-            - name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE
-              value: /mnt/hindsight-secrets/hindsightTrustedPrincipalsJson
             - name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE
               value: /mnt/hindsight-secrets/hindsightScopeBindingsJson
             - name: OH_HINDSIGHT_AUTOMATIC_RECALL_DEFAULT_MAX_TOKENS

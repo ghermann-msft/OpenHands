@@ -975,9 +975,6 @@ describe("Halo deployment automation", () => {
       "name: OH_HINDSIGHT_BANK_SECRET_FILE\n              value: /mnt/hindsight-secrets/hindsightBankSecret",
     );
     expect(resources).toContain(
-      "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE\n              value: /mnt/hindsight-secrets/hindsightTrustedPrincipalsJson",
-    );
-    expect(resources).toContain(
       "name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE\n              value: /mnt/hindsight-secrets/hindsightScopeBindingsJson",
     );
     expect(resources).toContain(
@@ -986,6 +983,9 @@ describe("Halo deployment automation", () => {
     expect(resources).not.toContain("name: OH_HINDSIGHT_BANK_SECRET\n");
     expect(resources).not.toContain(
       "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON\n",
+    );
+    expect(resources).not.toContain(
+      "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE\n",
     );
     expect(resources).not.toContain(
       "name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON\n",
@@ -1177,7 +1177,6 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-hindsight-api-key");
     expect(spc).toContain("halo-ppe-hindsight-llm-api-key");
     expect(spc).not.toContain("halo-ppe-hindsight-bank-secret");
-    expect(spc).not.toContain("halo-ppe-hindsight-trusted-principals-json");
     expect(spc).not.toContain("halo-ppe-hindsight-scope-bindings-json");
     expect(spc).not.toContain("secretObjects:");
     expect(
@@ -1194,7 +1193,6 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("name: openhands-hindsight-broker-secrets");
     expect(spc).toContain("halo-ppe-hindsight-api-key");
     expect(spc).toContain("halo-ppe-hindsight-bank-secret");
-    expect(spc).toContain("halo-ppe-hindsight-trusted-principals-json");
     expect(spc).toContain("halo-ppe-hindsight-scope-bindings-json");
     expect(spc).not.toContain("halo-ppe-hindsight-database-password");
     expect(spc).not.toContain("halo-ppe-hindsight-llm-api-key");
