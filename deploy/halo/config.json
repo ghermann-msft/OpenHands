@@ -23,6 +23,13 @@
     "publicIp": "uh-unrealhands-dev-egress-pip",
     "publicIpCidr": "4.148.149.254/32",
     "apiServerAuthorizedCidrs": ["207.68.149.128/28", "4.148.149.254/32"],
+    "sandboxPrivateEgress": [
+      {
+        "cidr": "10.1.0.7/32",
+        "protocol": "TCP",
+        "port": 1666
+      }
+    ],
     "idleTimeoutMinutes": 10
   },
   "azureOpenAI": {

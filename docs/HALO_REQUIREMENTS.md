@@ -100,6 +100,9 @@ Service (AKS).
 - Use separate node pools for `candidate` and `primary` when practical.
 - Apply resource quotas, resource limits, network policies, and pod
   anti-affinity to prevent candidate workloads from disrupting primary.
+- Keep sandbox egress default-deny. Declare private service destinations as
+  exact CIDR, protocol, and port rules in the repository-owned Halo network
+  configuration; VNet peering alone must not broaden sandbox access.
 
 ### Build and promotion
 

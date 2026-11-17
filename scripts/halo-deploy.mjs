@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -2419,6 +2420,34 @@ function renderSandboxProfileTemplate(
     : `            - containerPort: 8001
               name: vscode
 `;
+  const privateEgress = (config.network.sandboxPrivateEgress ?? [])
+    .map((rule) => {
+      const [address, prefix] = String(rule.cidr ?? "").split("/");
+      const protocol = String(rule.protocol ?? "").toUpperCase();
+      const port = Number(rule.port);
+      if (
+        isIP(address) !== 4 ||
+        !/^(?:[0-9]|[12][0-9]|3[0-2])$/.test(prefix ?? "")
+      ) {
+        throw new Error(`Invalid sandbox private egress CIDR: ${rule.cidr}`);
+      }
+      if (!["TCP", "UDP"].includes(protocol)) {
+        throw new Error(
+          `Invalid sandbox private egress protocol: ${rule.protocol}`,
+        );
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error(`Invalid sandbox private egress port: ${rule.port}`);
+      }
+      return `      - to:
+          - ipBlock:
+              cidr: ${rule.cidr}
+        ports:
+          - protocol: ${protocol}
+            port: ${port}
+`;
+    })
+    .join("");
   return `apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
@@ -2464,7 +2493,7 @@ spec:
       - ports:
           - protocol: TCP
             port: 443
-  volumeClaimTemplates:
+${privateEgress}  volumeClaimTemplates:
     - metadata:
         name: workspace
       spec:

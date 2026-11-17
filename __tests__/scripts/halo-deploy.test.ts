@@ -895,6 +895,8 @@ describe("Halo deployment automation", () => {
       "app.kubernetes.io/name: openhands-sandbox-server",
     );
     expect(resources).toContain("app.kubernetes.io/name: agent-canvas");
+    expect(resources.match(/cidr: 10\.1\.0\.7\/32/g)).toHaveLength(5);
+    expect(resources.match(/protocol: TCP\s+port: 1666/g)).toHaveLength(5);
     expect(resources).toContain('resources: ["sandboxclaims"]');
     expect(resources).toContain('verbs: ["get", "list", "watch", "patch"]');
     expect(resources).toContain(
