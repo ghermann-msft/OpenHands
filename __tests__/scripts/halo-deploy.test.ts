@@ -921,6 +921,10 @@ describe("Halo deployment automation", () => {
     expect(resources.match(/protocol: TCP\s+port: 1666/g)).toHaveLength(15);
     expect(resources).not.toContain("port: 1667");
     expect(resources).toContain('resources: ["sandboxclaims"]');
+    expect(resources).toContain(
+      'resources: ["sandboxtemplates", "sandboxwarmpools"]',
+    );
+    expect(resources).toContain('verbs: ["get"]');
     expect(resources).toContain('verbs: ["get", "list", "watch", "patch"]');
     expect(resources).toContain(
       'resources: ["pods", "persistentvolumeclaims", "events"]',
