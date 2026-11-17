@@ -23,6 +23,20 @@
     "publicIp": "uh-unrealhands-dev-egress-pip",
     "publicIpCidr": "4.148.149.254/32",
     "apiServerAuthorizedCidrs": ["207.68.149.128/28", "4.148.149.254/32"],
+    "privateDnsOverrides": [
+      {
+        "hostname": "p4d-wus2-02.halostudios.dev",
+        "address": "10.1.0.7"
+      },
+      {
+        "hostname": "p4d-01.343i.xboxgamestudios.com",
+        "address": "10.0.0.4"
+      },
+      {
+        "hostname": "p4d-00.343i.xboxgamestudios.com",
+        "address": "10.2.0.4"
+      }
+    ],
     "sandboxPrivateEgress": [
       {
         "cidr": "10.1.0.7/32",

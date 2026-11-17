@@ -26,6 +26,7 @@ import {
   renderBuildJob,
   renderConversationPvc,
   renderConversationStorageClass,
+  renderCoreDnsCustomConfigMap,
   renderFrontDoorSecurityPolicy,
   renderFrontDoorWafPolicy,
   renderHelmValues,
@@ -129,6 +130,25 @@ describe("Halo deployment automation", () => {
     expect(() =>
       externalImageReference("ghcr.io/openhands/agent-server:latest", digest),
     ).toThrow(/repository without a tag/);
+  });
+
+  it("configures split-horizon DNS for peered Perforce hosts", () => {
+    const configMap = renderCoreDnsCustomConfigMap();
+
+    expect(configMap).toContain("name: coredns-custom");
+    expect(configMap).toContain(
+      "10.1.0.7 p4d-wus2-02.halostudios.dev",
+    );
+    expect(configMap).toContain(
+      "10.0.0.4 p4d-01.343i.xboxgamestudios.com",
+    );
+    expect(configMap).toContain(
+      "10.2.0.4 p4d-00.343i.xboxgamestudios.com",
+    );
+    expect(configMap).toContain("fallthrough");
+    expect(configMap).not.toContain("52.156.139.9");
+    expect(configMap).not.toContain("20.9.144.39");
+    expect(configMap).not.toContain("40.90.200.243");
   });
 
   it("uses the configured Windows profile template for promotion", () => {

@@ -103,6 +103,9 @@ Service (AKS).
 - Keep sandbox egress default-deny. Declare private service destinations as
   exact CIDR, protocol, and port rules in the repository-owned Halo network
   configuration; VNet peering alone must not broaden sandbox access.
+- Declare split-horizon names for peered private services in the repository-owned
+  CoreDNS customization. Use exact host records with normal DNS fallthrough so
+  TLS clients use certificate hostnames without overriding unrelated zones.
 
 ### Build and promotion
 

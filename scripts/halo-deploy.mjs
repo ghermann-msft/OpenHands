@@ -544,6 +544,55 @@ export function buildNodePoolCreateArgs() {
   ];
 }
 
+export function renderCoreDnsCustomConfigMap() {
+  const entries = (config.network.privateDnsOverrides ?? []).map((entry) => {
+    const hostname = String(entry.hostname ?? "")
+      .trim()
+      .toLowerCase();
+    const labels = hostname.split(".");
+    if (
+      isIP(entry.address) !== 4 ||
+      hostname.length > 253 ||
+      labels.length < 2 ||
+      labels.some(
+        (label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
+      )
+    ) {
+      throw new Error(
+        `Invalid private DNS override: ${entry.address} ${entry.hostname}`,
+      );
+    }
+    return `      ${entry.address} ${hostname}`;
+  });
+  return `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  halo-private-hosts.override: |
+    hosts {
+${entries.join("\n")}
+      fallthrough
+    }
+`;
+}
+
+function ensurePrivateDnsOverrides() {
+  kubectl(["apply", "-f", "-"], {
+    input: renderCoreDnsCustomConfigMap(),
+  });
+  kubectl(["-n", "kube-system", "rollout", "restart", "deployment/coredns"]);
+  kubectl([
+    "-n",
+    "kube-system",
+    "rollout",
+    "status",
+    "deployment/coredns",
+    "--timeout=5m",
+  ]);
+}
+
 function subnetResourceId(subnet) {
   return `/subscriptions/${config.azure.subscriptionId}/resourceGroups/${config.azure.resourceGroup}/providers/Microsoft.Network/virtualNetworks/${config.network.vnet}/subnets/${subnet}`;
 }
@@ -3347,6 +3396,7 @@ function ensureAksNatGateway() {
   if (outboundType !== "userAssignedNATGateway") {
     az(aksNatGatewayUpdateArgs());
   }
+  ensurePrivateDnsOverrides();
 }
 
 function ensurePostgresNetwork() {
