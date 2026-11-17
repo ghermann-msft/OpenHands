@@ -739,11 +739,28 @@ describe("Halo deployment automation", () => {
       "candidate",
       `sha256:${"b".repeat(64)}`,
       `sha256:${"d".repeat(64)}`,
+      `sha256:${"a".repeat(64)}`,
       "runtime-client-id",
       `sha256:${"e".repeat(64)}`,
     );
+    const changedBootstrapResources = renderSandboxServerResources(
+      "candidate",
+      `sha256:${"b".repeat(64)}`,
+      `sha256:${"d".repeat(64)}`,
+      `sha256:${"c".repeat(64)}`,
+      "runtime-client-id",
+      `sha256:${"e".repeat(64)}`,
+    );
+    const bootstrapChecksum = resources.match(
+      /openhands\.dev\/sandbox-spec-bootstrap-sha256: ([a-f0-9]{64})/,
+    )?.[1];
+    const changedBootstrapChecksum = changedBootstrapResources.match(
+      /openhands\.dev\/sandbox-spec-bootstrap-sha256: ([a-f0-9]{64})/,
+    )?.[1];
 
     expect(resources).toContain("kind: Deployment");
+    expect(bootstrapChecksum).toMatch(/^[a-f0-9]{64}$/);
+    expect(changedBootstrapChecksum).not.toBe(bootstrapChecksum);
     expect(resources).toContain("name: openhands-sandbox-server");
     expect(resources).toContain(
       "image: uhunrealhaacukmdbkacr.azurecr.io/openhands-sandbox-server@sha256:",
@@ -771,6 +788,7 @@ describe("Halo deployment automation", () => {
         "primary",
         `sha256:${"b".repeat(64)}`,
         `sha256:${"d".repeat(64)}`,
+        `sha256:${"a".repeat(64)}`,
         "runtime-client-id",
         digest,
       ),

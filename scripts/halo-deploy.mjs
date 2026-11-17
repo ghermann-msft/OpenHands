@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -1803,14 +1804,10 @@ export function renderSandboxSpecBootstrapConfigMap(
   windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
-  const json = JSON.stringify(
-    sandboxSpecBootstrapProfiles(
-      environment,
-      agentServerDigest,
-      windowsRuntimeDigest,
-    ),
-    null,
-    2,
+  const json = sandboxSpecBootstrapJson(
+    environment,
+    agentServerDigest,
+    windowsRuntimeDigest,
   )
     .split("\n")
     .map((line) => `    ${line}`)
@@ -1824,6 +1821,22 @@ data:
   sandbox-specs.json: |
 ${json}
 `;
+}
+
+function sandboxSpecBootstrapJson(
+  environment,
+  agentServerDigest,
+  windowsRuntimeDigest,
+) {
+  return JSON.stringify(
+    sandboxSpecBootstrapProfiles(
+      environment,
+      agentServerDigest,
+      windowsRuntimeDigest,
+    ),
+    null,
+    2,
+  );
 }
 
 export function renderWindowsRuntimePreflight(
@@ -1955,6 +1968,7 @@ export function renderSandboxServerResources(
   environment,
   digest,
   runtimeDigest,
+  agentServerDigest,
   runtimeClientId,
   windowsRuntimeDigest,
 ) {
@@ -1974,6 +1988,15 @@ export function renderSandboxServerResources(
     config.windowsRuntime.imageRepository,
     windowsRuntimeDigest,
   );
+  const sandboxSpecBootstrapChecksum = createHash("sha256")
+    .update(
+      sandboxSpecBootstrapJson(
+        environment,
+        agentServerDigest,
+        windowsRuntimeDigest,
+      ),
+    )
+    .digest("hex");
   const githubOAuthEnv =
     env.githubApp.slug &&
     env.githubApp.secrets.clientId &&
@@ -2016,6 +2039,8 @@ spec:
       app.kubernetes.io/name: ${sandbox.serviceName}
   template:
     metadata:
+      annotations:
+        openhands.dev/sandbox-spec-bootstrap-sha256: ${sandboxSpecBootstrapChecksum}
       labels:
         app.kubernetes.io/name: ${sandbox.serviceName}
         azure.workload.identity/use: "true"
@@ -3999,6 +4024,7 @@ async function deploy(
       environment,
       sandboxServerDigest,
       sandboxRuntimeDigest,
+      agentServerDigest,
       clientId,
       windowsRuntimeDigest,
     ),
