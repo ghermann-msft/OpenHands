@@ -485,9 +485,6 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("agentpool: halo25");
     expect(resources).toContain("workingDir: 'C:\\workspace\\project'");
     expect(resources).toContain("mountPath: 'C:\\workspace'");
-    expect(resources).toContain(
-      "value: 'C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\MinGit\\cmd;C:\\MinGit\\mingw64\\bin'",
-    );
     expect(resources).not.toContain("name: OH_SESSION_API_KEYS_0");
     expect(resources).not.toContain("name: OH_SECRET_KEY");
     expect(resources).toContain(
@@ -508,6 +505,7 @@ describe("Halo deployment automation", () => {
       .split("name: openhands-agent-server-windows-2025", 2)[1]
       .split("---", 1)[0];
     expect(windowsTemplate).not.toContain("subPath");
+    expect(windowsTemplate).not.toContain("name: PATH");
     expect(resources).toContain('cpu: "8"');
     expect(resources).toContain("memory: 32Gi");
     const windowsTemplates = resources.split(
@@ -551,6 +549,7 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       "Get-Command p4-mcp-server.exe -ErrorAction SilentlyContinue",
     );
+    expect(job).not.toContain("name: PATH");
     expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
     expect(job).toContain('azure.workload.identity/use: "true"');
     expect(job).toContain("serviceAccountName: openhands-halo");

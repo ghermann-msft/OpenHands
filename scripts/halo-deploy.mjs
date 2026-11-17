@@ -2343,9 +2343,6 @@ spec:
         - name: verify-runtime
           image: ${image}
           imagePullPolicy: Always
-          env:
-            - name: PATH
-              value: ${yamlSingleQuoted(WINDOWS_RUNTIME_PATH)}
           command:
             - C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe
             - -NoLogo
@@ -2891,8 +2888,6 @@ function yamlSingleQuoted(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-const WINDOWS_RUNTIME_PATH = String.raw`C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\MinGit\cmd;C:\MinGit\mingw64\bin`;
-
 function renderSandboxProfileTemplate(
   env,
   profile,
@@ -2945,12 +2940,6 @@ function renderSandboxProfileTemplate(
     : `            - containerPort: 8001
               name: vscode
 `;
-  const windowsEnvironment = isWindows
-    ? `          env:
-            - name: PATH
-              value: ${yamlSingleQuoted(WINDOWS_RUNTIME_PATH)}
-`
-    : "";
   const privateEgress = (config.network.sandboxPrivateEgress ?? [])
     .map((rule) => {
       const [address, prefix] = String(rule.cidr ?? "").split("/");
@@ -3065,7 +3054,7 @@ ${
 ${linuxSecurityContext}${linuxWorkspaceInit}      containers:
         - name: agent-server
           image: ${image}
-${windowsEnvironment}          args: ["--host", "0.0.0.0", "--port", "8000"]
+          args: ["--host", "0.0.0.0", "--port", "8000"]
           workingDir: ${renderedWorkingDir}
           ports:
             - containerPort: 8000
