@@ -173,15 +173,16 @@ or override the deployment or bank identifier.
 The broker reads the Hindsight bearer key, bank secret, and trusted-principals
 JSON exclusively from `OH_HINDSIGHT_API_KEY_FILE`,
 `OH_HINDSIGHT_BANK_SECRET_FILE`, and
-`OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE`. Project and organization bindings
-come from `OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE`. These files use a dedicated
-broker-only CSI mount; their values are never environment variables or sandbox
-configuration. The trusted-principals file is a JSON object mapping each
-trusted app-server user ID to `{"tenant_id":"<uuid>","object_id":"<uuid>"}`.
-The scope-bindings file is
-`{"repositories":{"github:owner/repo":{"project_id":"stable-project-id","organization_id":"stable-org-id","members":["<tenant-uuid>:<object-uuid>"]}}}`.
-Sandbox Server derives the repository key from trusted conversation metadata,
-verifies membership, and never accepts caller-provided scope IDs.
+`OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE`. Organization and
+repository/workspace bindings come from `OH_HINDSIGHT_SCOPE_BINDINGS_JSON_FILE`.
+These files use a dedicated broker-only CSI mount; their values are never
+environment variables or sandbox configuration. The trusted-principals file is
+a JSON object mapping each trusted app-server user ID to
+`{"tenant_id":"<uuid>","object_id":"<uuid>"}`. The scope-bindings file is
+`{"repositories":{"github:owner/repo":{"organization_id":"stable-org-id","members":["<tenant-uuid>:<object-uuid>"]}}}`.
+Sandbox Server derives repository and workspace identity from trusted
+conversation metadata, verifies membership, and never accepts caller-provided
+scope IDs.
 
 `bootstrap` also enforces the Entra contract for each environment: a v2
 `access_as_user` scope preauthorized to the same confidential client. This
