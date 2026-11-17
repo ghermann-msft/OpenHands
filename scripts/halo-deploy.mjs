@@ -1793,8 +1793,6 @@ function sandboxSpecBootstrapProfiles(
         : "/workspace/project",
       command: null,
       bootstrap_revision: bootstrapRevision,
-      created_at: null,
-      updated_at: null,
     };
   });
 }

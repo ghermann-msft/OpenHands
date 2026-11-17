@@ -587,6 +587,8 @@ describe("Halo deployment automation", () => {
       '"durable_volume_claim_name": "openhands-halo-conversations"',
     );
     expect(configMap).toContain('"durable_sub_path_template": "{sandbox_id}"');
+    expect(configMap).not.toContain('"created_at"');
+    expect(configMap).not.toContain('"updated_at"');
     expect(configMap).toContain(
       '"OH_CONVERSATIONS_PATH": "C:\\\\OpenHands\\\\{sandbox_id}\\\\conversations"',
     );
