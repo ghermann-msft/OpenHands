@@ -38,6 +38,7 @@ import {
   renderHindsightSecretProviderClass,
   renderPostgresBootstrapJob,
   renderPostgresBootstrapSecretProviderClass,
+  renderRbacBootstrapSecretProviderClass,
   renderSandboxServerResources,
   renderSecretProviderClass,
   renderSandboxSpecBootstrapConfigMap,
@@ -171,7 +172,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach f746a1e1df2cd61f366bb24086ebee402fdc55dc",
+      "git checkout --detach a04383d7112789ce61399b4657ebc66d1cc09cdc",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -193,7 +194,7 @@ describe("Halo deployment automation", () => {
       "--opt build-arg:AGENT_SERVER_IMAGE=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@$agent_server_digest",
     );
     expect(job).toContain(
-      "git checkout --detach 2767366da92681ab9c937afb44a2c23d9ae929e9",
+      "git checkout --detach 33e1d27ddb02da65beae0f4762a3283aa760ce01",
     );
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
@@ -203,13 +204,13 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=2767366da92681ab9c937afb44a2c23d9ae929e9",
+      "AGENT_SERVER_SDK_GIT_REF=33e1d27ddb02da65beae0f4762a3283aa760ce01",
     );
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "SOFTWARE_AGENT_SDK_REF=2767366da92681ab9c937afb44a2c23d9ae929e9",
+      "SOFTWARE_AGENT_SDK_REF=33e1d27ddb02da65beae0f4762a3283aa760ce01",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
@@ -496,6 +497,7 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "storageClassName: openhands-halo-windows-workspace-disk",
     );
+    expect(resources).toContain("storage: 2Ti");
     expect(resources).toContain(
       "name: openhands-state\n          persistentVolumeClaim:\n            claimName: openhands-halo-conversations",
     );
@@ -638,6 +640,7 @@ describe("Halo deployment automation", () => {
     expect(configMap).toContain(
       '"workspace_storage_class": "openhands-halo-windows-workspace-disk"',
     );
+    expect(configMap).toContain('"workspace_storage_size": "2Ti"');
     expect(configMap).toContain(
       '"durable_storage_class": "openhands-halo-azurefile"',
     );
@@ -766,6 +769,7 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-session-api-key");
     expect(spc).toContain("halo-ppe-trusted-identity-assertion");
     expect(spc).toContain("halo-ppe-sandbox-jwt-secret");
+    expect(spc).not.toContain("halo-ppe-rbac-bootstrap-json");
     expect(spc).toContain("halo-ppe-github-app-client-id");
     expect(spc).toContain("halo-ppe-github-app-client-secret");
     expect(spc).not.toContain("hindsight");
@@ -1012,6 +1016,12 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "secretProviderClass: openhands-hindsight-broker-secrets",
     );
+    expect(resources).toContain(
+      "name: OH_RBAC_BOOTSTRAP_JSON_FILE\n              value: /mnt/rbac-bootstrap-secrets/rbacBootstrapJson",
+    );
+    expect(resources).toContain(
+      "secretProviderClass: openhands-rbac-bootstrap-secrets",
+    );
     expect(resources).not.toContain("name: OH_HINDSIGHT_BANK_SECRET\n");
     expect(resources).not.toContain(
       "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON\n",
@@ -1251,6 +1261,22 @@ describe("Halo deployment automation", () => {
     expect(spc).not.toContain("secretObjects:");
     expect(
       renderHindsightBrokerSecretProviderClass("primary", "runtime-client-id"),
+    ).toBe("");
+  });
+
+  it("isolates the RBAC bootstrap seed in a Sandbox Server-only CSI mount", () => {
+    const spc = renderRbacBootstrapSecretProviderClass(
+      "candidate",
+      "runtime-client-id",
+    );
+
+    expect(spc).toContain("name: openhands-rbac-bootstrap-secrets");
+    expect(spc).toContain("halo-ppe-rbac-bootstrap-json");
+    expect(spc).toContain("objectAlias: rbacBootstrapJson");
+    expect(spc).not.toContain("secretObjects:");
+    expect(spc).not.toContain("hindsight");
+    expect(
+      renderRbacBootstrapSecretProviderClass("primary", "runtime-client-id"),
     ).toBe("");
   });
 

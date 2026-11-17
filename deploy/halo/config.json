@@ -72,9 +72,9 @@
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
-    "agentServerSdkRef": "2767366da92681ab9c937afb44a2c23d9ae929e9",
+    "agentServerSdkRef": "33e1d27ddb02da65beae0f4762a3283aa760ce01",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "f746a1e1df2cd61f366bb24086ebee402fdc55dc"
+    "sandboxServerRef": "a04383d7112789ce61399b4657ebc66d1cc09cdc"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",
@@ -162,7 +162,7 @@
   },
   "windowsWorkspaceStorage": {
     "storageClass": "openhands-halo-windows-workspace-disk",
-    "size": "100Gi",
+    "size": "2Ti",
     "skuName": "Premium_LRS",
     "fileSystem": "ntfs"
   },
@@ -292,7 +292,7 @@
         "memoryRequest": "4Gi",
         "memoryLimit": "8Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "100Gi",
+        "storageSize": "2Ti",
         "nodePool": "halo25",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
@@ -320,7 +320,7 @@
         "memoryRequest": "16Gi",
         "memoryLimit": "32Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "100Gi",
+        "storageSize": "2Ti",
         "nodePool": "halo25",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
@@ -349,7 +349,7 @@
         "memoryRequest": "8Gi",
         "memoryLimit": "16Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "100Gi",
+        "storageSize": "2Ti",
         "nodePool": "halo25",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows",
@@ -412,6 +412,11 @@
           "llmApiKey": "halo-ppe-hindsight-llm-api-key",
           "bankSecret": "halo-ppe-hindsight-bank-secret",
           "scopeBindingsJson": "halo-ppe-hindsight-scope-bindings-json"
+        }
+      },
+      "rbac": {
+        "secrets": {
+          "bootstrapJson": "halo-ppe-rbac-bootstrap-json"
         }
       }
     },

@@ -1716,6 +1716,34 @@ ${entries.map(([alias, name]) => `        - |\n          objectName: ${name}\n  
 `;
 }
 
+export function renderRbacBootstrapSecretProviderClass(
+  environment,
+  runtimeClientId,
+) {
+  const env = config.environments[environment];
+  const bootstrapJson = env.rbac?.secrets?.bootstrapJson;
+  if (!bootstrapJson) return "";
+  return `apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: openhands-rbac-bootstrap-secrets
+  namespace: ${env.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${quote(runtimeClientId)}
+    keyvaultName: ${quote(config.azure.keyVaultName)}
+    tenantId: ${quote(config.azure.tenantId)}
+    objects: |
+      array:
+        - |
+          objectName: ${bootstrapJson}
+          objectAlias: rbacBootstrapJson
+          objectType: secret
+`;
+}
+
 export function renderPostgresBootstrapSecretProviderClass(bootstrapClientId) {
   const entries = Object.entries(config.environments)
     .filter(([, env]) => env.hindsight?.enabled)
@@ -2480,6 +2508,26 @@ export function renderSandboxServerResources(
               secretProviderClass: openhands-hindsight-broker-secrets
 `
     : "";
+  const rbacBootstrapEnv = env.rbac?.secrets?.bootstrapJson
+    ? `            - name: OH_RBAC_BOOTSTRAP_JSON_FILE
+              value: /mnt/rbac-bootstrap-secrets/rbacBootstrapJson
+`
+    : "";
+  const rbacBootstrapVolumeMount = env.rbac?.secrets?.bootstrapJson
+    ? `            - name: rbac-bootstrap-secrets-store
+              mountPath: /mnt/rbac-bootstrap-secrets
+              readOnly: true
+`
+    : "";
+  const rbacBootstrapVolume = env.rbac?.secrets?.bootstrapJson
+    ? `        - name: rbac-bootstrap-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: openhands-rbac-bootstrap-secrets
+`
+    : "";
   return `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -2594,7 +2642,7 @@ ${githubOAuthEnv}            - name: OH_SANDBOX_KIND
               value: https://${env.frontDoorHost}
             - name: OH_PERMITTED_CORS_ORIGINS_0
               value: https://${env.frontDoorHost}
-${hindsightEnv}          readinessProbe:
+${rbacBootstrapEnv}${hindsightEnv}          readinessProbe:
             httpGet:
               path: /ready
               port: http
@@ -2617,11 +2665,11 @@ ${hindsightEnv}          readinessProbe:
             - name: sandbox-spec-bootstrap
               mountPath: /etc/openhands
               readOnly: true
-${hindsightVolumeMount}      volumes:
+${rbacBootstrapVolumeMount}${hindsightVolumeMount}      volumes:
         - name: sandbox-spec-bootstrap
           configMap:
             name: openhands-sandbox-spec-bootstrap
-${hindsightVolume}---
+${rbacBootstrapVolume}${hindsightVolume}---
 apiVersion: v1
 kind: Service
 metadata:
@@ -4569,6 +4617,13 @@ async function deploy(
   if (hindsightBrokerSecretProviderClass) {
     kubectl(["apply", "-f", "-"], {
       input: hindsightBrokerSecretProviderClass,
+    });
+  }
+  const rbacBootstrapSecretProviderClass =
+    renderRbacBootstrapSecretProviderClass(environment, clientId);
+  if (rbacBootstrapSecretProviderClass) {
+    kubectl(["apply", "-f", "-"], {
+      input: rbacBootstrapSecretProviderClass,
     });
   }
   kubectl([
