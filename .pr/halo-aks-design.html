@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Halo: production self-hosted Agent Canvas on AKS</title>
+  <style>
+    :root {
+      --fg:#1a1a1a; --muted:#5a5a5a; --subtle:#8a8a82;
+      --bg:#fdfdfb; --card:#fff; --elevated:#f7f6f1;
+      --accent:#2b4eaa; --accent-soft:#e6ecfa;
+      --rule:#e2e2dc; --rule-strong:#bdbcb4;
+      --code-bg:#f3f1ec; --warn:#b25b0e; --ok:#2f7a3a; --crit:#a02020;
+      --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+    }
+    *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans)}
+    body{line-height:1.6;font-size:16px}
+    .wrap{display:grid;grid-template-columns:235px minmax(0,1fr);gap:44px;max-width:1180px;margin:0 auto;padding:32px 28px 96px}
+    nav{position:sticky;top:24px;align-self:start;font-size:13px}
+    nav h2{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+    nav ol{list-style:none;padding:0;margin:0;counter-reset:toc}
+    nav li{counter-increment:toc;margin:5px 0} nav li::before{content:counter(toc) ". ";color:var(--muted)}
+    nav a{color:var(--fg);text-decoration:none} nav a:hover{color:var(--accent)}
+    header{border-bottom:1px solid var(--rule);padding-bottom:22px;margin-bottom:28px}
+    .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+    h1{font-size:34px;line-height:1.18;margin:6px 0 8px;letter-spacing:-.01em}
+    header p{color:var(--muted);max-width:760px;margin:0}
+    h2{font-size:22px;margin:42px 0 10px} h2 .num{color:var(--muted);font-weight:500;margin-right:8px}
+    h3{font-size:16px;margin:22px 0 8px}
+    p{margin:8px 0 14px}
+    code{font-family:var(--mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:3px}
+    .callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:11px 14px;margin:15px 0;border-radius:0 4px 4px 0;font-size:14.5px}
+    .callout.warn{border-color:var(--warn);background:#fbf1e6}
+    .callout.note{border-color:var(--muted);background:#f3f1ec}
+    a.src{font-family:var(--mono);font-size:12px;color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)}
+    table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+    th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+    th{font-weight:600;background:var(--code-bg)}
+    .fig{margin:18px 0 22px}.fig svg{display:block;max-width:100%;height:auto;background:#fff;border:1px solid var(--rule);border-radius:6px}
+    .fig figcaption{font-size:13px;color:var(--muted);margin-top:7px;text-align:center}
+    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .card{background:var(--card);border:1px solid var(--rule);border-radius:7px;padding:14px}
+    .card h3{margin:0 0 4px}.tag{font:700 11px var(--mono);color:var(--accent)}
+    details{border:1px solid var(--rule);border-radius:6px;margin:12px 0}
+    details>summary{cursor:pointer;padding:8px 12px;color:var(--muted);font-size:13px}
+    details>div{padding:0 12px 12px}
+    @media(max-width:780px){.wrap{grid-template-columns:1fr}.cards{grid-template-columns:1fr}nav{position:static}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#decision">Decision and review focus</a></li>
+      <li><a href="#flow">Identity and runtime flow</a></li>
+      <li><a href="#surface">User-facing surface</a></li>
+      <li><a href="#deployment">Deployment contract</a></li>
+      <li><a href="#files">Changed areas</a></li>
+      <li><a href="#risk">Risk and evidence</a></li>
+    </ol>
+  </nav>
+  <main>
+    <header>
+      <div class="eyebrow">PR design review</div>
+      <h1>Production self-hosted Agent Canvas on AKS</h1>
+      <p>This change turns Canvas into a complete open-source, Entra-authenticated AKS deployment: the browser authenticates through a BFF, organization-scoped APIs run in Sandbox Server, and conversations launch into immutable Linux or Windows runtime profiles with private persistence and memory.</p>
+    </header>
+
+    <section id="decision">
+      <h2><span class="num">1</span>Decision and review focus</h2>
+      <div class="callout"><strong>Key decision:</strong> keep identity, organization state, and runtime ownership explicit. The BFF signs a short-lived internal assertion; Sandbox Server owns organization-scoped settings and workspace metadata; Kubernetes controllers own runtime resources. No browser credential becomes a runtime credential.</div>
+      <p>The highest-value review path is the trust boundary from <a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/entra-bff.mjs#L605">getUpstreamIdentityHeaders() at scripts/entra-bff.mjs:605</a> into the organization boundary at <a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/src/components/features/backends/cloud-organization-boundary.tsx#L15">CloudOrganizationBoundary at cloud-organization-boundary.tsx:15</a>, then the selected sandbox profile into <a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/workspace-runtime-controller.mjs#L954">createWorkspaceRuntimeController() at workspace-runtime-controller.mjs:954</a>.</p>
+      <p>Compatibility is additive for ordinary local Canvas users. Halo-specific behavior is activated by deployment configuration; shared frontend adapters retain local and cloud paths, while the Helm and Docker changes make the new services deployable.</p>
+    </section>
+
+    <section id="flow">
+      <h2><span class="num">2</span>Identity and runtime flow</h2>
+      <figure class="fig">
+        <svg viewBox="0 0 960 470" role="img" aria-labelledby="flow-title flow-desc">
+          <title id="flow-title">Before and after request and workspace flow</title>
+          <desc id="flow-desc">The prior browser-to-backend path lacked a complete organization and runtime boundary. The new path uses Entra BFF assertions, organization-scoped Sandbox APIs, and profile-driven Kubernetes runtimes.</desc>
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--subtle)"/></marker>
+            <marker id="arr-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="var(--warn)"/></marker>
+            <style>
+              .old{fill:var(--code-bg);stroke:var(--subtle);stroke-width:1.4;stroke-dasharray:5 3}
+              .new{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+              .title{font:700 13px var(--sans);fill:var(--fg)} .detail{font:11.5px var(--mono);fill:var(--muted)}
+              .edge{stroke:var(--subtle);stroke-width:1.5;stroke-dasharray:5 3;fill:none;marker-end:url(#arr)}
+              .edge-new{stroke:var(--warn);stroke-width:2;fill:none;marker-end:url(#arr-new)}
+              .label{font:700 11px var(--mono);fill:var(--warn)}
+              .head{font:800 14px var(--sans);fill:var(--accent)}
+            </style>
+          </defs>
+          <text class="head" x="30" y="34">BEFORE: incomplete self-hosted boundary</text>
+          <rect class="old" x="30" y="60" width="190" height="72" rx="6"/><text class="title" x="125" y="88" text-anchor="middle">Canvas browser</text><text class="detail" x="125" y="110" text-anchor="middle">auth + workspace UI</text>
+          <rect class="old" x="295" y="60" width="190" height="72" rx="6"/><text class="title" x="390" y="88" text-anchor="middle">partial backend</text><text class="detail" x="390" y="110" text-anchor="middle">no durable org contract</text>
+          <rect class="old" x="560" y="60" width="190" height="72" rx="6"/><text class="title" x="655" y="88" text-anchor="middle">runtime</text><text class="detail" x="655" y="110" text-anchor="middle">single implicit profile</text>
+          <path class="edge" d="M220 96 L295 96"/><path class="edge" d="M485 96 L560 96"/>
+          <text class="label" x="390" y="158" text-anchor="middle">Failure mode: organizations/workspaces cannot load consistently</text>
+
+          <text class="head" x="30" y="215">AFTER: explicit trust, state, and execution owners</text>
+          <rect class="new" x="30" y="245" width="170" height="82" rx="6"/><text class="title" x="115" y="275" text-anchor="middle">Entra BFF</text><text class="detail" x="115" y="297" text-anchor="middle">entra-bff.mjs:605</text>
+          <rect class="new" x="250" y="245" width="190" height="82" rx="6"/><text class="title" x="345" y="275" text-anchor="middle">Sandbox Server</text><text class="detail" x="345" y="297" text-anchor="middle">org-scoped SQL APIs</text>
+          <rect class="new" x="490" y="245" width="190" height="82" rx="6"/><text class="title" x="585" y="275" text-anchor="middle">Sandbox profile</text><text class="detail" x="585" y="297" text-anchor="middle">Linux / Windows / size</text>
+          <rect class="new" x="730" y="245" width="190" height="82" rx="6"/><text class="title" x="825" y="275" text-anchor="middle">AKS runtime</text><text class="detail" x="825" y="297" text-anchor="middle">PVC + identity + image</text>
+          <path class="edge-new" d="M200 286 L250 286"/><path class="edge-new" d="M440 286 L490 286"/><path class="edge-new" d="M680 286 L730 286"/>
+          <rect class="new" x="250" y="370" width="190" height="64" rx="6"/><text class="title" x="345" y="396" text-anchor="middle">Private PostgreSQL</text><text class="detail" x="345" y="416" text-anchor="middle">identity + durable state</text>
+          <rect class="new" x="490" y="370" width="190" height="64" rx="6"/><text class="title" x="585" y="396" text-anchor="middle">Hindsight</text><text class="detail" x="585" y="416" text-anchor="middle">bank-scoped memory</text>
+          <path class="edge-new" d="M345 327 L345 370"/><path class="edge-new" d="M440 402 L490 402"/>
+        </svg>
+        <figcaption>Fig 1. The change replaces an implicit backend/runtime path with three named boundaries: assertion, organization state, and profile-driven execution.</figcaption>
+      </figure>
+      <div class="callout note"><strong>Reading hint:</strong> orange arrows are the new carrying path. Database and memory are reachable only through Sandbox Server, not from the browser.</div>
+    </section>
+
+    <section id="surface">
+      <h2><span class="num">3</span>User-facing surface</h2>
+      <div class="cards">
+        <article class="card"><span class="tag">ADDED</span><h3>Workspace organization boundary</h3><p>Canvas blocks organization-dependent routes until the authenticated identity and current organization resolve.</p><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/src/components/features/backends/cloud-organization-boundary.tsx#L15">CloudOrganizationBoundary</a></article>
+        <article class="card"><span class="tag">ADDED</span><h3>Execution profiles</h3><p>Users select durable Linux or Windows runtime profiles instead of inheriting one implicit sandbox shape.</p><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/src/components/features/settings/execution-profiles/execution-profile-select.tsx#L19">ExecutionProfileSelect</a></article>
+        <article class="card"><span class="tag">ADDED</span><h3>Organization-scoped integrations</h3><p>GitHub, Atlassian, and Perforce configuration is exposed through dedicated settings surfaces backed by hosted persistence.</p><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/src/components/features/settings/app-settings/github-integration-settings.tsx#L24">GitHubIntegrationSettings</a> · <a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/src/components/features/settings/integrations/atlassian-integration-settings.tsx#L25">AtlassianIntegrationSettings</a> · <a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/src/components/features/settings/integrations/perforce-integration-settings.tsx#L28">PerforceIntegrationSettings</a></article>
+        <article class="card"><span class="tag">CHANGED</span><h3>Conversation launch and recovery</h3><p>Conversation creation carries the selected runtime profile and reports startup stages while the controller creates storage and runtime resources.</p><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/workspace-runtime-controller.mjs#L307">renderWorkspaceResources()</a></article>
+      </div>
+    </section>
+
+    <section id="deployment">
+      <h2><span class="num">4</span>Deployment contract</h2>
+      <table>
+        <thead><tr><th>Boundary</th><th>Before</th><th>After</th><th>Review anchor</th></tr></thead>
+        <tbody>
+          <tr><td>Identity</td><td>Deployment-specific auth was incomplete.</td><td>Entra session becomes a signed, short-lived internal assertion.</td><td><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/entra-bff.mjs#L605">entra-bff.mjs:605</a></td></tr>
+          <tr><td>Images</td><td>Mutable or separately managed components could drift.</td><td>Canvas, Agent Server, Sandbox Server, runtimes, and Windows runtime deploy by immutable digest.</td><td><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/halo-deploy.mjs#L2439">renderSandboxServerResources()</a></td></tr>
+          <tr><td>Database</td><td>Extension and authentication assumptions could fail during startup.</td><td>Bootstrap owns roles, workload identity, TLS, vector, and trigram prerequisites.</td><td><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/halo-deploy.mjs#L1364">postgresExtensionsParameterValue()</a></td></tr>
+          <tr><td>Runtime</td><td>One Linux-oriented execution contract.</td><td>Profile-specific templates cover Linux and Windows storage, identity, images, and capacity.</td><td><a class="src" href="https://github.com/ghermann-msft/OpenHands/blob/b2415bf3b960427d9f07851f5881d06869997bc6/scripts/halo-deploy.mjs#L3387">renderWorkspaceStorageClass()</a></td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn"><strong>Rollout boundary:</strong> the deployment is intentionally forward-only and migration-aware. PPE startup exposed missing image lineage and PostgreSQL extension prerequisites; both are now encoded in immutable source pins and bootstrap checks rather than repaired manually at runtime.</div>
+    </section>
+
+    <section id="files">
+      <h2><span class="num">5</span>Changed areas</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Representative files</th><th>Nature</th></tr></thead>
+        <tbody>
+          <tr><td>Deployment and orchestration</td><td><code>deploy/halo/</code>, <code>scripts/halo-deploy.mjs</code>, <code>.github/workflows/halo-deploy.yml</code>, Helm templates</td><td>New deployment system and mechanical packaging changes</td></tr>
+          <tr><td>Identity and routing</td><td><code>scripts/entra-bff.mjs</code>, <code>scripts/static-server.mjs</code>, <code>src/api/main-app-auth.ts</code></td><td>New trust boundary and hosted routing</td></tr>
+          <tr><td>Workspace runtime</td><td><code>scripts/workspace-runtime-controller.mjs</code>, sandbox spec API/hooks, execution-profile UI</td><td>New durable Linux/Windows runtime lifecycle</td></tr>
+          <tr><td>Organization UX</td><td>organization boundary, settings navigation, integrations, sidebar account</td><td>New hosted user flows</td></tr>
+          <tr><td>Telemetry and product defaults</td><td>telemetry provider/hooks/services, defaults, translation catalog</td><td>Self-hosted privacy behavior and shared adapter updates</td></tr>
+          <tr><td>Verification</td><td>deployment, BFF, workspace controller, API, route, component, and workflow tests</td><td>Behavioral contract coverage</td></tr>
+        </tbody>
+      </table>
+      <details><summary>Diff scale</summary><div><p><strong>174 files changed, 16,544 insertions, 4,128 deletions.</strong> The size is driven by the end-to-end deployment surface: CI, Helm/Docker packaging, BFF identity, hosted APIs, runtime control, organization UX, integrations, translations, and corresponding tests.</p></div></details>
+    </section>
+
+    <section id="risk">
+      <h2><span class="num">6</span>Risk and evidence</h2>
+      <p><strong>Primary risks:</strong> authentication claim mismatch, stale cross-repository image pins, database migration prerequisites, Windows node/image readiness, and shared frontend behavior across local and hosted modes.</p>
+      <p><strong>Observed end-to-end result:</strong> the PPE deployment rolled out Canvas, Sandbox Server, Agent Server, Linux runtime, Windows Server 2025 runtime, PostgreSQL, and Hindsight by digest. The final live Sandbox Server was <code>1/1 Ready</code>; migrations completed through revision 020; signed identity requests to <code>/api/v1/users/me</code> and <code>/api/organizations</code> returned HTTP 200.</p>
+      <p><strong>Targeted verification:</strong> Halo deployment contracts passed 33/33. The unified Sandbox lineage passed 16 identity/RBAC tests, 5 migration tests including Alembic up/down/up, and 111 Kubernetes sandbox/service/spec tests in its owning repository.</p>
+      <div class="callout note"><strong>Review note:</strong> this PR intentionally contains the Canvas-owned integration and deployment orchestration. Canonical SDK and Sandbox Server behavior remains pinned to exact commits in their owning repositories rather than copied into Canvas.</div>
+    </section>
+  </main>
+</div>
+</body>
+</html>
