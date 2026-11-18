@@ -93,10 +93,9 @@ export async function getCurrentCloudApiKey(
 
 /**
  * Fetch `GET /api/organizations/{orgId}/me`. Identifies the calling user as
- * a member of `orgId`. The GUI uses `me.org_id === me.user_id` to decide
- * whether `orgId` is the user's personal workspace — that's the cloud
- * contract (the auto-generated personal-workspace org has the same id as
- * the user).
+ * a member of `orgId`. Personal-workspace identity comes from
+ * `GET /api/organizations`'s `is_personal` field; organization and user IDs
+ * are independent identities.
  *
  * `role` is the caller's role in the org (`owner` | `admin` | `member`, or
  * `null` if the upstream omits it). `permissions` is the server-defined

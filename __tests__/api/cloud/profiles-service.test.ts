@@ -23,10 +23,29 @@ const cloudBackend: Backend = {
 };
 
 const ORG_ID = "org-1";
+const ORGANIZATIONS_URL = "https://app.all-hands.dev/api/organizations";
 const ORG_BASE = `https://app.all-hands.dev/api/organizations/${ORG_ID}/profiles`;
 const SETTINGS_BASE = "https://app.all-hands.dev/api/v1/settings/profiles";
 const originalFetch = global.fetch;
 const fetchMock = vi.fn();
+
+function mockOrgResponse(data: unknown, personal = false) {
+  fetchMock
+    .mockResolvedValueOnce(
+      mockJsonResponse({
+        items: [
+          {
+            id: ORG_ID,
+            name: personal ? "Personal" : "Team",
+            is_personal: personal,
+            is_visible: true,
+          },
+        ],
+        current_org_id: ORG_ID,
+      }),
+    )
+    .mockResolvedValueOnce(mockJsonResponse(data));
+}
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -52,18 +71,17 @@ describe("ProfilesService against a cloud org (gated org routes)", () => {
   });
 
   it("lists profiles via GET /api/organizations/{orgId}/profiles", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockJsonResponse({
-        profiles: [
-          { name: "gpt", model: "gpt-4o", base_url: null, api_key_set: true },
-        ],
-        active_profile: "gpt",
-      }),
-    );
+    mockOrgResponse({
+      profiles: [
+        { name: "gpt", model: "gpt-4o", base_url: null, api_key_set: true },
+      ],
+      active_profile: "gpt",
+    });
 
     const res = await ProfilesService.listProfiles();
 
-    const [url, init] = getFetchCall(fetchMock);
+    expect(getFetchCall(fetchMock)[0]).toBe(ORGANIZATIONS_URL);
+    const [url, init] = getFetchCall(fetchMock, 1);
     expect(url).toBe(ORG_BASE);
     expect(init).toMatchObject({
       method: "GET",
@@ -73,16 +91,14 @@ describe("ProfilesService against a cloud org (gated org routes)", () => {
   });
 
   it("fetches a profile and maps the org `llm` onto `config`", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockJsonResponse({
-        name: "my profile",
-        llm: { model: "gpt-4o", api_key: null },
-      }),
-    );
+    mockOrgResponse({
+      name: "my profile",
+      llm: { model: "gpt-4o", api_key: null },
+    });
 
     const res = await ProfilesService.getProfile("my profile");
 
-    const [url, init] = getFetchCall(fetchMock);
+    const [url, init] = getFetchCall(fetchMock, 1);
     expect(url).toBe(`${ORG_BASE}/my%20profile`);
     expect(init).toMatchObject({
       method: "GET",
@@ -95,16 +111,14 @@ describe("ProfilesService against a cloud org (gated org routes)", () => {
   });
 
   it("saves a profile via POST .../{name} forwarding the request body", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockJsonResponse({ name: "gpt", message: "Profile 'gpt' saved" }),
-    );
+    mockOrgResponse({ name: "gpt", message: "Profile 'gpt' saved" });
 
     await ProfilesService.saveProfile("gpt", {
       llm: { model: "gpt-4o" } as SaveProfileRequest["llm"],
       include_secrets: true,
     });
 
-    const [url, init] = getFetchCall(fetchMock);
+    const [url, init] = getFetchCall(fetchMock, 1);
     expect(url).toBe(`${ORG_BASE}/gpt`);
     expect(init).toMatchObject({
       method: "POST",
@@ -116,25 +130,21 @@ describe("ProfilesService against a cloud org (gated org routes)", () => {
   });
 
   it("deletes a profile via DELETE .../{name}", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockJsonResponse({ name: "gpt", message: "Profile 'gpt' deleted" }),
-    );
+    mockOrgResponse({ name: "gpt", message: "Profile 'gpt' deleted" });
 
     await ProfilesService.deleteProfile("gpt");
 
-    const [url, init] = getFetchCall(fetchMock);
+    const [url, init] = getFetchCall(fetchMock, 1);
     expect(url).toBe(`${ORG_BASE}/gpt`);
     expect(init).toMatchObject({ method: "DELETE" });
   });
 
   it("renames a profile via POST .../{name}/rename with new_name", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockJsonResponse({ name: "new", message: "renamed" }),
-    );
+    mockOrgResponse({ name: "new", message: "renamed" });
 
     await ProfilesService.renameProfile("old", "new");
 
-    const [url, init] = getFetchCall(fetchMock);
+    const [url, init] = getFetchCall(fetchMock, 1);
     expect(url).toBe(`${ORG_BASE}/old/rename`);
     expect(init).toMatchObject({
       method: "POST",
@@ -143,17 +153,15 @@ describe("ProfilesService against a cloud org (gated org routes)", () => {
   });
 
   it("activates a profile and maps the org `llm` onto `llm_applied`", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockJsonResponse({
-        name: "gpt",
-        message: "Switched to profile 'gpt'",
-        llm: { model: "gpt-4o" },
-      }),
-    );
+    mockOrgResponse({
+      name: "gpt",
+      message: "Switched to profile 'gpt'",
+      llm: { model: "gpt-4o" },
+    });
 
     const res = await ProfilesService.activateProfile("gpt");
 
-    const [url, init] = getFetchCall(fetchMock);
+    const [url, init] = getFetchCall(fetchMock, 1);
     expect(url).toBe(`${ORG_BASE}/gpt/activate`);
     expect(init).toMatchObject({
       method: "POST",
@@ -163,6 +171,23 @@ describe("ProfilesService against a cloud org (gated org routes)", () => {
       message: "Switched to profile 'gpt'",
       llm_applied: true,
     });
+  });
+});
+
+describe("ProfilesService against a personal cloud workspace", () => {
+  beforeEach(() => {
+    setActiveSelection({ backendId: cloudBackend.id, orgId: ORG_ID });
+  });
+
+  it("uses the per-user settings route", async () => {
+    mockOrgResponse({ profiles: [], active_profile: null }, true);
+
+    await ProfilesService.listProfiles();
+
+    expect(getFetchCall(fetchMock)[0]).toBe(ORGANIZATIONS_URL);
+    const [url, init] = getFetchCall(fetchMock, 1);
+    expect(url).toBe(SETTINGS_BASE);
+    expect(init).toMatchObject({ method: "GET" });
   });
 });
 

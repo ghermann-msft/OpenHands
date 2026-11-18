@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsService from "#/api/settings-service/settings-service.api";
 import OptionService from "#/api/option-service/option-service.api";
 import ProfilesService from "#/api/profiles-service/profiles-service.api";
+import AgentProfilesService from "#/api/agent-profiles-service/agent-profiles-service.api";
 import {
   setActiveSelection,
   setRegisteredBackends,
@@ -31,6 +32,13 @@ vi.mock("#/api/profiles-service/profiles-service.api", () => ({
     listProfiles: vi.fn(),
     getProfile: vi.fn(),
   },
+}));
+
+vi.mock("#/api/agent-profiles-service/agent-profiles-service.api", () => ({
+  default: {
+    listProfiles: vi.fn(),
+  },
+  WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME: "default",
 }));
 
 const localBackend: Backend = {
@@ -62,6 +70,7 @@ describe("useLlmConfigured", () => {
   const mockGetConfig = vi.mocked(OptionService.getConfig);
   const mockListProfiles = vi.mocked(ProfilesService.listProfiles);
   const mockGetProfile = vi.mocked(ProfilesService.getProfile);
+  const mockListAgentProfiles = vi.mocked(AgentProfilesService.listProfiles);
 
   beforeEach(() => {
     setRegisteredBackends([localBackend]);
@@ -83,6 +92,10 @@ describe("useLlmConfigured", () => {
     mockGetConfig.mockResolvedValue({
       feature_flags: { hide_llm_settings: false },
     } as Awaited<ReturnType<typeof OptionService.getConfig>>);
+    mockListAgentProfiles.mockResolvedValue({
+      profiles: [],
+      active_agent_profile_id: null,
+    });
   });
 
   afterEach(() => {

@@ -7,17 +7,18 @@ import type {
 } from "@openhands/typescript-client";
 import { getActiveBackend } from "../backend-registry/active-store";
 import type { Backend } from "../backend-registry/types";
+import { getCloudOrganizations } from "./organization-service.api";
 import { callCloudProxy } from "./proxy";
 
 /**
  * Cloud LLM-profile service.
  *
- * Profile CRUD is routed to the org-scoped endpoints
+ * Shared-organization profile CRUD is routed to the org-scoped endpoints
  * `/api/organizations/{orgId}/profiles`, which enforce `EDIT_ORG_SETTINGS`
  * server-side — so a member's mutation is rejected with 403 even on a direct
- * API call, not just hidden in the UI. When the active cloud backend has no org
- * bound (legacy API keys), we fall back to the ungated per-user settings route
- * `/api/v1/settings/profiles`, where there is no org role to enforce against.
+ * API call, not just hidden in the UI. Personal workspaces and cloud backends
+ * with no org bound use the per-user settings route
+ * `/api/v1/settings/profiles`.
  *
  * The two routes share shapes except `get` (org returns `llm`, settings returns
  * `config`) and `activate` (org returns `llm`, settings returns `model`); both
@@ -30,21 +31,31 @@ const SETTINGS_PROFILES_PATH = "/api/v1/settings/profiles";
  * Resolve the backend + base path for the active cloud backend's profiles:
  * the org-gated route when an org is bound, else the per-user settings route.
  */
-function cloudProfilesTarget(): { backend: Backend; base: string } {
+async function cloudProfilesTarget(): Promise<{
+  backend: Backend;
+  base: string;
+}> {
   const { backend, orgId } = getActiveBackend();
   if (backend.kind !== "cloud") {
     throw new Error("Cloud profiles call requires a cloud backend.");
   }
+  const isPersonal = orgId
+    ? await getCloudOrganizations(backend).then(
+        ({ items }) =>
+          items.find(({ id }) => id === orgId)?.is_personal === true,
+      )
+    : true;
   return {
     backend,
-    base: orgId
-      ? `/api/organizations/${encodeURIComponent(orgId)}/profiles`
-      : SETTINGS_PROFILES_PATH,
+    base:
+      orgId && !isPersonal
+        ? `/api/organizations/${encodeURIComponent(orgId)}/profiles`
+        : SETTINGS_PROFILES_PATH,
   };
 }
 
 export async function fetchCloudProfiles(): Promise<ProfileListResponse> {
-  const { backend, base } = cloudProfilesTarget();
+  const { backend, base } = await cloudProfilesTarget();
   return callCloudProxy<ProfileListResponse>({
     backend,
     method: "GET",
@@ -55,7 +66,7 @@ export async function fetchCloudProfiles(): Promise<ProfileListResponse> {
 export async function fetchCloudProfile(
   name: string,
 ): Promise<ProfileDetailResponse> {
-  const { backend, base } = cloudProfilesTarget();
+  const { backend, base } = await cloudProfilesTarget();
   // Org returns `{ name, llm }`; settings returns `{ name, config, api_key_set }`.
   // Normalize to the SDK detail shape. Neither route exposes the key, and the
   // GUI never reads the detail's `api_key_set` (only list-item `api_key_set`).
@@ -80,7 +91,7 @@ export async function saveCloudProfile(
   name: string,
   request: SaveProfileRequest,
 ): Promise<ProfileMutationResponse> {
-  const { backend, base } = cloudProfilesTarget();
+  const { backend, base } = await cloudProfilesTarget();
   return callCloudProxy<ProfileMutationResponse>({
     backend,
     method: "POST",
@@ -92,7 +103,7 @@ export async function saveCloudProfile(
 export async function deleteCloudProfile(
   name: string,
 ): Promise<ProfileMutationResponse> {
-  const { backend, base } = cloudProfilesTarget();
+  const { backend, base } = await cloudProfilesTarget();
   return callCloudProxy<ProfileMutationResponse>({
     backend,
     method: "DELETE",
@@ -104,7 +115,7 @@ export async function renameCloudProfile(
   name: string,
   newName: string,
 ): Promise<ProfileMutationResponse> {
-  const { backend, base } = cloudProfilesTarget();
+  const { backend, base } = await cloudProfilesTarget();
   return callCloudProxy<ProfileMutationResponse>({
     backend,
     method: "POST",
@@ -116,7 +127,7 @@ export async function renameCloudProfile(
 export async function activateCloudProfile(
   name: string,
 ): Promise<ActivateProfileResponse> {
-  const { backend, base } = cloudProfilesTarget();
+  const { backend, base } = await cloudProfilesTarget();
   // Org returns `{ name, message, llm }`; settings returns `{ name, message,
   // model }`. The SDK type carries `llm_applied`; derive it from whichever the
   // route provided (consumers only read name/message — the hook just
