@@ -1223,9 +1223,12 @@ describe("Halo deployment automation", () => {
     );
     expect(job).not.toContain("halo-ppe-hindsight-database-password");
     expect(postgresExtensionsParameterValue("PG_STAT_STATEMENTS")).toBe(
-      "PG_STAT_STATEMENTS,VECTOR",
+      "PG_STAT_STATEMENTS,VECTOR,PG_TRGM",
     );
-    expect(postgresExtensionsParameterValue("VECTOR")).toBe("VECTOR");
+    expect(postgresExtensionsParameterValue("VECTOR")).toBe("VECTOR,PG_TRGM");
+    expect(postgresExtensionsParameterValue("VECTOR,PG_TRGM")).toBe(
+      "VECTOR,PG_TRGM",
+    );
     expect(validateHindsightPostgresConfig()).toBeUndefined();
   });
 

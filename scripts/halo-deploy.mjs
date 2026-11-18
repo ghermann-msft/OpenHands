@@ -1366,7 +1366,9 @@ export function postgresExtensionsParameterValue(currentValue) {
     .split(",")
     .map((extension) => extension.trim().toUpperCase())
     .filter(Boolean);
-  if (!extensions.includes("VECTOR")) extensions.push("VECTOR");
+  for (const requiredExtension of ["VECTOR", "PG_TRGM"]) {
+    if (!extensions.includes(requiredExtension)) extensions.push(requiredExtension);
+  }
   return extensions.join(",");
 }
 
@@ -3205,6 +3207,8 @@ export function renderPostgresBootstrapJob(runtimeIdentities) {
                 'ALTER DATABASE ${hindsight.database} OWNER TO "${hindsight.databaseUser}"'
               psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
                 'CREATE EXTENSION IF NOT EXISTS vector'
+              psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
+                'CREATE EXTENSION IF NOT EXISTS pg_trgm'
               psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
                 'CREATE SCHEMA IF NOT EXISTS ${config.hindsight.databaseSchema} AUTHORIZATION "${hindsight.databaseUser}"'
               psql --set ON_ERROR_STOP=1 --dbname ${hindsight.database} --command \\
