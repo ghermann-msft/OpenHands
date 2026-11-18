@@ -20,6 +20,7 @@ import {
   natGatewayPublicIpCreateArgs,
   natGatewaySubnetUpdateArgs,
   normalizeDigest,
+  parseRemoteBranchHead,
   postgresExtensionsParameterValue,
   postgresServerAuthUpdateArgs,
   postgresServerCreateArgs,
@@ -63,6 +64,8 @@ import {
 
 const digest = `sha256:${"a".repeat(64)}`;
 const commit = "84d224f45e7647c3a04d4b8ac4af47af22a23b12";
+const agentServerCommit = "359d1c1ae6fca2312969c1dad6ce4f3d8bb46695";
+const sandboxServerCommit = "a3fc6c474cb049d34676ee46e923faba5a6463a4";
 const haloConfig = JSON.parse(
   readFileSync(
     new URL("../../deploy/halo/config.json", import.meta.url),
@@ -70,14 +73,22 @@ const haloConfig = JSON.parse(
   ),
 ) as {
   source: {
-    agentServerSdkRef: string;
+    branch: string;
+    agentServerSdkBranch: string;
+    sandboxServerBranch: string;
   };
 };
-const agentServerSdkRef = haloConfig.source.agentServerSdkRef;
-const typescriptClientUrl = `https://github.com/ghermann-msft/software-agent-sdk/releases/download/typescript-client-${agentServerSdkRef}/openhands-typescript-client-1.62.0.tgz`;
 
 describe("Halo deployment automation", () => {
-  it("keeps all software-agent-sdk consumers on the configured revision", () => {
+  it("uses stable Halo integration branches for every source repository", () => {
+    expect(haloConfig.source).toMatchObject({
+      branch: "openhands-halo",
+      agentServerSdkBranch: "openhands-halo",
+      sandboxServerBranch: "openhands-halo",
+    });
+  });
+
+  it("keeps the packaged TypeScript client immutable and lockfile-consistent", () => {
     const packageJson = JSON.parse(
       readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
     ) as {
@@ -94,9 +105,11 @@ describe("Halo deployment automation", () => {
         }
       >;
     };
+    const typescriptClientUrl =
+      packageJson.dependencies["@openhands/typescript-client"];
 
-    expect(packageJson.dependencies["@openhands/typescript-client"]).toBe(
-      typescriptClientUrl,
+    expect(typescriptClientUrl).toMatch(
+      /^https:\/\/github\.com\/ghermann-msft\/software-agent-sdk\/releases\/download\/typescript-client-[a-f0-9]{40}\/openhands-typescript-client-[^/]+\.tgz$/,
     );
     expect(
       packageLock.packages[""].dependencies?.["@openhands/typescript-client"],
@@ -105,6 +118,23 @@ describe("Halo deployment automation", () => {
       packageLock.packages["node_modules/@openhands/typescript-client"]
         .resolved,
     ).toBe(typescriptClientUrl);
+  });
+
+  it("resolves exact integration branch heads", () => {
+    expect(
+      parseRemoteBranchHead(
+        `${agentServerCommit}\trefs/heads/openhands-halo\n`,
+        "https://github.com/ghermann-msft/software-agent-sdk.git",
+        "openhands-halo",
+      ),
+    ).toBe(agentServerCommit);
+    expect(() =>
+      parseRemoteBranchHead(
+        "",
+        "https://github.com/ghermann-msft/software-agent-sdk.git",
+        "openhands-halo",
+      ),
+    ).toThrow(/Could not resolve/);
   });
 
   it("configures a cluster-owned NAT Gateway for every AKS subnet", () => {
@@ -211,12 +241,14 @@ describe("Halo deployment automation", () => {
   });
 
   it("renders an isolated privileged cached build for the exact commit", () => {
-    const job = renderBuildJob({ commit });
+    const job = renderBuildJob({
+      commit,
+      agentServerCommit,
+      sandboxServerCommit,
+    });
 
     expect(job).toContain(`git checkout --detach ${commit}`);
-    expect(job).toContain(
-      "git checkout --detach a3fc6c474cb049d34676ee46e923faba5a6463a4",
-    );
+    expect(job).toContain(`git checkout --detach ${sandboxServerCommit}`);
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
       "--opt build-arg:VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=true",
@@ -236,9 +268,7 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       "--opt build-arg:AGENT_SERVER_IMAGE=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@$agent_server_digest",
     );
-    expect(job).toContain(
-      `git checkout --detach ${agentServerSdkRef}`,
-    );
+    expect(job).toContain(`git checkout --detach ${agentServerCommit}`);
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
     );
@@ -246,15 +276,11 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
-    expect(job).toContain(
-      `AGENT_SERVER_SDK_GIT_REF=${agentServerSdkRef}`,
-    );
+    expect(job).toContain(`AGENT_SERVER_SDK_GIT_REF=${agentServerCommit}`);
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
-    expect(job).toContain(
-      `SOFTWARE_AGENT_SDK_REF=${agentServerSdkRef}`,
-    );
+    expect(job).toContain(`SOFTWARE_AGENT_SDK_REF=${agentServerCommit}`);
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
     expect(job).toContain('azure.workload.identity/use: "true"');
@@ -276,7 +302,11 @@ describe("Halo deployment automation", () => {
   });
 
   it("builds independent images concurrently before the dependent runtime", () => {
-    const job = renderBuildJob({ commit });
+    const job = renderBuildJob({
+      commit,
+      agentServerCommit,
+      sandboxServerCommit,
+    });
     const agentServerWait = job.indexOf('wait "$agent_server_build_pid"');
     const sandboxRuntimeBuild = job.indexOf(
       "--opt filename=containers/sandbox/Dockerfile",

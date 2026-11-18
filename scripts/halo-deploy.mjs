@@ -120,24 +120,80 @@ export function externalImageReference(repository, digest) {
   return `${normalizedRepository}@${normalizeDigest(digest)}`;
 }
 
-function resolveCommit(ref) {
-  return run("git", ["rev-parse", `${ref}^{commit}`], { capture: true });
+export function normalizeCommit(value, name = "commit") {
+  const commit = String(value ?? "").trim();
+  if (!/^[a-f0-9]{40}$/.test(commit)) {
+    throw new Error(
+      `Expected an immutable 40-character ${name}, received: ${commit}`,
+    );
+  }
+  return commit;
 }
 
-function verifyCommitIsPushed(commit) {
-  const remoteCommit = run(
-    "git",
-    [
-      "ls-remote",
-      config.source.repository,
-      `refs/heads/${config.source.branch}`,
-    ],
-    { capture: true },
-  ).split(/\s+/)[0];
-  if (remoteCommit !== commit) {
+export function parseRemoteBranchHead(output, repository, branch) {
+  const expectedRef = `refs/heads/${branch}`;
+  const matches = String(output ?? "")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([, ref]) => ref === expectedRef);
+  if (matches.length !== 1) {
     throw new Error(
-      `${commit} is not the head of ${config.source.branch}; push the branch before building`,
+      `Could not resolve exactly one HEAD for ${repository} ${expectedRef}`,
     );
+  }
+  return normalizeCommit(matches[0][0], `${branch} branch HEAD`);
+}
+
+function resolveRemoteBranchHead(repository, branch) {
+  return parseRemoteBranchHead(
+    run("git", ["ls-remote", "--heads", repository, branch], {
+      capture: true,
+    }),
+    repository,
+    branch,
+  );
+}
+
+function sourceDefinitions() {
+  return {
+    openhands: {
+      repository: config.source.repository,
+      branch: config.source.branch,
+    },
+    agentServer: {
+      repository: config.source.agentServerSdkRepository,
+      branch: config.source.agentServerSdkBranch,
+    },
+    sandboxServer: {
+      repository: config.source.sandboxServerRepository,
+      branch: config.source.sandboxServerBranch,
+    },
+  };
+}
+
+function resolveSourceHeads() {
+  return Object.fromEntries(
+    Object.entries(sourceDefinitions()).map(([name, source]) => [
+      name,
+      {
+        ...source,
+        commit: resolveRemoteBranchHead(source.repository, source.branch),
+      },
+    ]),
+  );
+}
+
+function printResolvedSources(sources) {
+  for (const [prefix, source] of [
+    ["OPENHANDS", sources.openhands],
+    ["AGENT_SERVER", sources.agentServer],
+    ["SANDBOX_SERVER", sources.sandboxServer],
+  ]) {
+    console.log(`${prefix}_SOURCE_REPOSITORY=${source.repository}`);
+    console.log(`${prefix}_SOURCE_BRANCH=${source.branch}`);
+    console.log(`${prefix}_SOURCE_SHA=${source.commit}`);
   }
 }
 
@@ -1071,10 +1127,14 @@ function ensureEntraApplication(environment) {
   );
 }
 
-export function renderBuildJob({ commit }) {
+export function renderBuildJob({
+  commit,
+  agentServerCommit,
+  sandboxServerCommit,
+}) {
   const short = commit.slice(0, 9);
-  const agentServerShort = config.source.agentServerSdkRef.slice(0, 9);
-  const sandboxShort = config.source.sandboxServerRef.slice(0, 9);
+  const agentServerShort = agentServerCommit.slice(0, 9);
+  const sandboxShort = sandboxServerCommit.slice(0, 9);
   const build = config.build;
   const image = `${config.azure.acrLoginServer}/${build.repository}:${short}`;
   const cache = `${config.azure.acrLoginServer}/${build.repository}:${build.cacheTag}`;
@@ -1137,8 +1197,8 @@ spec:
             - |
               git clone --filter=blob:none --no-checkout ${config.source.sandboxServerRepository} /sandbox-server
               cd /sandbox-server
-              git checkout --detach ${config.source.sandboxServerRef}
-              test "$(git rev-parse HEAD)" = "${config.source.sandboxServerRef}"
+              git checkout --detach ${sandboxServerCommit}
+              test "$(git rev-parse HEAD)" = "${sandboxServerCommit}"
               chown -R 1000:1000 /sandbox-server
           securityContext:
             runAsUser: 0
@@ -1153,8 +1213,8 @@ spec:
             - |
               git clone --filter=blob:none --no-checkout ${config.source.agentServerSdkRepository} /agent-server
               cd /agent-server
-              git checkout --detach ${config.source.agentServerSdkRef}
-              test "$(git rev-parse HEAD)" = "${config.source.agentServerSdkRef}"
+              git checkout --detach ${agentServerCommit}
+              test "$(git rev-parse HEAD)" = "${agentServerCommit}"
               chown -R 1000:1000 /agent-server
           securityContext:
             runAsUser: 0
@@ -1216,7 +1276,7 @@ spec:
                   --opt build-arg:AGENT_SERVER_IMAGE=${defaults.images.agentServer}:${defaults.versions.agentServer}-python \\
                   --opt build-arg:AGENT_SERVER_VERSION=${defaults.versions.agentServer} \\
                   --opt build-arg:AGENT_SERVER_SDK_GIT_REPOSITORY=${config.source.agentServerSdkRepository} \\
-                  --opt build-arg:AGENT_SERVER_SDK_GIT_REF=${config.source.agentServerSdkRef} \\
+                  --opt build-arg:AGENT_SERVER_SDK_GIT_REF=${agentServerCommit} \\
                   --opt build-arg:AUTOMATION_VERSION=${defaults.versions.automation} \\
                   --opt build-arg:VITE_BASE_PATH=${defaults.paths.canvasBasePath} \\
                   --opt build-arg:VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=true \\
@@ -1267,7 +1327,7 @@ spec:
                   --opt platform=linux/amd64 \\
                   --opt build-arg:OPENHANDS_BUILD_VERSION=halo-${sandboxShort} \\
                   --opt build-arg:SOFTWARE_AGENT_SDK_REPOSITORY=${config.source.agentServerSdkRepository} \\
-                  --opt build-arg:SOFTWARE_AGENT_SDK_REF=${config.source.agentServerSdkRef} \\
+                  --opt build-arg:SOFTWARE_AGENT_SDK_REF=${agentServerCommit} \\
                   --import-cache type=registry,ref=${sandboxCache} \\
                   --export-cache type=registry,ref=${sandboxCache},mode=max,compression=zstd,ignore-error=true \\
                   --metadata-file "$sandbox_metadata" \\
@@ -4504,9 +4564,28 @@ async function waitForJob(namespace, job, timeoutMs) {
 }
 
 async function build(args) {
-  const ref = option(args, "--ref", "HEAD");
-  const commit = resolveCommit(ref);
-  verifyCommitIsPushed(commit);
+  const definitions = sourceDefinitions();
+  const sources = {
+    openhands: {
+      ...definitions.openhands,
+      commit: normalizeCommit(option(args, "--openhands-sha"), "OpenHands SHA"),
+    },
+    agentServer: {
+      ...definitions.agentServer,
+      commit: normalizeCommit(
+        option(args, "--agent-server-sha"),
+        "Agent Server SHA",
+      ),
+    },
+    sandboxServer: {
+      ...definitions.sandboxServer,
+      commit: normalizeCommit(
+        option(args, "--sandbox-server-sha"),
+        "Sandbox Server SHA",
+      ),
+    },
+  };
+  const commit = sources.openhands.commit;
   const short = commit.slice(0, 9);
   const job = `halo-build-${short}`;
   kubectl([
@@ -4519,7 +4598,11 @@ async function build(args) {
     "--wait=true",
   ]);
   kubectl(["apply", "-f", "-"], {
-    input: renderBuildJob({ commit }),
+    input: renderBuildJob({
+      commit,
+      agentServerCommit: sources.agentServer.commit,
+      sandboxServerCommit: sources.sandboxServer.commit,
+    }),
   });
   try {
     await waitForJob(config.build.namespace, job, 90 * 60 * 1000);
@@ -4565,6 +4648,7 @@ async function build(args) {
   console.log(`AGENT_SERVER_IMAGE_DIGEST=${digests.agentServer}`);
   console.log(`SANDBOX_SERVER_IMAGE_DIGEST=${digests.sandboxServer}`);
   console.log(`SANDBOX_RUNTIME_IMAGE_DIGEST=${digests.sandboxRuntime}`);
+  printResolvedSources(sources);
   kubectl(["-n", config.build.namespace, "delete", "job", job, "--wait=false"]);
 }
 
@@ -5139,7 +5223,8 @@ function usage() {
   npm run halo -- bootstrap
   npm run halo -- bootstrap-network
   npm run halo -- bootstrap-ci [--github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path>]
-  npm run halo -- build --ref <git-ref>
+  npm run halo -- resolve-sources
+  npm run halo -- build --openhands-sha <sha> --agent-server-sha <sha> --sandbox-server-sha <sha>
   npm run halo -- preflight-windows --windows-runtime-digest sha256:<digest>
   npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest> --sandbox-runtime-digest sha256:<digest> --windows-runtime-digest sha256:<digest>
   npm run halo -- promote [--canvas-digest sha256:<candidate-digest> --agent-server-digest sha256:<candidate-digest> --sandbox-server-digest sha256:<candidate-digest> --sandbox-runtime-digest sha256:<candidate-digest> --windows-runtime-digest sha256:<candidate-digest>]
@@ -5158,6 +5243,9 @@ async function main(args = process.argv.slice(2)) {
       break;
     case "bootstrap-ci":
       bootstrapCi(args.slice(1));
+      break;
+    case "resolve-sources":
+      printResolvedSources(resolveSourceHeads());
       break;
     case "build":
       await build(args.slice(1));
