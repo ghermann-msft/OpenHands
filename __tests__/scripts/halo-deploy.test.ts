@@ -194,7 +194,7 @@ describe("Halo deployment automation", () => {
       "--opt build-arg:AGENT_SERVER_IMAGE=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@$agent_server_digest",
     );
     expect(job).toContain(
-      "git checkout --detach d76ed1a61e405033b807165fc7f13ae92cb33b18",
+      "git checkout --detach 4e5546c7015d169b825b107df52cdb7af5f2114b",
     );
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
@@ -204,13 +204,13 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=d76ed1a61e405033b807165fc7f13ae92cb33b18",
+      "AGENT_SERVER_SDK_GIT_REF=4e5546c7015d169b825b107df52cdb7af5f2114b",
     );
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "SOFTWARE_AGENT_SDK_REF=d76ed1a61e405033b807165fc7f13ae92cb33b18",
+      "SOFTWARE_AGENT_SDK_REF=4e5546c7015d169b825b107df52cdb7af5f2114b",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
