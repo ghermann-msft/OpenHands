@@ -2602,6 +2602,7 @@ export function renderSandboxServerResources(
               value: "600"
 `
       : "";
+  const agentProfileSeeds = JSON.stringify(sandbox.agentProfileSeeds);
   const hindsightEnv = hindsightBrokerEnv(environment);
   const hindsightVolumeMount = env.hindsight?.enabled
     ? `            - name: hindsight-secrets-store
@@ -2716,6 +2717,9 @@ ${sandboxStartupTimeoutEnv}            - name: SERVE_FRONTEND
               value: "false"
             - name: OH_ALLOW_USER_LLM_CONFIGURATION
               value: "true"
+            - name: OH_ORGANIZATION_AGENT_PROFILE_SEEDS_JSON
+              value: >-
+                ${agentProfileSeeds}
             - name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET
               valueFrom:
                 secretKeyRef:

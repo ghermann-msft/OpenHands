@@ -1118,6 +1118,14 @@ describe("Halo deployment automation", () => {
       'name: OH_ALLOW_USER_LLM_CONFIGURATION\n              value: "true"',
     );
     expect(resources).toContain(
+      "name: OH_ORGANIZATION_AGENT_PROFILE_SEEDS_JSON",
+    );
+    expect(resources).toContain('"active_profile":"copilot-ui"');
+    expect(resources).toContain('"acp_server":"codex"');
+    expect(resources).toContain('"acp_server":"opencode"');
+    expect(resources).toContain('"acp_server":"copilot-cli"');
+    expect(resources).toContain('"COPILOT_GITHUB_TOKEN"');
+    expect(resources).toContain(
       "name: OH_SANDBOX_SANDBOX_URL_PATTERN\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/sandboxes/{sandbox_name}",
     );
     expect(resources).toContain(

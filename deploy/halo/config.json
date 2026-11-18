@@ -226,7 +226,41 @@
     "trustedIdentityAudience": "openhands-sandbox-server",
     "trustedIdentityHeader": "X-OpenHands-Identity-Assertion",
     "trustedIdentityMaxLifetimeSeconds": 300,
-    "trustedIdentityClockSkewSeconds": 30
+    "trustedIdentityClockSkewSeconds": 30,
+    "agentProfileSeeds": {
+      "active_profile": "copilot-ui",
+      "profiles": {
+        "codex": {
+          "agent_kind": "acp",
+          "acp_server": "codex",
+          "acp_prompt_timeout": 1800,
+          "acp_startup_timeout": 90
+        },
+        "opencode": {
+          "agent_kind": "acp",
+          "acp_server": "opencode",
+          "acp_prompt_timeout": 1800,
+          "acp_startup_timeout": 90
+        },
+        "copilot-cli": {
+          "agent_kind": "acp",
+          "secret_refs": ["COPILOT_GITHUB_TOKEN"],
+          "acp_server": "copilot-cli",
+          "acp_prompt_timeout": 1800,
+          "acp_startup_timeout": 90
+        },
+        "copilot-ui": {
+          "agent_kind": "acp",
+          "acp_server": "copilot-cli",
+          "acp_prompt_timeout": 1800,
+          "acp_startup_timeout": 90
+        },
+        "default": {
+          "agent_kind": "openhands",
+          "llm_profile_ref": "default"
+        }
+      }
+    }
   },
   "agentSandbox": {
     "version": "v0.5.2",

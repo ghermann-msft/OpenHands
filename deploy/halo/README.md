@@ -119,6 +119,12 @@ identity has `Key Vault Secrets User` on the Halo vault and `Cognitive Services
 OpenAI User` on `mortmain-openai2`; no Azure OpenAI API key is stored. The
 default LLM profile uses the `gpt-5.6-sol` deployment through the Azure endpoint,
 and the SDK refreshes Entra access tokens through `DefaultAzureCredential`.
+Sandbox Server also receives the deployment-owned Agent Profile seed document
+from `sandboxServer.agentProfileSeeds`. It initializes an organization only
+when no durable Agent Profile state exists, preserving later user changes and
+explicitly empty libraries. Halo seeds the OpenHands default plus Codex,
+OpenCode, Copilot CLI, and the `copilot-ui` Copilot CLI preset; `copilot-ui`
+is active on first initialization.
 
 Conversation state is stored on a separate retained Azure Files PVC in each
 environment and mounted at `/home/openhands/conversations`. The shared Canvas
