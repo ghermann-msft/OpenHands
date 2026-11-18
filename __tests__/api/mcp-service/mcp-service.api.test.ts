@@ -5,7 +5,8 @@ import SettingsService, {
 } from "#/api/settings-service/settings-service.api";
 import * as activeStore from "#/api/backend-registry/active-store";
 import type { MCPServerConfig } from "#/types/mcp-server";
-import { REDACTED_MCP_SECRET_VALUE } from "#/utils/mcp-config";
+import { parseMcpConfig, REDACTED_MCP_SECRET_VALUE } from "#/utils/mcp-config";
+import { flattenMcpConfig } from "#/utils/mcp-installed-servers";
 
 // vi.mock factories are hoisted before imports, so spy functions must be
 // created with vi.hoisted() to be in scope inside the factory.
@@ -424,6 +425,40 @@ describe("McpService.testServer", () => {
         headers: {
           "X-Team": "team-1",
           Authorization: `Bearer ${REDACTED_MCP_SECRET_VALUE}`,
+        },
+      },
+    });
+  });
+
+  it("preserves Azure workload identity auth in cloud probes", async () => {
+    cloudActive();
+    mockTestCloudServer.mockResolvedValue({
+      ok: true,
+      tools: ["web_search"],
+    });
+    const [foundryServer] = flattenMcpConfig(
+      parseMcpConfig({
+        "foundry-web-search": {
+          url: "https://foundry.example/mcp",
+          transport: "streamable-http",
+          auth: {
+            strategy: "azure_workload_identity",
+            scope: "https://ai.azure.com/.default",
+          },
+        },
+      }),
+    );
+
+    await McpService.testServer(foundryServer);
+
+    expect(mockTestCloudServer).toHaveBeenCalledWith({
+      name: "foundry-web-search",
+      server: {
+        type: "http",
+        url: "https://foundry.example/mcp",
+        auth: {
+          strategy: "azure_workload_identity",
+          scope: "https://ai.azure.com/.default",
         },
       },
     });

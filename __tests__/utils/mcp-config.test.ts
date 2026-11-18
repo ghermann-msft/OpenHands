@@ -223,6 +223,30 @@ describe("parseMcpConfig", () => {
     });
   });
 
+  it("preserves Azure workload identity auth for remote probes", () => {
+    expect(
+      parseMcpConfig({
+        foundry: {
+          url: "https://foundry.example/mcp",
+          transport: "streamable-http",
+          auth: {
+            strategy: "azure_workload_identity",
+            scope: "https://ai.azure.com/.default",
+          },
+        },
+      }),
+    ).toEqual({
+      foundry: {
+        transport: "streamable-http",
+        url: "https://foundry.example/mcp",
+        auth: {
+          strategy: "azure_workload_identity",
+          scope: "https://ai.azure.com/.default",
+        },
+      },
+    });
+  });
+
   it("drops invalid auth credentials while keeping the server", () => {
     expect(
       parseMcpConfig({

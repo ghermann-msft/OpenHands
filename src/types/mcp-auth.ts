@@ -21,6 +21,9 @@ export const MCP_AUTH_STRATEGIES = [
   "basic",
   "header",
   "oauth2",
+  // Agent Server supports this strategy before the generated TypeScript
+  // client exposes it; preserve the wire value instead of dropping auth.
+  "azure_workload_identity",
 ] as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
