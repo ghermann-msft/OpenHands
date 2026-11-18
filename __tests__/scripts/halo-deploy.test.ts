@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -62,8 +63,50 @@ import {
 
 const digest = `sha256:${"a".repeat(64)}`;
 const commit = "84d224f45e7647c3a04d4b8ac4af47af22a23b12";
+const haloConfig = JSON.parse(
+  readFileSync(
+    new URL("../../deploy/halo/config.json", import.meta.url),
+    "utf8",
+  ),
+) as {
+  source: {
+    agentServerSdkRef: string;
+  };
+};
+const agentServerSdkRef = haloConfig.source.agentServerSdkRef;
+const typescriptClientUrl = `https://github.com/ghermann-msft/software-agent-sdk/releases/download/typescript-client-${agentServerSdkRef}/openhands-typescript-client-1.62.0.tgz`;
 
 describe("Halo deployment automation", () => {
+  it("keeps all software-agent-sdk consumers on the configured revision", () => {
+    const packageJson = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ) as {
+      dependencies: Record<string, string>;
+    };
+    const packageLock = JSON.parse(
+      readFileSync(new URL("../../package-lock.json", import.meta.url), "utf8"),
+    ) as {
+      packages: Record<
+        string,
+        {
+          dependencies?: Record<string, string>;
+          resolved?: string;
+        }
+      >;
+    };
+
+    expect(packageJson.dependencies["@openhands/typescript-client"]).toBe(
+      typescriptClientUrl,
+    );
+    expect(
+      packageLock.packages[""].dependencies?.["@openhands/typescript-client"],
+    ).toBe(typescriptClientUrl);
+    expect(
+      packageLock.packages["node_modules/@openhands/typescript-client"]
+        .resolved,
+    ).toBe(typescriptClientUrl);
+  });
+
   it("configures a cluster-owned NAT Gateway for every AKS subnet", () => {
     expect(natGatewayPublicIpCreateArgs()).toEqual(
       expect.arrayContaining([
@@ -194,7 +237,7 @@ describe("Halo deployment automation", () => {
       "--opt build-arg:AGENT_SERVER_IMAGE=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@$agent_server_digest",
     );
     expect(job).toContain(
-      "git checkout --detach 5aab3dcfe49e085cff5bd9f1dfa68360979fe5d9",
+      `git checkout --detach ${agentServerSdkRef}`,
     );
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
@@ -204,13 +247,13 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=5aab3dcfe49e085cff5bd9f1dfa68360979fe5d9",
+      `AGENT_SERVER_SDK_GIT_REF=${agentServerSdkRef}`,
     );
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "SOFTWARE_AGENT_SDK_REF=5aab3dcfe49e085cff5bd9f1dfa68360979fe5d9",
+      `SOFTWARE_AGENT_SDK_REF=${agentServerSdkRef}`,
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
