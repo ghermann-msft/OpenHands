@@ -258,16 +258,41 @@ describe("Halo deployment automation", () => {
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
     expect(job).toContain('azure.workload.identity/use: "true"');
-    expect(job).toContain("agentpool: halobuild");
+    expect(job).toContain("agentpool: halobuildssd");
     expect(job).toContain("value: halo-build");
     expect(job).toContain("privileged: true");
+    expect(job).toContain('cpu: "14"');
+    expect(job).toContain('cpu: "15"');
+    expect(job).toContain("ephemeral-storage: 200Gi");
     expect(job).not.toContain("hostUsers: false");
     expect(job).not.toContain("--oci-worker-no-process-sandbox");
     expect(job).not.toContain('add: ["SYS_ADMIN"]');
     expect(job).not.toContain("type: Unconfined");
     expect(job).toContain("ttlSecondsAfterFinished: 600");
+    expect(job).toContain("mountPath: /var/lib/buildkit");
+    expect(job).toContain("sizeLimit: 200Gi");
     expect(job).toContain("--metadata-file");
     expect(job).toContain("> /dev/termination-log");
+  });
+
+  it("builds independent images concurrently before the dependent runtime", () => {
+    const job = renderBuildJob({ commit });
+    const agentServerWait = job.indexOf('wait "$agent_server_build_pid"');
+    const sandboxRuntimeBuild = job.indexOf(
+      "--opt filename=containers/sandbox/Dockerfile",
+    );
+
+    expect(job).toContain('canvas_build_pid="$!"');
+    expect(job).toContain('agent_server_build_pid="$!"');
+    expect(job).toContain('sandbox_server_build_pid="$!"');
+    expect(agentServerWait).toBeGreaterThan(-1);
+    expect(agentServerWait).toBeLessThan(sandboxRuntimeBuild);
+    expect(job.indexOf('wait "$canvas_build_pid"')).toBeGreaterThan(
+      sandboxRuntimeBuild,
+    );
+    expect(job.indexOf('wait "$sandbox_server_build_pid"')).toBeGreaterThan(
+      sandboxRuntimeBuild,
+    );
   });
 
   it("reads all immutable digests reported by the completed build container", () => {
@@ -323,7 +348,7 @@ describe("Halo deployment automation", () => {
     expect(runner).toContain("image: ghcr.io/actions/actions-runner:2.338.1");
     expect(runner).toContain("runAsUser: 1001");
     expect(runner).toContain("runAsGroup: 1001");
-    expect(runner).toContain("agentpool: halobuild");
+    expect(runner).toContain("agentpool: halobuildssd");
     expect(rbac).toContain("namespace: openhands-halo-build");
     expect(rbac).toContain("name: openhands-halo-ci-agent-sandbox");
     expect(rbac).toContain(
@@ -346,8 +371,12 @@ describe("Halo deployment automation", () => {
   it("defines and validates the warm build pool boundary", () => {
     const args = buildNodePoolCreateArgs();
 
-    expect(args).toContain("halobuild");
-    expect(args).toContain("Standard_D8s_v5");
+    expect(args).toContain("halobuildssd");
+    expect(args).toContain("Standard_D16ds_v5");
+    expect(args).toContain("--node-osdisk-type");
+    expect(args).toContain("Ephemeral");
+    expect(args).toContain("--node-osdisk-size");
+    expect(args).toContain("256");
     expect(args).toContain("--enable-cluster-autoscaler");
     expect(args).toContain("--ssh-access");
     expect(args).toContain("disabled");
@@ -357,7 +386,9 @@ describe("Halo deployment automation", () => {
         mode: "User",
         osType: "Linux",
         osSku: "Ubuntu",
-        vmSize: "Standard_D8s_v5",
+        vmSize: "Standard_D16ds_v5",
+        osDiskType: "Ephemeral",
+        osDiskSizeGb: 256,
         enableAutoScaling: true,
         minCount: 1,
         maxCount: 1,
@@ -375,7 +406,9 @@ describe("Halo deployment automation", () => {
         mode: "User",
         osType: "Linux",
         osSku: "Ubuntu",
-        vmSize: "Standard_D8s_v5",
+        vmSize: "Standard_D16ds_v5",
+        osDiskType: "Ephemeral",
+        osDiskSizeGb: 256,
         enableAutoScaling: true,
         minCount: 1,
         maxCount: 1,
@@ -388,6 +421,26 @@ describe("Halo deployment automation", () => {
         nodeTaints: ["unrealhands.io/pool=halo-build:NoSchedule"],
       }),
     ).toThrow(/SSH access disabled/);
+    expect(() =>
+      validateBuildNodePool({
+        mode: "User",
+        osType: "Linux",
+        osSku: "Ubuntu",
+        vmSize: "Standard_D16ds_v5",
+        osDiskType: "Managed",
+        osDiskSizeGb: 256,
+        enableAutoScaling: true,
+        minCount: 1,
+        maxCount: 1,
+        securityProfile: {
+          sshAccess: "Disabled",
+        },
+        nodeLabels: {
+          "unrealhands.io/pool": "halo-build",
+        },
+        nodeTaints: ["unrealhands.io/pool=halo-build:NoSchedule"],
+      }),
+    ).toThrow(/osDiskType=Ephemeral/);
   });
 
   it("defines and validates the native Windows Server 2025 runtime pool", () => {

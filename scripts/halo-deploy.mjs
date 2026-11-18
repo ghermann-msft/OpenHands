@@ -526,6 +526,10 @@ export function buildNodePoolCreateArgs() {
     "Ubuntu",
     "--node-vm-size",
     build.nodePoolVmSize,
+    "--node-osdisk-type",
+    build.nodePoolOsDiskType,
+    "--node-osdisk-size",
+    String(build.nodePoolOsDiskSizeGb),
     "--node-count",
     String(build.nodePoolMinCount),
     "--enable-cluster-autoscaler",
@@ -757,6 +761,12 @@ export function validateBuildNodePool(nodePool) {
   if (nodePool.osSku !== "Ubuntu") mismatches.push("osSku=Ubuntu");
   if (nodePool.vmSize !== build.nodePoolVmSize) {
     mismatches.push(`vmSize=${build.nodePoolVmSize}`);
+  }
+  if (nodePool.osDiskType !== build.nodePoolOsDiskType) {
+    mismatches.push(`osDiskType=${build.nodePoolOsDiskType}`);
+  }
+  if (nodePool.osDiskSizeGb !== build.nodePoolOsDiskSizeGb) {
+    mismatches.push(`osDiskSizeGb=${build.nodePoolOsDiskSizeGb}`);
   }
   if (!nodePool.enableAutoScaling) mismatches.push("autoscaling enabled");
   if (nodePool.minCount !== build.nodePoolMinCount) {
@@ -1176,8 +1186,11 @@ spec:
           args:
             - |
               canvas_metadata=/tmp/canvas-build-metadata.json
+              canvas_digest_file=/tmp/canvas-image-digest
               agent_server_metadata=/tmp/agent-server-build-metadata.json
+              agent_server_digest_file=/tmp/agent-server-image-digest
               sandbox_metadata=/tmp/sandbox-build-metadata.json
+              sandbox_digest_file=/tmp/sandbox-server-image-digest
               sandbox_runtime_metadata=/tmp/sandbox-runtime-build-metadata.json
               buildkitd \\
                 --addr unix:///run/buildkit/buildkitd.sock &
@@ -1193,49 +1206,83 @@ spec:
                 fi
                 sleep 1
               done
-              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
-                --frontend dockerfile.v0 \\
-                --local context=/workspace \\
-                --local dockerfile=/workspace \\
-                --opt filename=docker/Dockerfile \\
-                --opt platform=linux/amd64 \\
-                --opt build-arg:AGENT_SERVER_IMAGE=${defaults.images.agentServer}:${defaults.versions.agentServer}-python \\
-                --opt build-arg:AGENT_SERVER_VERSION=${defaults.versions.agentServer} \\
-                --opt build-arg:AGENT_SERVER_SDK_GIT_REPOSITORY=${config.source.agentServerSdkRepository} \\
-                --opt build-arg:AGENT_SERVER_SDK_GIT_REF=${config.source.agentServerSdkRef} \\
-                --opt build-arg:AUTOMATION_VERSION=${defaults.versions.automation} \\
-                --opt build-arg:VITE_BASE_PATH=${defaults.paths.canvasBasePath} \\
-                --opt build-arg:VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=true \\
-                --opt build-arg:OPENHANDS_BUILD_GIT_SHA=${commit} \\
-                --opt build-arg:OPENHANDS_BUILD_GIT_REF=${config.source.branch} \\
-                --opt build-arg:AGENT_CANVAS_VERSION=halo-${short} \\
-                --import-cache type=registry,ref=${cache} \\
-                --export-cache type=registry,ref=${cache},mode=max,compression=zstd,ignore-error=true \\
-                --metadata-file "$canvas_metadata" \\
-                --output type=image,name=${image},push=true
-              canvas_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$canvas_metadata")"
-              if ! printf '%s' "$canvas_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
-                echo "BuildKit did not report an immutable Canvas image digest" >&2
-                cat "$canvas_metadata" >&2
-                exit 1
-              fi
-              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
-                --frontend dockerfile.v0 \\
-                --local context=/agent-server \\
-                --local dockerfile=/agent-server \\
-                --opt filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile \\
-                --opt target=binary \\
-                --opt platform=linux/amd64 \\
-                --import-cache type=registry,ref=${agentServerCache} \\
-                --export-cache type=registry,ref=${agentServerCache},mode=max,compression=zstd,ignore-error=true \\
-                --metadata-file "$agent_server_metadata" \\
-                --output type=image,name=${agentServerImage},push=true
-              agent_server_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$agent_server_metadata")"
-              if ! printf '%s' "$agent_server_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
-                echo "BuildKit did not report an immutable Agent Server image digest" >&2
-                cat "$agent_server_metadata" >&2
-                exit 1
-              fi
+              (
+                buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
+                  --frontend dockerfile.v0 \\
+                  --local context=/workspace \\
+                  --local dockerfile=/workspace \\
+                  --opt filename=docker/Dockerfile \\
+                  --opt platform=linux/amd64 \\
+                  --opt build-arg:AGENT_SERVER_IMAGE=${defaults.images.agentServer}:${defaults.versions.agentServer}-python \\
+                  --opt build-arg:AGENT_SERVER_VERSION=${defaults.versions.agentServer} \\
+                  --opt build-arg:AGENT_SERVER_SDK_GIT_REPOSITORY=${config.source.agentServerSdkRepository} \\
+                  --opt build-arg:AGENT_SERVER_SDK_GIT_REF=${config.source.agentServerSdkRef} \\
+                  --opt build-arg:AUTOMATION_VERSION=${defaults.versions.automation} \\
+                  --opt build-arg:VITE_BASE_PATH=${defaults.paths.canvasBasePath} \\
+                  --opt build-arg:VITE_HOSTED_PROFILE_SKILL_ALLOW_LIST=true \\
+                  --opt build-arg:OPENHANDS_BUILD_GIT_SHA=${commit} \\
+                  --opt build-arg:OPENHANDS_BUILD_GIT_REF=${config.source.branch} \\
+                  --opt build-arg:AGENT_CANVAS_VERSION=halo-${short} \\
+                  --import-cache type=registry,ref=${cache} \\
+                  --export-cache type=registry,ref=${cache},mode=max,compression=zstd,ignore-error=true \\
+                  --metadata-file "$canvas_metadata" \\
+                  --output type=image,name=${image},push=true
+                canvas_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$canvas_metadata")"
+                if ! printf '%s' "$canvas_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                  echo "BuildKit did not report an immutable Canvas image digest" >&2
+                  cat "$canvas_metadata" >&2
+                  exit 1
+                fi
+                printf '%s\\n' "$canvas_digest" > "$canvas_digest_file"
+              ) &
+              canvas_build_pid="$!"
+              (
+                buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
+                  --frontend dockerfile.v0 \\
+                  --local context=/agent-server \\
+                  --local dockerfile=/agent-server \\
+                  --opt filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile \\
+                  --opt target=binary \\
+                  --opt platform=linux/amd64 \\
+                  --import-cache type=registry,ref=${agentServerCache} \\
+                  --export-cache type=registry,ref=${agentServerCache},mode=max,compression=zstd,ignore-error=true \\
+                  --metadata-file "$agent_server_metadata" \\
+                  --output type=image,name=${agentServerImage},push=true
+                agent_server_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$agent_server_metadata")"
+                if ! printf '%s' "$agent_server_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                  echo "BuildKit did not report an immutable Agent Server image digest" >&2
+                  cat "$agent_server_metadata" >&2
+                  exit 1
+                fi
+                printf '%s\\n' "$agent_server_digest" > "$agent_server_digest_file"
+              ) &
+              agent_server_build_pid="$!"
+              (
+                buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
+                  --frontend dockerfile.v0 \\
+                  --local context=/sandbox-server \\
+                  --local dockerfile=/sandbox-server \\
+                  --opt filename=containers/app/Dockerfile \\
+                  --opt target=openhands-sandbox-server \\
+                  --opt platform=linux/amd64 \\
+                  --opt build-arg:OPENHANDS_BUILD_VERSION=halo-${sandboxShort} \\
+                  --opt build-arg:SOFTWARE_AGENT_SDK_REPOSITORY=${config.source.agentServerSdkRepository} \\
+                  --opt build-arg:SOFTWARE_AGENT_SDK_REF=${config.source.agentServerSdkRef} \\
+                  --import-cache type=registry,ref=${sandboxCache} \\
+                  --export-cache type=registry,ref=${sandboxCache},mode=max,compression=zstd,ignore-error=true \\
+                  --metadata-file "$sandbox_metadata" \\
+                  --output type=image,name=${sandboxImage},push=true
+                sandbox_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$sandbox_metadata")"
+                if ! printf '%s' "$sandbox_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
+                  echo "BuildKit did not report an immutable Sandbox Server image digest" >&2
+                  cat "$sandbox_metadata" >&2
+                  exit 1
+                fi
+                printf '%s\\n' "$sandbox_digest" > "$sandbox_digest_file"
+              ) &
+              sandbox_server_build_pid="$!"
+              wait "$agent_server_build_pid"
+              agent_server_digest="$(cat "$agent_server_digest_file")"
               buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
                 --frontend dockerfile.v0 \\
                 --local context=/sandbox-server \\
@@ -1253,26 +1300,10 @@ spec:
                 cat "$sandbox_runtime_metadata" >&2
                 exit 1
               fi
-              buildctl --addr unix:///run/buildkit/buildkitd.sock build \\
-                --frontend dockerfile.v0 \\
-                --local context=/sandbox-server \\
-                --local dockerfile=/sandbox-server \\
-                --opt filename=containers/app/Dockerfile \\
-                --opt target=openhands-sandbox-server \\
-                --opt platform=linux/amd64 \\
-                --opt build-arg:OPENHANDS_BUILD_VERSION=halo-${sandboxShort} \\
-                --opt build-arg:SOFTWARE_AGENT_SDK_REPOSITORY=${config.source.agentServerSdkRepository} \\
-                --opt build-arg:SOFTWARE_AGENT_SDK_REF=${config.source.agentServerSdkRef} \\
-                --import-cache type=registry,ref=${sandboxCache} \\
-                --export-cache type=registry,ref=${sandboxCache},mode=max,compression=zstd,ignore-error=true \\
-                --metadata-file "$sandbox_metadata" \\
-                --output type=image,name=${sandboxImage},push=true
-              sandbox_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\\(sha256:[a-f0-9]\\{64\\}\\)".*/\\1/p' "$sandbox_metadata")"
-              if ! printf '%s' "$sandbox_digest" | grep -Eq '^sha256:[a-f0-9]{64}$'; then
-                echo "BuildKit did not report an immutable Sandbox Server image digest" >&2
-                cat "$sandbox_metadata" >&2
-                exit 1
-              fi
+              wait "$canvas_build_pid"
+              wait "$sandbox_server_build_pid"
+              canvas_digest="$(cat "$canvas_digest_file")"
+              sandbox_digest="$(cat "$sandbox_digest_file")"
               printf '{"canvas":"%s","agentServer":"%s","sandboxServer":"%s","sandboxRuntime":"%s"}' "$canvas_digest" "$agent_server_digest" "$sandbox_digest" "$sandbox_runtime_digest" > /dev/termination-log
               printf 'CANVAS_IMAGE_DIGEST=%s\\n' "$canvas_digest"
               printf 'AGENT_SERVER_IMAGE_DIGEST=%s\\n' "$agent_server_digest"
@@ -1285,13 +1316,13 @@ spec:
             privileged: true
           resources:
             requests:
-              cpu: "2"
-              memory: 4Gi
-              ephemeral-storage: 20Gi
+              cpu: "14"
+              memory: 16Gi
+              ephemeral-storage: 80Gi
             limits:
-              cpu: "4"
-              memory: 14Gi
-              ephemeral-storage: 60Gi
+              cpu: "15"
+              memory: 48Gi
+              ephemeral-storage: 200Gi
           volumeMounts:
             - name: source
               mountPath: /workspace
@@ -1305,6 +1336,8 @@ spec:
             - name: docker-config
               mountPath: /docker
               readOnly: true
+            - name: buildkit-state
+              mountPath: /var/lib/buildkit
       volumes:
         - name: source
           emptyDir:
@@ -1317,6 +1350,9 @@ spec:
             sizeLimit: 8Gi
         - name: docker-config
           emptyDir: {}
+        - name: buildkit-state
+          emptyDir:
+            sizeLimit: 200Gi
 `;
 }
 
