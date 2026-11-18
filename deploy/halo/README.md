@@ -1,5 +1,26 @@
 # OpenHands Halo deployment
 
+## Authoritative build and deployment model
+
+The `main` branch in each Halo fork is the integration branch:
+
+- `ghermann-msft/OpenHands:main`
+- `ghermann-msft/software-agent-sdk:main`
+- `ghermann-msft/sandbox-server:main`
+
+Feature work lands on feature branches and merges into the owning fork's
+`main`. The final OpenHands `main` push starts the central deployment workflow.
+At workflow start, CI resolves all three `main` heads exactly once and records
+their immutable SHAs. It builds the independent components concurrently,
+deploys the resulting immutable digests to PPE, and records the complete
+SHA-to-digest provenance. Production promotion reuses the exact PPE digests;
+it never rebuilds.
+
+Do not coordinate deployments through manually maintained source SHA fields,
+separate deployment branches, or republished package artifacts. Ordinary
+package-lock dependency pins remain immutable and are updated through their
+normal package workflow.
+
 Halo uses one repository-owned command for repeatable AKS builds and
 candidate-to-primary promotion:
 
@@ -8,7 +29,7 @@ npm run halo -- bootstrap
 npm run halo -- bootstrap-ci --github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path-to-pem>
 npm run halo -- resolve-sources
 npm run halo -- build --openhands-sha <sha> --agent-server-sha <sha> --sandbox-server-sha <sha>
-npm run halo -- deploy-candidate --digest sha256:<digest>
+npm run halo -- deploy-candidate --canvas-digest sha256:<digest> --agent-server-digest sha256:<digest> --sandbox-server-digest sha256:<digest> --sandbox-runtime-digest sha256:<digest> --windows-runtime-digest sha256:<digest>
 npm run halo -- promote
 npm run halo -- status
 ```
