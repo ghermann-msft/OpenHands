@@ -14,16 +14,18 @@ npm run halo -- status
 
 `build` creates an ephemeral BuildKit Job in the dedicated
 `openhands-halo-build` namespace. The Job runs only on the dedicated
-`halobuild` AKS user node pool, which is tainted against application workloads
-and keeps one node warm. Only the BuildKit container is privileged; the Job is
-ephemeral, and no build service remains running between builds. The Job clones
-the exact pushed commit, imports and exports its cache
-through ACR, pushes a commit-tagged image, and reports the immutable digest
+`halobuildssd` AKS user node pool, which is tainted against application
+workloads and keeps one `Standard_D16ds_v5` node warm. The pool places kubelet
+ephemeral storage on a 256 GiB Ephemeral OS disk backed by its temporary SSD.
+Only the BuildKit container is privileged; the Job is ephemeral, and no build
+service remains running between builds. BuildKit also imports and exports cache
+through ACR. The Job clones the exact pushed commit, builds independent images
+concurrently, pushes commit-pinned images, and reports their immutable digests
 through its Kubernetes termination message.
 
-`bootstrap` creates the `Standard_D8s_v5` build pool when it is absent and
-rejects an existing pool whose VM size, autoscaling limits, label, or taint
-does not match the configured isolation boundary. Routine `build`,
+`bootstrap` creates the `Standard_D16ds_v5` build pool when it is absent and
+rejects an existing pool whose VM size, disk configuration, autoscaling limits,
+label, or taint does not match the configured isolation boundary. Routine `build`,
 `deploy-candidate`, and `promote` commands use only Kubernetes access and do
 not repeat the Azure, Entra, Key Vault, or Front Door bootstrap.
 
