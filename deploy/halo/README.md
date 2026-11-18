@@ -42,11 +42,12 @@ ephemeral storage on a 256 GiB Ephemeral OS disk backed by its temporary SSD.
 Only the BuildKit container is privileged; the Job is ephemeral, and no build
 service remains running between builds. BuildKit also imports and exports cache
 through ACR. The workflow resolves the latest `main` branch HEAD from each Halo
-fork of OpenHands, software-agent-sdk, and sandbox-server once per run.
-Validation and image building then run in parallel from those same immutable
-SHAs. Deployment requires both jobs to succeed. The build Job clones the exact
-SHAs, builds independent images concurrently, pushes SHA-addressed images, and
-reports their immutable digests through its Kubernetes termination message.
+fork of OpenHands, software-agent-sdk, and sandbox-server once per run. Linting,
+focused tests, the application build, Linux image building, and Windows runtime
+preflight then run in parallel from those same immutable SHAs. Deployment
+requires every job to succeed. The build Job clones the exact SHAs, builds
+independent images concurrently, pushes SHA-addressed images, and reports their
+immutable digests through its Kubernetes termination message.
 
 `bootstrap` creates the `Standard_D16ds_v5` build pool when it is absent and
 rejects an existing pool whose VM size, disk configuration, autoscaling limits,
@@ -73,10 +74,11 @@ internal API keys, settings encryption keys, and Automation KV keys.
 
 ## GitHub Actions deployment loop
 
-The `Halo deployment` workflow resolves and records all three integration branch
-HEADs, validates the resolved OpenHands SHA on a GitHub-hosted runner, then uses
-an ephemeral in-cluster runner to build every component and deploy its digest to
-PPE. The same run then waits at the protected `halo-production` environment.
+The `Halo deployment` workflow resolves and records all three fork `main` HEADs,
+validates the resolved OpenHands SHA on GitHub-hosted matrix runners, and uses
+two ephemeral in-cluster runners to overlap Linux image building with the Windows
+runtime preflight. It deploys only after every parallel job succeeds. The same
+run then waits at the protected `halo-production` environment.
 Approving that job promotes the exact PPE digests without rebuilding; promotion
 fails if PPE has moved to newer digests while approval was pending. Pull
 requests never run on the self-hosted scale set. Deployment readiness and
@@ -94,8 +96,10 @@ the Sandbox Server feature flag.
 `bootstrap-ci` installs Actions Runner Controller and the runner scale set from
 the pinned `0.15.1` Helm charts. The controller and listener run on the warm
 services pool. Ephemeral runners run on the tainted, scale-to-zero build pool
-and use a namespace-scoped ServiceAccount. The runner can manage build Jobs
-and the two Halo namespaces but has no cluster-wide role.
+and use a namespace-scoped ServiceAccount. The scale set permits two concurrent
+runners so Linux image building and Windows preflight do not queue behind each
+other. The runners can manage build Jobs and the two Halo namespaces but have
+no cluster-wide role.
 
 Create a dedicated GitHub App owned by `ghermann-msft`, install it only on the
 `OpenHands` repository, and configure:
