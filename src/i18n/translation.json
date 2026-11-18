@@ -24947,6 +24947,24 @@
     "uk": "Агент Codex від OpenAI.",
     "id": "Agen Codex dari OpenAI."
   },
+  "ONBOARDING$AGENT_COPILOT_CLI_DESCRIPTION": {
+    "en": "GitHub's Copilot CLI agent.",
+    "ja": "GitHub の Copilot CLI エージェント。",
+    "zh-CN": "GitHub 的 Copilot CLI 智能体。",
+    "zh-TW": "GitHub 的 Copilot CLI 代理。",
+    "ko-KR": "GitHub의 Copilot CLI 에이전트입니다.",
+    "no": "GitHubs Copilot CLI-agent.",
+    "ar": "وكيل Copilot CLI من GitHub.",
+    "de": "Der Copilot-CLI-Agent von GitHub.",
+    "fr": "L'agent Copilot CLI de GitHub.",
+    "it": "L'agente Copilot CLI di GitHub.",
+    "pt": "O agente Copilot CLI do GitHub.",
+    "es": "El agente Copilot CLI de GitHub.",
+    "ca": "L'agent Copilot CLI de GitHub.",
+    "tr": "GitHub'ın Copilot CLI aracısı.",
+    "uk": "Агент Copilot CLI від GitHub.",
+    "id": "Agen Copilot CLI dari GitHub."
+  },
   "ONBOARDING$AGENT_GEMINI_CLI_DESCRIPTION": {
     "en": "Google's Gemini CLI agent.",
     "ja": "GoogleのGemini CLIエージェント。",

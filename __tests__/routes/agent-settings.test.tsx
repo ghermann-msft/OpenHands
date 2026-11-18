@@ -304,6 +304,47 @@ describe("AgentSettingsScreen", () => {
     });
   });
 
+  it("offers Copilot CLI with its configured GitHub PAT", async () => {
+    const copilot = getClientAcpProvider("copilot-cli");
+    expect(copilot).not.toBeNull();
+    const createSecret = vi.mocked(SecretsService.createSecret);
+    const user = userEvent.setup();
+    const { control } = renderAgentSettingsScreen({
+      agentSettingsOverride: CLAUDE_PROFILE,
+    });
+    await screen.findByTestId("agent-command-input");
+
+    await user.click(screen.getByTestId("agent-preset-selector"));
+    await user.click(
+      await screen.findByRole("option", { name: "GitHub Copilot CLI" }),
+    );
+
+    expect(screen.getByTestId("agent-command-input")).toHaveValue(
+      copilot!.default_command.join(" "),
+    );
+    await user.type(
+      screen.getByTestId("settings-acp-secret-COPILOT_GITHUB_TOKEN"),
+      "github_pat_test",
+    );
+    await act(async () => {
+      expect(
+        await control().credentials.save({ silent: true }),
+      ).toBeTruthy();
+    });
+    expect(createSecret).toHaveBeenCalledWith(
+      "COPILOT_GITHUB_TOKEN",
+      "github_pat_test",
+      undefined,
+    );
+    expect(control().buildAgentProfileFields()).toMatchObject({
+      agent_kind: "acp",
+      acp_server: "copilot-cli",
+      acp_command: null,
+      acp_args: null,
+      acp_model: null,
+    });
+  });
+
   it.each([null, [...OPENCODE_PROVIDER.default_command]])(
     "reloads OpenCode with command %j without losing its preset or model",
     async (command) => {

@@ -133,6 +133,10 @@ const ACP_PROVIDER_UI: Record<
     icon: "codex",
     description_key: I18nKey.ONBOARDING$AGENT_CODEX_DESCRIPTION,
   },
+  "copilot-cli": {
+    icon: "cli-generic",
+    description_key: I18nKey.ONBOARDING$AGENT_COPILOT_CLI_DESCRIPTION,
+  },
   "gemini-cli": {
     icon: "gemini",
     description_key: I18nKey.ONBOARDING$AGENT_GEMINI_CLI_DESCRIPTION,
@@ -145,6 +149,7 @@ const ACP_PROVIDER_UI: Record<
   opencode: {
     icon: "opencode",
     description_key: I18nKey.ONBOARDING$AGENT_OPENCODE_DESCRIPTION,
+    local_only: true,
   },
 };
 

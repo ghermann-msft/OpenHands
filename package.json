@@ -24,7 +24,7 @@
     "@microlink/react-json-view": "1.31.25",
     "@monaco-editor/react": "4.7.0",
     "@openhands/extensions": "https://github.com/ghermann-msft/extensions/archive/9f47d1599038884b319b1a4509da8ccf7b4ddfbb.tar.gz",
-    "@openhands/typescript-client": "1.60.1",
+    "@openhands/typescript-client": "https://github.com/ghermann-msft/software-agent-sdk/releases/download/typescript-client-4e5546c7015d169b825b107df52cdb7af5f2114b/openhands-typescript-client-1.62.0.tgz",
     "@react-router/node": "8.5.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query": "5.104.0",

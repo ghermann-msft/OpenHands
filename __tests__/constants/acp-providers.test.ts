@@ -18,6 +18,7 @@ describe("getAcpProviderDisplayName", () => {
     expect(getAcpProviderDisplayName("gemini-cli")).toBe("Gemini CLI");
     expect(getAcpProviderDisplayName("pi")).toBe("Pi");
     expect(getAcpProviderDisplayName("opencode")).toBe("OpenCode");
+    expect(getAcpProviderDisplayName("copilot-cli")).toBe("GitHub Copilot CLI");
   });
 
   it("returns null for the Custom-command preset so callers can fall back to the generic 'ACP' label", () => {
@@ -128,6 +129,16 @@ describe("getAcpProviderSecrets — containerized credentials", () => {
   it("collects the auth store, then the Zen api key, for OpenCode", () => {
     const names = getAcpProviderSecrets("opencode").map((f) => f.name);
     expect(names).toEqual(["OPENCODE_AUTH_CONTENT", "OPENCODE_API_KEY"]);
+  });
+
+  it("collects the configured GitHub PAT for Copilot CLI", () => {
+    const fields = getAcpProviderSecrets("copilot-cli");
+    expect(fields).toEqual([
+      expect.objectContaining({
+        name: "COPILOT_GITHUB_TOKEN",
+        secret: true,
+      }),
+    ]);
   });
 
   it("renders file-content blobs as multiline secret fields", () => {
