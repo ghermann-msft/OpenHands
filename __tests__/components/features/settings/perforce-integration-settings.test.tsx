@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   deleteOrganizationConnection: vi.fn(),
   upsertOrganizationConnection: vi.fn(),
   orgId: null as string | null,
+  isSharedOrganization: false,
+  organizationConnectionsEnabled: false,
   organizationConnections: [] as Array<{
     kind: string;
     connected: boolean;
@@ -79,9 +81,19 @@ vi.mock("#/hooks/mutation/use-delete-mcp-server", () => ({
 }));
 
 vi.mock("#/hooks/query/use-cloud-organization-connections", () => ({
-  useCloudOrganizationConnections: () => ({
-    data: mocks.organizationConnections,
+  useCloudOrganizationConnections: (enabled: boolean) => {
+    mocks.organizationConnectionsEnabled = enabled;
+    return {
+      data: mocks.organizationConnections,
+      isPending: false,
+    };
+  },
+}));
+
+vi.mock("#/hooks/query/use-cloud-organizations", () => ({
+  useActiveCloudOrganizationScope: () => ({
     isPending: false,
+    isShared: mocks.isSharedOrganization,
   }),
 }));
 
@@ -123,6 +135,8 @@ describe("PerforceIntegrationSettings", () => {
     mocks.canvasIntegrationsEnabled = true;
     mocks.settings = { mcp_config: {} };
     mocks.orgId = null;
+    mocks.isSharedOrganization = false;
+    mocks.organizationConnectionsEnabled = false;
     mocks.organizationConnections = [];
     mocks.deleteMcpServer.mockReset();
     mocks.deleteOrganizationConnection.mockReset();
@@ -132,6 +146,7 @@ describe("PerforceIntegrationSettings", () => {
   it("renders one organization connection and uses organization mutations", async () => {
     const user = userEvent.setup();
     mocks.orgId = "org-1";
+    mocks.isSharedOrganization = true;
     mocks.organizationConnections = [
       {
         kind: "perforce",
@@ -145,6 +160,7 @@ describe("PerforceIntegrationSettings", () => {
 
     render(<PerforceIntegrationSettings />);
 
+    expect(mocks.organizationConnectionsEnabled).toBe(true);
     expect(screen.getByText("Halo Perforce")).toBeInTheDocument();
     expect(screen.queryByTestId("perforce-add")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("perforce-edit-perforce"));
@@ -225,13 +241,23 @@ describe("PerforceIntegrationSettings", () => {
 
   it("opens the catalog installer for another connection", async () => {
     const user = userEvent.setup();
+    mocks.orgId = "personal-org";
     render(<PerforceIntegrationSettings />);
 
+    expect(mocks.organizationConnectionsEnabled).toBe(false);
     await user.click(screen.getByTestId("perforce-add"));
 
     expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
       "data-entry-id",
       "perforce",
+    );
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-custom-persistence",
+      "false",
+    );
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-persist-secrets",
+      "true",
     );
   });
 });

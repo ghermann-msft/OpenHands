@@ -3,7 +3,7 @@ import { listCloudOrganizationConnections } from "#/api/cloud/organization-servi
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { CLOUD_ORGANIZATION_QUERY_KEYS } from "./query-keys";
 
-export function useCloudOrganizationConnections() {
+export function useCloudOrganizationConnections(enabled = true) {
   const { backend, orgId } = useActiveBackend();
 
   // The key carries the backend identity and credential revision.
@@ -15,7 +15,7 @@ export function useCloudOrganizationConnections() {
       backend.connectionRevision ?? 0,
     ),
     queryFn: () => listCloudOrganizationConnections(orgId!, backend),
-    enabled: backend.kind === "cloud" && !!orgId,
+    enabled: enabled && backend.kind === "cloud" && !!orgId,
     retry: false,
     meta: { disableToast: true },
   });

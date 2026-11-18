@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   deleteOrganizationConnection: vi.fn(),
   upsertOrganizationConnection: vi.fn(),
   orgId: null as string | null,
+  isSharedOrganization: false,
+  organizationConnectionsEnabled: false,
   organizationConnections: [] as Array<{
     kind: string;
     connected: boolean;
@@ -54,9 +56,19 @@ vi.mock("#/hooks/mutation/use-delete-mcp-server", () => ({
 }));
 
 vi.mock("#/hooks/query/use-cloud-organization-connections", () => ({
-  useCloudOrganizationConnections: () => ({
-    data: mocks.organizationConnections,
+  useCloudOrganizationConnections: (enabled: boolean) => {
+    mocks.organizationConnectionsEnabled = enabled;
+    return {
+      data: mocks.organizationConnections,
+      isPending: false,
+    };
+  },
+}));
+
+vi.mock("#/hooks/query/use-cloud-organizations", () => ({
+  useActiveCloudOrganizationScope: () => ({
     isPending: false,
+    isShared: mocks.isSharedOrganization,
   }),
 }));
 
@@ -101,6 +113,8 @@ describe("AtlassianIntegrationSettings", () => {
     mocks.canvasIntegrationsEnabled = true;
     mocks.settings = { mcp_config: {} };
     mocks.orgId = null;
+    mocks.isSharedOrganization = false;
+    mocks.organizationConnectionsEnabled = false;
     mocks.organizationConnections = [];
     mocks.deleteMcpServer.mockReset();
     mocks.deleteOrganizationConnection.mockReset();
@@ -110,6 +124,7 @@ describe("AtlassianIntegrationSettings", () => {
   it("uses organization-owned persistence and respects read-only membership", async () => {
     const user = userEvent.setup();
     mocks.orgId = "org-1";
+    mocks.isSharedOrganization = true;
     mocks.organizationConnections = [
       {
         kind: "atlassian",
@@ -122,6 +137,7 @@ describe("AtlassianIntegrationSettings", () => {
 
     const { rerender } = render(<AtlassianIntegrationSettings />);
 
+    expect(mocks.organizationConnectionsEnabled).toBe(true);
     expect(screen.getByText("shared@example.com")).toBeInTheDocument();
     expect(screen.queryByTestId("atlassian-edit")).not.toBeInTheDocument();
     expect(
@@ -159,8 +175,10 @@ describe("AtlassianIntegrationSettings", () => {
 
   it("opens the generic MCP installer for Atlassian Rovo", async () => {
     const user = userEvent.setup();
+    mocks.orgId = "personal-org";
     render(<AtlassianIntegrationSettings />);
 
+    expect(mocks.organizationConnectionsEnabled).toBe(false);
     await user.click(screen.getByTestId("atlassian-connect"));
 
     expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
@@ -169,6 +187,14 @@ describe("AtlassianIntegrationSettings", () => {
     );
     expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
       "data-mcp-only",
+      "true",
+    );
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-custom-persistence",
+      "false",
+    );
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-persist-secrets",
       "true",
     );
   });

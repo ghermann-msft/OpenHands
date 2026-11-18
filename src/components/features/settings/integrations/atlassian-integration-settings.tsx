@@ -13,6 +13,7 @@ import {
 } from "#/hooks/mutation/use-cloud-organization-connection";
 import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
 import { useCloudOrganizationConnections } from "#/hooks/query/use-cloud-organization-connections";
+import { useActiveCloudOrganizationScope } from "#/hooks/query/use-cloud-organizations";
 import { useSettings } from "#/hooks/query/use-settings";
 import { I18nKey } from "#/i18n/declaration";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
@@ -34,7 +35,12 @@ export function AtlassianIntegrationSettings() {
   const { data: settings, isLoading: isLoadingSettings } = useSettings();
   const { mutate: deleteMcpServer, isPending: isDeleting } =
     useDeleteMcpServer();
-  const organizationConnections = useCloudOrganizationConnections();
+  const organizationScope = useActiveCloudOrganizationScope();
+  const isOrganizationConnection =
+    backend.kind === "cloud" && !!orgId && organizationScope.isShared;
+  const organizationConnections = useCloudOrganizationConnections(
+    isOrganizationConnection,
+  );
   const { mutateAsync: upsertOrganizationConnection } =
     useUpsertCloudOrganizationConnection("atlassian");
   const {
@@ -53,7 +59,6 @@ export function AtlassianIntegrationSettings() {
     parseMcpConfig(settings?.agent_settings?.mcp_config);
   const servers = flattenMcpConfig(mcpConfig);
   const installed = entry ? findInstalledEntryMatch(entry, servers) : null;
-  const isOrganizationConnection = backend.kind === "cloud" && !!orgId;
   const organizationConnection = organizationConnections.data?.find(
     (connection) => connection.kind === "atlassian",
   );
@@ -75,6 +80,7 @@ export function AtlassianIntegrationSettings() {
     !entry ||
     !cloudEnabled ||
     isLoadingSettings ||
+    organizationScope.isPending ||
     (isOrganizationConnection && organizationConnections.isPending) ||
     (backend.kind === "cloud" && cloudConfig.isPending)
   ) {

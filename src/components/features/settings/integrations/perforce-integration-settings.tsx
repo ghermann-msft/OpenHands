@@ -13,6 +13,7 @@ import {
 } from "#/hooks/mutation/use-cloud-organization-connection";
 import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
 import { useCloudOrganizationConnections } from "#/hooks/query/use-cloud-organization-connections";
+import { useActiveCloudOrganizationScope } from "#/hooks/query/use-cloud-organizations";
 import { useSettings } from "#/hooks/query/use-settings";
 import { I18nKey } from "#/i18n/declaration";
 import type { MCPServerConfig } from "#/types/mcp-server";
@@ -37,7 +38,12 @@ export function PerforceIntegrationSettings() {
   const { data: settings, isLoading: isLoadingSettings } = useSettings();
   const { mutate: deleteMcpServer, isPending: isDeleting } =
     useDeleteMcpServer();
-  const organizationConnections = useCloudOrganizationConnections();
+  const organizationScope = useActiveCloudOrganizationScope();
+  const isOrganizationConnection =
+    backend.kind === "cloud" && !!orgId && organizationScope.isShared;
+  const organizationConnections = useCloudOrganizationConnections(
+    isOrganizationConnection,
+  );
   const { mutateAsync: upsertOrganizationConnection } =
     useUpsertCloudOrganizationConnection("perforce");
   const {
@@ -57,7 +63,6 @@ export function PerforceIntegrationSettings() {
     parseMcpConfig(settings?.agent_settings?.mcp_config);
   const servers = flattenMcpConfig(mcpConfig);
   const installed = entry ? findInstalledEntryMatches(entry, servers) : [];
-  const isOrganizationConnection = backend.kind === "cloud" && !!orgId;
   const organizationConnection = organizationConnections.data?.find(
     (connection) => connection.kind === "perforce",
   );
@@ -85,6 +90,7 @@ export function PerforceIntegrationSettings() {
     !entry ||
     !cloudEnabled ||
     isLoadingSettings ||
+    organizationScope.isPending ||
     (isOrganizationConnection && organizationConnections.isPending) ||
     (backend.kind === "cloud" && cloudConfig.isPending)
   ) {

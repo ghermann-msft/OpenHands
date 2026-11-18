@@ -1,7 +1,10 @@
 import { useQueries } from "@tanstack/react-query";
 import { HttpError } from "@openhands/typescript-client";
 import axios from "axios";
-import { useActiveBackendContext } from "#/contexts/active-backend-context";
+import {
+  useActiveBackend,
+  useActiveBackendContext,
+} from "#/contexts/active-backend-context";
 import {
   getCloudOrganizations,
   getCurrentCloudApiKey,
@@ -116,4 +119,18 @@ export function useAllCloudOrganizations() {
   });
 
   return byBackendId;
+}
+
+export function useActiveCloudOrganizationScope() {
+  const { backend, orgId } = useActiveBackend();
+  const organizations = useAllCloudOrganizations();
+  const entry = organizations[backend.id];
+  const organization = entry?.orgs.find((org) => org.id === orgId);
+
+  return {
+    organization,
+    isPending:
+      backend.kind === "cloud" && !!orgId && (entry?.isLoading ?? true),
+    isShared: !!organization && organization.is_personal !== true,
+  };
 }
