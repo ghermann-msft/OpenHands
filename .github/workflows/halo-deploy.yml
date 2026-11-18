@@ -3,7 +3,7 @@ name: Halo deployment
 on:
   push:
     branches:
-      - openhands-halo
+      - main
   workflow_dispatch:
     inputs:
       operation:

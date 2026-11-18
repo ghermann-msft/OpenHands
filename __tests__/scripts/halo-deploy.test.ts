@@ -80,11 +80,11 @@ const haloConfig = JSON.parse(
 };
 
 describe("Halo deployment automation", () => {
-  it("uses stable Halo integration branches for every source repository", () => {
+  it("uses each Halo fork's main branch for every source repository", () => {
     expect(haloConfig.source).toMatchObject({
-      branch: "openhands-halo",
-      agentServerSdkBranch: "openhands-halo",
-      sandboxServerBranch: "openhands-halo",
+      branch: "main",
+      agentServerSdkBranch: "main",
+      sandboxServerBranch: "main",
     });
   });
 
@@ -123,16 +123,16 @@ describe("Halo deployment automation", () => {
   it("resolves exact integration branch heads", () => {
     expect(
       parseRemoteBranchHead(
-        `${agentServerCommit}\trefs/heads/openhands-halo\n`,
+        `${agentServerCommit}\trefs/heads/main\n`,
         "https://github.com/ghermann-msft/software-agent-sdk.git",
-        "openhands-halo",
+        "main",
       ),
     ).toBe(agentServerCommit);
     expect(() =>
       parseRemoteBranchHead(
         "",
         "https://github.com/ghermann-msft/software-agent-sdk.git",
-        "openhands-halo",
+        "main",
       ),
     ).toThrow(/Could not resolve/);
   });

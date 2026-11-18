@@ -6,7 +6,7 @@ const workflow = readFileSync(".github/workflows/halo-deploy.yml", "utf8");
 
 describe("Halo deployment workflow", () => {
   it("builds and deploys PPE on branch pushes without accepting pull requests", () => {
-    expect(workflow).toContain("branches:\n      - openhands-halo");
+    expect(workflow).toContain("branches:\n      - main");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toContain("pull_request:");
     expect(workflow).toContain("runs-on: openhands-halo-ci");
