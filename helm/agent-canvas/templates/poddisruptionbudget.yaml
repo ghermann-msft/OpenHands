@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "agent-canvas.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-canvas.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "agent-canvas.selectorLabels" . | nindent 6 }}
+{{- end }}

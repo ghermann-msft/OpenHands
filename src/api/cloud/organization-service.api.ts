@@ -5,7 +5,13 @@ import { callCloudProxy } from "./proxy";
 import type {
   CloudApiKeyMetadata,
   CloudOrganization,
+  CloudOrganizationConnection,
+  CloudOrganizationConnectionKind,
+  CloudOrganizationConnectionsResponse,
   CloudOrganizationMember,
+  CloudOrganizationMembersResponse,
+  CloudOrganizationRbacMember,
+  CloudOrganizationRole,
   CloudOrganizationsResponse,
   CloudServiceAccount,
   CloudServiceAccountPage,
@@ -145,6 +151,81 @@ export async function getCloudOrganizationMember(
     backend: target,
     method: "GET",
     path: `/api/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`,
+  });
+}
+
+/** List members of a shared organization. Requires `organization:view`. */
+export async function listCloudOrganizationMembers(
+  orgId: string,
+  backend?: Backend,
+): Promise<CloudOrganizationRbacMember[]> {
+  const target = resolveBackend(backend);
+  const response = await callCloudProxy<CloudOrganizationMembersResponse>({
+    backend: target,
+    method: "GET",
+    path: `/api/organizations/${encodeURIComponent(orgId)}/members`,
+  });
+  return response?.items ?? [];
+}
+
+/** Change one member's role. Requires `organization:manage_members`. */
+export async function updateCloudOrganizationMemberRole(
+  orgId: string,
+  userId: string,
+  role: CloudOrganizationRole,
+  backend?: Backend,
+): Promise<CloudOrganizationRbacMember> {
+  const target = resolveBackend(backend);
+  return callCloudProxy<CloudOrganizationRbacMember>({
+    backend: target,
+    method: "PATCH",
+    path: `/api/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`,
+    body: { role },
+  });
+}
+
+/** List shared integrations for the selected organization. Secrets are omitted. */
+export async function listCloudOrganizationConnections(
+  orgId: string,
+  backend?: Backend,
+): Promise<CloudOrganizationConnection[]> {
+  const target = resolveBackend(backend);
+  const response = await callCloudProxy<CloudOrganizationConnectionsResponse>({
+    backend: target,
+    method: "GET",
+    path: `/api/organizations/${encodeURIComponent(orgId)}/connections`,
+  });
+  return response?.items ?? [];
+}
+
+/** Create or replace an organization-owned Atlassian or Perforce connection. */
+export async function upsertCloudOrganizationConnection(
+  orgId: string,
+  kind: Exclude<CloudOrganizationConnectionKind, "github">,
+  server: Record<string, unknown>,
+  displayName: string | null,
+  backend?: Backend,
+): Promise<CloudOrganizationConnection> {
+  const target = resolveBackend(backend);
+  return callCloudProxy<CloudOrganizationConnection>({
+    backend: target,
+    method: "PUT",
+    path: `/api/organizations/${encodeURIComponent(orgId)}/connections/${kind}`,
+    body: { server, display_name: displayName },
+  });
+}
+
+/** Delete an organization-owned integration. */
+export async function deleteCloudOrganizationConnection(
+  orgId: string,
+  kind: CloudOrganizationConnectionKind,
+  backend?: Backend,
+): Promise<void> {
+  const target = resolveBackend(backend);
+  await callCloudProxy<void>({
+    backend: target,
+    method: "DELETE",
+    path: `/api/organizations/${encodeURIComponent(orgId)}/connections/${kind}`,
   });
 }
 

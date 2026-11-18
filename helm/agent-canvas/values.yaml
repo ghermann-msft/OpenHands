@@ -9,6 +9,13 @@
 # to run the agent-server in a genuinely shareable mode.
 replicaCount: 1
 
+# Protect the singleton StatefulSet from voluntary disruptions such as
+# cluster-autoscaler node scale-down. Disabled by default so existing chart
+# installations can opt in without changing their drain behavior.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
 image:
   repository: ghcr.io/openhands/agent-canvas
   # Immutable digest takes precedence over tag when set.

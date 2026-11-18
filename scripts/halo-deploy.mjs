@@ -1996,6 +1996,9 @@ export function renderHelmValues(environment, digest, runtimeClientId) {
     digest,
   );
   return `fullnameOverride: openhands-halo
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
 image:
   repository: ${config.azure.acrLoginServer}/${config.build.repository}
   digest: ${digest}
@@ -2373,7 +2376,11 @@ spec:
               if (-not (Get-Command p4-mcp-server.exe -ErrorAction SilentlyContinue)) {
                 throw "p4-mcp-server.exe is not discoverable through PATH"
               }
-              Write-Output "Windows runtime image, Perforce tools, and Workload Identity token injection verified"
+              if (-not (Get-Command copilot.exe -ErrorAction SilentlyContinue)) {
+                throw "copilot.exe is not discoverable through PATH"
+              }
+              & copilot.exe --no-auto-update help acp | Out-Null
+              Write-Output "Windows runtime image, Perforce and Copilot tools, and Workload Identity token injection verified"
 `;
 }
 
@@ -2610,9 +2617,9 @@ ${sandboxStartupTimeoutEnv}            - name: SERVE_FRONTEND
             - name: FOUNDRY_WEB_SEARCH_MCP_AUTH_TYPE
               value: ${config.foundry.webSearchMcpAuthType}
             - name: HIDE_LLM_SETTINGS
-              value: "true"
-            - name: OH_ALLOW_USER_LLM_CONFIGURATION
               value: "false"
+            - name: OH_ALLOW_USER_LLM_CONFIGURATION
+              value: "true"
             - name: OH_TRUSTED_IDENTITY_ASSERTION_SECRET
               valueFrom:
                 secretKeyRef:

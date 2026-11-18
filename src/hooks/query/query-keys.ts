@@ -119,6 +119,28 @@ export const SUPER_ADMIN_SETUP_QUERY_KEYS = {
     ["super-admin-setup-state", backendId, connectionRevision] as const,
 } as const;
 
+export const CLOUD_ORGANIZATION_QUERY_KEYS = {
+  me: (
+    backendId: string,
+    orgId: string | null | undefined,
+    connectionRevision: number,
+  ) => ["cloud-current-user", backendId, orgId, connectionRevision] as const,
+  members: (backendId: string, orgId: string, connectionRevision: number) =>
+    [
+      "cloud-organization-members",
+      backendId,
+      orgId,
+      connectionRevision,
+    ] as const,
+  connections: (backendId: string, orgId: string, connectionRevision: number) =>
+    [
+      "cloud-organization-connections",
+      backendId,
+      orgId,
+      connectionRevision,
+    ] as const,
+} as const;
+
 export const SETUP_QUERY_KEYS = {
   /** What the deployment supports. The same answer for every setup entry. */
   capabilities: () => ["setup-capabilities"] as const,

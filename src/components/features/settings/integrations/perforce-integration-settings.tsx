@@ -7,7 +7,12 @@ import { InstallServerModal } from "#/components/features/mcp-page";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useDeleteMcpServer } from "#/hooks/mutation/use-delete-mcp-server";
+import {
+  useDeleteCloudOrganizationConnection,
+  useUpsertCloudOrganizationConnection,
+} from "#/hooks/mutation/use-cloud-organization-connection";
 import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
+import { useCloudOrganizationConnections } from "#/hooks/query/use-cloud-organization-connections";
 import { useSettings } from "#/hooks/query/use-settings";
 import { I18nKey } from "#/i18n/declaration";
 import type { MCPServerConfig } from "#/types/mcp-server";
@@ -27,11 +32,18 @@ const P4USER_ENV_KEY = "P4USER";
 
 export function PerforceIntegrationSettings() {
   const { t } = useTranslation("openhands");
-  const { backend } = useActiveBackend();
+  const { backend, orgId } = useActiveBackend();
   const cloudConfig = useCloudIntegrationsConfig();
   const { data: settings, isLoading: isLoadingSettings } = useSettings();
   const { mutate: deleteMcpServer, isPending: isDeleting } =
     useDeleteMcpServer();
+  const organizationConnections = useCloudOrganizationConnections();
+  const { mutateAsync: upsertOrganizationConnection } =
+    useUpsertCloudOrganizationConnection("perforce");
+  const {
+    mutate: deleteOrganizationConnection,
+    isPending: isDeletingOrganizationConnection,
+  } = useDeleteCloudOrganizationConnection();
   const [showInstall, setShowInstall] = React.useState(false);
   const [serverToEdit, setServerToEdit] =
     React.useState<MCPServerConfig | null>(null);
@@ -45,6 +57,26 @@ export function PerforceIntegrationSettings() {
     parseMcpConfig(settings?.agent_settings?.mcp_config);
   const servers = flattenMcpConfig(mcpConfig);
   const installed = entry ? findInstalledEntryMatches(entry, servers) : [];
+  const isOrganizationConnection = backend.kind === "cloud" && !!orgId;
+  const organizationConnection = organizationConnections.data?.find(
+    (connection) => connection.kind === "perforce",
+  );
+  const organizationServer: MCPServerConfig =
+    installed[0] ??
+    ({
+      id: "perforce",
+      type: "stdio",
+      name: organizationConnection?.display_name ?? "perforce",
+      command: organizationConnection?.endpoint ?? "",
+      args: [],
+    } satisfies MCPServerConfig);
+  const visibleConnections = isOrganizationConnection
+    ? organizationConnection?.connected
+      ? [organizationServer]
+      : []
+    : installed;
+  const isEditable =
+    !isOrganizationConnection || organizationConnection?.editable === true;
   const cloudEnabled =
     backend.kind !== "cloud" ||
     cloudConfig.data?.isCanvasIntegrationsEnabled === true;
@@ -53,12 +85,22 @@ export function PerforceIntegrationSettings() {
     !entry ||
     !cloudEnabled ||
     isLoadingSettings ||
+    (isOrganizationConnection && organizationConnections.isPending) ||
     (backend.kind === "cloud" && cloudConfig.isPending)
   ) {
     return null;
   }
 
   const handleDisconnect = (server: MCPServerConfig) => {
+    if (isOrganizationConnection) {
+      deleteOrganizationConnection("perforce", {
+        onError: (error) => {
+          const message = retrieveAxiosErrorMessage(error as AxiosError);
+          displayErrorToast(message || t(I18nKey.ERROR$GENERIC));
+        },
+      });
+      return;
+    }
     deleteMcpServer(server, {
       onError: (error) => {
         const message = retrieveAxiosErrorMessage(error as AxiosError);
@@ -81,53 +123,63 @@ export function PerforceIntegrationSettings() {
               {entry.description}
             </p>
           </div>
-          <BrandButton
-            testId="perforce-add"
-            type="button"
-            variant="primary"
-            onClick={() => setShowInstall(true)}
-          >
-            {t(I18nKey.BUTTON$ADD)}
-          </BrandButton>
+          {isEditable &&
+            (!isOrganizationConnection || visibleConnections.length === 0) && (
+              <BrandButton
+                testId="perforce-add"
+                type="button"
+                variant="primary"
+                onClick={() => setShowInstall(true)}
+              >
+                {t(I18nKey.BUTTON$ADD)}
+              </BrandButton>
+            )}
         </div>
 
-        {installed.map((server) => {
+        {visibleConnections.map((server) => {
+          const connectionId = server.id;
           const port = server.env?.[P4PORT_ENV_KEY];
           const user = server.env?.[P4USER_ENV_KEY];
           return (
             <div
-              key={server.id}
-              data-testid={`perforce-connection-${server.id}`}
+              key={connectionId}
+              data-testid={`perforce-connection-${connectionId}`}
               className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border p-4"
             >
               <div className="min-w-0 text-sm">
-                <p>{server.name ?? server.id}</p>
+                <p>
+                  {organizationConnection?.display_name ??
+                    server?.name ??
+                    connectionId}
+                </p>
                 <p className="text-tertiary-light">
                   {t(I18nKey.STATUS$CONNECTED)}
                 </p>
                 {port && <p className="truncate text-tertiary-light">{port}</p>}
                 {user && <p className="truncate text-tertiary-light">{user}</p>}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <BrandButton
-                  testId={`perforce-edit-${server.id}`}
-                  type="button"
-                  variant="secondary"
-                  isDisabled={isDeleting}
-                  onClick={() => setServerToEdit(server)}
-                >
-                  {t(I18nKey.BUTTON$EDIT)}
-                </BrandButton>
-                <BrandButton
-                  testId={`perforce-disconnect-${server.id}`}
-                  type="button"
-                  variant="secondary"
-                  isDisabled={isDeleting}
-                  onClick={() => handleDisconnect(server)}
-                >
-                  {t(I18nKey.BUTTON$DISCONNECT)}
-                </BrandButton>
-              </div>
+              {isEditable && (
+                <div className="flex flex-wrap gap-2">
+                  <BrandButton
+                    testId={`perforce-edit-${connectionId}`}
+                    type="button"
+                    variant="secondary"
+                    isDisabled={isDeleting || isDeletingOrganizationConnection}
+                    onClick={() => setServerToEdit(server)}
+                  >
+                    {t(I18nKey.BUTTON$EDIT)}
+                  </BrandButton>
+                  <BrandButton
+                    testId={`perforce-disconnect-${connectionId}`}
+                    type="button"
+                    variant="secondary"
+                    isDisabled={isDeleting || isDeletingOrganizationConnection}
+                    onClick={() => handleDisconnect(server)}
+                  >
+                    {t(I18nKey.BUTTON$DISCONNECT)}
+                  </BrandButton>
+                </div>
+              )}
             </div>
           );
         })}
@@ -138,17 +190,25 @@ export function PerforceIntegrationSettings() {
           entry={entry}
           existingServers={servers}
           mcpOnly
+          onPersistServer={
+            isOrganizationConnection ? upsertOrganizationConnection : undefined
+          }
+          persistSelectedSecrets={!isOrganizationConnection}
           onSuccess={() => setShowInstall(false)}
           onClose={() => setShowInstall(false)}
         />
       )}
 
-      {serverToEdit && (
+      {serverToEdit !== null && (
         <InstallServerModal
           entry={entry}
           existingServers={servers}
           serverToReplace={serverToEdit}
           mcpOnly
+          onPersistServer={
+            isOrganizationConnection ? upsertOrganizationConnection : undefined
+          }
+          persistSelectedSecrets={!isOrganizationConnection}
           onSuccess={() => setServerToEdit(null)}
           onClose={() => setServerToEdit(null)}
         />

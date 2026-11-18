@@ -172,7 +172,7 @@ describe("Halo deployment automation", () => {
 
     expect(job).toContain(`git checkout --detach ${commit}`);
     expect(job).toContain(
-      "git checkout --detach 4892c6cb38bda932c25ef77a34ef2d2b57915192",
+      "git checkout --detach 077ff69593910afe402f752955c009e28cf31792",
     );
     expect(job).toContain(`OPENHANDS_BUILD_GIT_SHA=${commit}`);
     expect(job).toContain(
@@ -194,7 +194,7 @@ describe("Halo deployment automation", () => {
       "--opt build-arg:AGENT_SERVER_IMAGE=uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@$agent_server_digest",
     );
     expect(job).toContain(
-      "git checkout --detach f17e83cf7720ebe462e4f93bc49ce2974237d770",
+      "git checkout --detach a8542e78465d9579ed9c94fad622a9fff8f4e411",
     );
     expect(job).toContain(
       "filename=openhands-agent-server/openhands/agent_server/docker/Dockerfile",
@@ -204,13 +204,13 @@ describe("Halo deployment automation", () => {
       "AGENT_SERVER_SDK_GIT_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "AGENT_SERVER_SDK_GIT_REF=f17e83cf7720ebe462e4f93bc49ce2974237d770",
+      "AGENT_SERVER_SDK_GIT_REF=a8542e78465d9579ed9c94fad622a9fff8f4e411",
     );
     expect(job).toContain(
       "SOFTWARE_AGENT_SDK_REPOSITORY=https://github.com/ghermann-msft/software-agent-sdk.git",
     );
     expect(job).toContain(
-      "SOFTWARE_AGENT_SDK_REF=f17e83cf7720ebe462e4f93bc49ce2974237d770",
+      "SOFTWARE_AGENT_SDK_REF=a8542e78465d9579ed9c94fad622a9fff8f4e411",
     );
     expect(job).toContain("--import-cache type=registry");
     expect(job).toContain("--export-cache type=registry");
@@ -549,6 +549,12 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       "Get-Command p4-mcp-server.exe -ErrorAction SilentlyContinue",
     );
+    expect(job).toContain(
+      "Get-Command copilot.exe -ErrorAction SilentlyContinue",
+    );
+    expect(job).toContain(
+      "& copilot.exe --no-auto-update help acp | Out-Null",
+    );
     expect(job).not.toContain("name: PATH");
     expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
     expect(job).toContain('azure.workload.identity/use: "true"');
@@ -777,6 +783,9 @@ describe("Halo deployment automation", () => {
     expect(spc).toContain("halo-ppe-github-app-client-secret");
     expect(spc).not.toContain("hindsight");
     expect(values).toContain(`digest: ${digest}`);
+    expect(values).toContain(
+      "podDisruptionBudget:\n  enabled: true\n  minAvailable: 1",
+    );
     expect(values).toContain("serviceAccount:\n  create: false");
     expect(values).toContain("value: azure/gpt-5.6-sol");
     expect(values).toContain(
@@ -977,10 +986,10 @@ describe("Halo deployment automation", () => {
       "name: FOUNDRY_WEB_SEARCH_MCP_AUTH_TYPE\n              value: azure_workload_identity",
     );
     expect(resources).toContain(
-      'name: HIDE_LLM_SETTINGS\n              value: "true"',
+      'name: HIDE_LLM_SETTINGS\n              value: "false"',
     );
     expect(resources).toContain(
-      'name: OH_ALLOW_USER_LLM_CONFIGURATION\n              value: "false"',
+      'name: OH_ALLOW_USER_LLM_CONFIGURATION\n              value: "true"',
     );
     expect(resources).toContain(
       "name: OH_SANDBOX_SANDBOX_URL_PATTERN\n              value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/sandboxes/{sandbox_name}",

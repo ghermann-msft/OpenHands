@@ -3,6 +3,7 @@ import {
   CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
   ADMIN_SETTINGS_NAV_ITEMS,
   LOCKED_CLOUD_SETTINGS_NAV_PATH,
+  ORGANIZATION_SETTINGS_NAV_ITEM,
   OSS_NAV_ITEMS,
   SettingsNavItem,
 } from "#/constants/settings-nav";
@@ -14,6 +15,8 @@ import {
   hasExternalSettingsShell,
 } from "#/api/agent-server-config";
 import { useSandboxSpecAdminCapabilities } from "#/hooks/query/use-sandbox-specs";
+import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
+import { useCloudOrganizationMe } from "#/hooks/query/use-cloud-organization-members";
 
 export type SettingsNavRenderedItem =
   | {
@@ -31,20 +34,33 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   const { backend } = useActiveBackend();
   const { data: sandboxSpecAdminCapabilities } =
     useSandboxSpecAdminCapabilities();
+  const { data: cloudIntegrationsConfig } = useCloudIntegrationsConfig();
+  const { data: organizationMe } = useCloudOrganizationMe();
   const featureFlags = config?.feature_flags;
   // Some hosted deployments delegate settings to a same-origin shell. A
   // locked self-hosted control plane can instead keep settings in Canvas.
   const isLockedToCloud = getLockedCloudHost() !== null;
   const delegatesSettings = isLockedToCloud && hasExternalSettingsShell();
+  const canvasIntegrationsItem = CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS.find(
+    (item) => item.to === "/settings/integrations",
+  );
+  const hostsCanvasIntegrations =
+    backend.kind === "cloud" &&
+    cloudIntegrationsConfig?.isCanvasIntegrationsEnabled === true;
   const settingsItems =
     isLockedToCloud && !delegatesSettings
       ? [...OSS_NAV_ITEMS, ...CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS]
-      : [...OSS_NAV_ITEMS];
+      : delegatesSettings && hostsCanvasIntegrations && canvasIntegrationsItem
+        ? [...OSS_NAV_ITEMS, canvasIntegrationsItem]
+        : [...OSS_NAV_ITEMS];
   const renderedItems: SettingsNavRenderedItem[] = settingsItems
     .filter(
       (item) =>
         !isSettingsPageHidden(item.to, featureFlags) &&
-        (!delegatesSettings || item.to === LOCKED_CLOUD_SETTINGS_NAV_PATH) &&
+        (!delegatesSettings ||
+          item.to === LOCKED_CLOUD_SETTINGS_NAV_PATH ||
+          (hostsCanvasIntegrations &&
+            item.to === canvasIntegrationsItem?.to)) &&
         (backend.kind === "cloud" ||
           !PROFILE_OWNED_SETTINGS_PATHS.has(item.to)),
     )
@@ -67,11 +83,22 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
       return { type: "item" as const, item: renamedItem };
     });
 
-  if (sandboxSpecAdminCapabilities?.can_manage && !delegatesSettings) {
+  const isSharedOrganization =
+    backend.kind === "cloud" &&
+    organizationMe !== undefined &&
+    organizationMe.orgId !== organizationMe.userId;
+  const administrationItems = [
+    ...(isSharedOrganization ? [ORGANIZATION_SETTINGS_NAV_ITEM] : []),
+    ...(sandboxSpecAdminCapabilities?.can_manage && !delegatesSettings
+      ? ADMIN_SETTINGS_NAV_ITEMS
+      : []),
+  ];
+
+  if (administrationItems.length > 0) {
     renderedItems.push(
       { type: "divider" },
       { type: "header", text: I18nKey.SETTINGS$ADMINISTRATION },
-      ...ADMIN_SETTINGS_NAV_ITEMS.map((item) => ({
+      ...administrationItems.map((item) => ({
         type: "item" as const,
         item,
       })),

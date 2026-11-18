@@ -11,18 +11,29 @@ import {
 } from "#/api/backend-registry/active-store";
 import { readStoredBackends } from "#/api/backend-registry/storage";
 import { getFirstAvailablePath } from "#/utils/settings-utils";
-import { OSS_NAV_ITEMS } from "#/constants/settings-nav";
+import {
+  CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
+  OSS_NAV_ITEMS,
+} from "#/constants/settings-nav";
 import { ActiveBackendProvider } from "#/contexts/active-backend-context";
 import { MOCK_DEFAULT_USER_SETTINGS } from "#/mocks/handlers";
 import { queryClient } from "#/query-client-config";
 
+const settingsNavItemsMock = vi.hoisted(() => ({
+  paths: ["/settings/llm", "/settings/app"],
+}));
+
 vi.mock("#/hooks/use-settings-nav-items", () => ({
   // Mirror the real navigation: LLM + Application (which the title test
   // navigates to via `/settings/app`).
-  useSettingsNavItems: () =>
-    OSS_NAV_ITEMS.filter((item) =>
-      ["/settings/llm", "/settings/app"].includes(item.to),
-    ).map((item) => ({ type: "item", item })),
+  useSettingsNavItems: () => {
+    const integrationsItem = CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS.find(
+      (item) => item.to === "/settings/integrations",
+    )!;
+    return [...OSS_NAV_ITEMS, integrationsItem]
+      .filter((item) => settingsNavItemsMock.paths.includes(item.to))
+      .map((item) => ({ type: "item", item }));
+  },
 }));
 
 describe("settings route", () => {
@@ -31,6 +42,7 @@ describe("settings route", () => {
     window.localStorage.clear();
     __resetActiveStoreForTests();
     queryClient.clear();
+    settingsNavItemsMock.paths = ["/settings/llm", "/settings/app"];
   });
 
   afterEach(() => {
@@ -284,6 +296,38 @@ describe("settings route", () => {
       );
 
       expect(screen.getByTestId("agent-profiles-screen")).toBeInTheDocument();
+    });
+
+    it("keeps hosted Integrations reachable when a locked Cloud backend advertises the Canvas surface", async () => {
+      vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+      settingsNavItemsMock.paths = ["/settings/app", "/settings/integrations"];
+
+      const RouterStub = createRoutesStub([
+        {
+          path: "/settings",
+          Component: SettingsScreen,
+          children: [
+            {
+              path: "/settings/integrations",
+              Component: () => <div data-testid="integrations-screen" />,
+            },
+            {
+              path: "/settings/app",
+              Component: () => <div data-testid="app-settings-screen" />,
+            },
+          ],
+        },
+      ]);
+
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <ActiveBackendProvider>
+            <RouterStub initialEntries={["/settings/integrations"]} />
+          </ActiveBackendProvider>
+        </QueryClientProvider>,
+      );
+
+      expect(await screen.findByTestId("integrations-screen")).toBeVisible();
     });
 
     it.each(["local", "cloud"] as const)(

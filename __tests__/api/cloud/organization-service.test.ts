@@ -8,7 +8,12 @@ import {
   getCloudOrganizationMember,
   getCloudOrganizations,
   getCurrentCloudApiKey,
+  deleteCloudOrganizationConnection,
+  listCloudOrganizationMembers,
+  listCloudOrganizationConnections,
   listCloudServiceAccounts,
+  upsertCloudOrganizationConnection,
+  updateCloudOrganizationMemberRole,
 } from "#/api/cloud/organization-service.api";
 import type { Backend } from "#/api/backend-registry/types";
 
@@ -141,6 +146,122 @@ describe("cloud organization-service", () => {
       headers: { Authorization: "Bearer bearer-token" },
     });
     expect(result).toEqual(member);
+  });
+
+  it("listCloudOrganizationMembers returns immutable identities and roles", async () => {
+    const response = {
+      items: [
+        {
+          user_id: "user-1",
+          identity: {
+            provider: "entra",
+            tenant_id: "tenant-1",
+            subject_id: "subject-1",
+          },
+          role: "owner",
+        },
+      ],
+    };
+    fetchMock.mockResolvedValueOnce(mockJsonResponse(response));
+
+    await expect(
+      listCloudOrganizationMembers("org-1", cloudBackend),
+    ).resolves.toEqual(response.items);
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${cloudBackend.host}/api/organizations/org-1/members`,
+    );
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
+      method: "GET",
+      headers: { Authorization: "Bearer bearer-token" },
+    });
+  });
+
+  it("updateCloudOrganizationMemberRole patches the selected member role", async () => {
+    const updated = {
+      user_id: "user-2",
+      identity: {
+        provider: "entra",
+        tenant_id: null,
+        subject_id: "subject-2",
+      },
+      role: "admin",
+    };
+    fetchMock.mockResolvedValueOnce(mockJsonResponse(updated));
+
+    await expect(
+      updateCloudOrganizationMemberRole(
+        "org-1",
+        "user-2",
+        "admin",
+        cloudBackend,
+      ),
+    ).resolves.toEqual(updated);
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${cloudBackend.host}/api/organizations/org-1/members/user-2`,
+    );
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
+      method: "PATCH",
+      headers: { Authorization: "Bearer bearer-token" },
+      body: JSON.stringify({ role: "admin" }),
+    });
+  });
+
+  it("manages organization-owned connections without exposing secrets", async () => {
+    const connection = {
+      kind: "atlassian",
+      connected: true,
+      editable: true,
+      scope: "shared",
+      display_name: "user@example.com",
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          organization_id: "org-1",
+          items: [connection],
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse(connection))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(
+      listCloudOrganizationConnections("org-1", cloudBackend),
+    ).resolves.toEqual([connection]);
+    await expect(
+      upsertCloudOrganizationConnection(
+        "org-1",
+        "atlassian",
+        {
+          transport: "streamable-http",
+          url: "https://mcp.atlassian.com/v2/mcp",
+        },
+        "user@example.com",
+        cloudBackend,
+      ),
+    ).resolves.toEqual(connection);
+    await expect(
+      deleteCloudOrganizationConnection("org-1", "atlassian", cloudBackend),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${cloudBackend.host}/api/organizations/org-1/connections`,
+    );
+    expect(fetchMock.mock.calls[1]![0]).toBe(
+      `${cloudBackend.host}/api/organizations/org-1/connections/atlassian`,
+    );
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({
+      method: "PUT",
+      body: JSON.stringify({
+        server: {
+          transport: "streamable-http",
+          url: "https://mcp.atlassian.com/v2/mcp",
+        },
+        display_name: "user@example.com",
+      }),
+    });
+    expect(fetchMock.mock.calls[2]![1]).toMatchObject({ method: "DELETE" });
   });
 
   it("listCloudServiceAccounts follows next_page_id across pages", async () => {

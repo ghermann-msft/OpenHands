@@ -72,9 +72,9 @@
     "repository": "https://github.com/ghermann-msft/OpenHands.git",
     "branch": "openhands-halo",
     "agentServerSdkRepository": "https://github.com/ghermann-msft/software-agent-sdk.git",
-    "agentServerSdkRef": "f17e83cf7720ebe462e4f93bc49ce2974237d770",
+    "agentServerSdkRef": "a8542e78465d9579ed9c94fad622a9fff8f4e411",
     "sandboxServerRepository": "https://github.com/ghermann-msft/sandbox-server.git",
-    "sandboxServerRef": "4892c6cb38bda932c25ef77a34ef2d2b57915192"
+    "sandboxServerRef": "077ff69593910afe402f752955c009e28cf31792"
   },
   "identities": {
     "builder": "uh-unrealhands-dev-acukmd-artifacts-runtime-mi",

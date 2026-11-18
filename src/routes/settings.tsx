@@ -95,6 +95,12 @@ function SettingsScreen() {
   const isMobileHub = isMobile && location.pathname === "/settings";
   const shouldHideTitle =
     routeHandle?.hideTitle === true || isMobileHub || hideSectionHeader;
+  const isListedCanvasSettingsPath = navItems.some(
+    (entry) =>
+      entry.type === "item" &&
+      (entry.item.to === location.pathname ||
+        location.pathname.startsWith(`${entry.item.to}/`)),
+  );
 
   // Redirect only when a locked deployment delegates to an external settings
   // shell. Self-hosted control planes can keep these pages in Canvas.
@@ -102,7 +108,8 @@ function SettingsScreen() {
     getLockedCloudHost() !== null &&
     hasExternalSettingsShell() &&
     location.pathname !== "/settings" &&
-    location.pathname !== LOCKED_CLOUD_SETTINGS_NAV_PATH
+    location.pathname !== LOCKED_CLOUD_SETTINGS_NAV_PATH &&
+    !isListedCanvasSettingsPath
   ) {
     return <Navigate to={LOCKED_CLOUD_SETTINGS_NAV_PATH} replace />;
   }

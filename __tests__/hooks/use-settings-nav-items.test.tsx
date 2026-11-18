@@ -18,6 +18,18 @@ const useActiveAgentProfileMock = vi.fn<
 const useSandboxSpecAdminCapabilitiesMock = vi.fn(() => ({
   data: { can_manage: false },
 }));
+const useCloudIntegrationsConfigMock = vi.fn(() => ({
+  data: { isCanvasIntegrationsEnabled: false },
+}));
+const useCloudOrganizationMeMock = vi.fn(() => ({
+  data: undefined as
+    | {
+        orgId: string;
+        userId: string;
+        permissions: string[];
+      }
+    | undefined,
+}));
 
 vi.mock("#/hooks/query/use-config", () => ({
   useConfig: () => useConfigMock(),
@@ -37,6 +49,14 @@ vi.mock("#/hooks/use-active-agent-profile", () => ({
 
 vi.mock("#/hooks/query/use-sandbox-specs", () => ({
   useSandboxSpecAdminCapabilities: () => useSandboxSpecAdminCapabilitiesMock(),
+}));
+
+vi.mock("#/hooks/query/use-cloud-integrations-config", () => ({
+  useCloudIntegrationsConfig: () => useCloudIntegrationsConfigMock(),
+}));
+
+vi.mock("#/hooks/query/use-cloud-organization-members", () => ({
+  useCloudOrganizationMe: () => useCloudOrganizationMeMock(),
 }));
 
 const createConfig = (
@@ -71,6 +91,10 @@ describe("useSettingsNavItems", () => {
     useSandboxSpecAdminCapabilitiesMock.mockReturnValue({
       data: { can_manage: false },
     });
+    useCloudIntegrationsConfigMock.mockReturnValue({
+      data: { isCanvasIntegrationsEnabled: false },
+    });
+    useCloudOrganizationMeMock.mockReturnValue({ data: undefined });
   });
 
   afterEach(() => {
@@ -115,6 +139,7 @@ describe("useSettingsNavItems", () => {
       backend: { kind: "cloud" },
       orgId: "org-123",
     });
+
     useSandboxSpecAdminCapabilitiesMock.mockReturnValue({
       data: { can_manage: true },
     });
@@ -131,6 +156,48 @@ describe("useSettingsNavItems", () => {
         to: "/settings/administration/execution-profiles",
       }),
     });
+  });
+
+  it("lists Organization settings for every shared-org member", () => {
+    useConfigMock.mockReturnValue({ data: createConfig() });
+    useActiveBackendMock.mockReturnValue({
+      backend: { kind: "cloud" },
+      orgId: "org-123",
+    });
+    useCloudOrganizationMeMock.mockReturnValue({
+      data: {
+        orgId: "org-123",
+        userId: "user-1",
+        permissions: ["organization:view"],
+      },
+    });
+
+    const paths = renderHook(() => useSettingsNavItems())
+      .result.current.filter((item) => item.type === "item")
+      .map((item) => (item.type === "item" ? item.item.to : null));
+
+    expect(paths).toContain("/settings/organization");
+  });
+
+  it("does not list Organization settings for a personal workspace", () => {
+    useConfigMock.mockReturnValue({ data: createConfig() });
+    useActiveBackendMock.mockReturnValue({
+      backend: { kind: "cloud" },
+      orgId: "user-1",
+    });
+    useCloudOrganizationMeMock.mockReturnValue({
+      data: {
+        orgId: "user-1",
+        userId: "user-1",
+        permissions: ["organization:manage_members"],
+      },
+    });
+
+    const paths = renderHook(() => useSettingsNavItems())
+      .result.current.filter((item) => item.type === "item")
+      .map((item) => (item.type === "item" ? item.item.to : null));
+
+    expect(paths).not.toContain("/settings/organization");
   });
 
   it("shows a single Agent item (the profile library) on both local and cloud", () => {
@@ -245,6 +312,24 @@ describe("useSettingsNavItems", () => {
       .filter((item) => item.type === "item")
       .map((item) => (item.type === "item" ? item.item.to : null));
     expect(paths).toEqual(["/settings/app"]);
+  });
+
+  it("lists hosted Integrations when a locked Cloud backend advertises the Canvas surface", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+    useConfigMock.mockReturnValue({ data: createConfig() });
+    useActiveBackendMock.mockReturnValue({
+      backend: { kind: "cloud" },
+      orgId: "org-123",
+    });
+    useCloudIntegrationsConfigMock.mockReturnValue({
+      data: { isCanvasIntegrationsEnabled: true },
+    });
+
+    const paths = renderHook(() => useSettingsNavItems())
+      .result.current.filter((item) => item.type === "item")
+      .map((item) => (item.type === "item" ? item.item.to : null));
+
+    expect(paths).toEqual(["/settings/app", "/settings/integrations"]);
   });
 
   it("lists Canvas-owned pages when a locked deployment has no external settings shell", () => {

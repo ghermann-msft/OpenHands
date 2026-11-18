@@ -1,6 +1,7 @@
 import {
   AppWindow,
   Brain,
+  Building2,
   Container,
   Plug,
   Route as RouteIcon,
@@ -117,10 +118,18 @@ export const ADMIN_SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   },
 ];
 
+export const ORGANIZATION_SETTINGS_NAV_ITEM: SettingsNavItem = {
+  icon: <Building2 className="size-4" strokeWidth={2} aria-hidden />,
+  to: "/settings/organization",
+  text: "SETTINGS$ORGANIZATION",
+  subtitle: "SETTINGS$ORGANIZATION_DESCRIPTION",
+};
+
 export const ALL_SETTINGS_NAV_ITEMS = [
   ...OSS_NAV_ITEMS,
   ...CANVAS_OWNED_CLOUD_SETTINGS_NAV_ITEMS,
   ...ADMIN_SETTINGS_NAV_ITEMS,
+  ORGANIZATION_SETTINGS_NAV_ITEM,
 ];
 
 /**

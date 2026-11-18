@@ -35,6 +35,7 @@ export default [
         "administration/execution-profiles",
         "routes/execution-profiles-settings.tsx",
       ),
+      route("organization", "routes/organization-settings.tsx"),
       route("app", "routes/app-settings.tsx"),
       route("integrations", "routes/integrations-settings.tsx"),
       route("secrets", "routes/secrets-settings.tsx"),

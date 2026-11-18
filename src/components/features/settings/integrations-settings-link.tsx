@@ -15,6 +15,7 @@ import {
   sidebarNavLabelClassName,
   sidebarNavRowClassName,
 } from "#/components/features/sidebar/sidebar-layout";
+import { useCloudIntegrationsConfig } from "#/hooks/query/use-cloud-integrations-config";
 
 /**
  * Renders only for cloud backends — local backends have no equivalent hosted
@@ -25,8 +26,10 @@ export function IntegrationsSettingsLink() {
   const { t } = useTranslation("openhands");
   const { active } = useActiveBackendContext();
   const { backend, orgId } = active;
+  const { data: integrationsConfig } = useCloudIntegrationsConfig();
 
   if (isNoBackend(backend) || backend.kind !== "cloud") return null;
+  if (integrationsConfig?.isCanvasIntegrationsEnabled === true) return null;
   if (getLockedCloudHost() !== null && !hasExternalSettingsShell()) return null;
 
   const integrationsUrl = cloudIntegrationsUrl(backend, orgId);

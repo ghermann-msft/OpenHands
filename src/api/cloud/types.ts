@@ -35,6 +35,44 @@ export interface CloudOrganizationMember {
   status?: string;
 }
 
+export type CloudOrganizationRole = "owner" | "admin" | "member";
+
+export interface CloudOrganizationIdentity {
+  provider: "entra";
+  tenant_id: string | null;
+  subject_id: string;
+}
+
+/** Member shape returned by the organization RBAC management endpoints. */
+export interface CloudOrganizationRbacMember {
+  user_id: string;
+  identity: CloudOrganizationIdentity;
+  role: CloudOrganizationRole;
+}
+
+export interface CloudOrganizationMembersResponse {
+  items: CloudOrganizationRbacMember[];
+}
+
+export type CloudOrganizationConnectionKind =
+  "github" | "atlassian" | "perforce";
+
+export interface CloudOrganizationConnection {
+  kind: CloudOrganizationConnectionKind;
+  connected: boolean;
+  editable: boolean;
+  scope: string;
+  display_name?: string | null;
+  endpoint?: string | null;
+  transport?: string | null;
+  migrated_from_user?: boolean;
+}
+
+export interface CloudOrganizationConnectionsResponse {
+  organization_id: string;
+  items: CloudOrganizationConnection[];
+}
+
 /**
  * Subset of an enterprise service account that the GUI reads. Returned by
  * `GET /api/organizations/{orgId}/service-accounts` (requires

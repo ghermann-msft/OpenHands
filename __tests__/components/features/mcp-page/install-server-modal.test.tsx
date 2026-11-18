@@ -107,6 +107,50 @@ describe("InstallServerModal", () => {
     });
   });
 
+  it("uses caller-owned persistence without writing personal settings or secrets", async () => {
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const settingsSpy = vi.spyOn(SettingsService, "saveSettings");
+    const secretSpy = vi.spyOn(SecretsService, "createSecret");
+    const onClose = vi.fn();
+
+    renderWith(
+      <InstallServerModal
+        existingServers={[]}
+        entry={PERFORCE_ENTRY}
+        onPersistServer={persist}
+        persistSelectedSecrets={false}
+        onClose={onClose}
+      />,
+    );
+
+    fireEvent.change(await screen.findByTestId("mcp-install-field-P4PORT"), {
+      target: { value: "ssl:perforce.example.com:1666" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4USER"), {
+      target: { value: "halo-user" },
+    });
+    fireEvent.change(screen.getByTestId("mcp-install-field-P4PASSWD"), {
+      target: { value: "ticket" },
+    });
+    fireEvent.click(screen.getByTestId("mcp-install-submit"));
+
+    await waitFor(() =>
+      expect(persist).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "perforce",
+          env: expect.objectContaining({
+            P4PORT: "ssl:perforce.example.com:1666",
+            P4USER: "halo-user",
+            P4PASSWD: "ticket",
+          }),
+        }),
+      ),
+    );
+    expect(settingsSpy).not.toHaveBeenCalled();
+    expect(secretSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
   it("uses Slack's API fallback when the default option is OAuth", async () => {
     const slack = MCP_MARKETPLACE.find((e) => e.id === "slack")!;
     const saveSpy = vi

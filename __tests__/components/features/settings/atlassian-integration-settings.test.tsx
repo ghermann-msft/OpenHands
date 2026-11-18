@@ -11,11 +11,22 @@ const mocks = vi.hoisted(() => ({
     mcp_config: Record<string, unknown>;
   },
   deleteMcpServer: vi.fn(),
+  deleteOrganizationConnection: vi.fn(),
+  upsertOrganizationConnection: vi.fn(),
+  orgId: null as string | null,
+  organizationConnections: [] as Array<{
+    kind: string;
+    connected: boolean;
+    editable: boolean;
+    scope: string;
+    display_name?: string;
+  }>,
 }));
 
 vi.mock("#/contexts/active-backend-context", () => ({
   useActiveBackend: () => ({
     backend: { id: "halo", kind: "cloud", connectionRevision: 2 },
+    orgId: mocks.orgId,
   }),
 }));
 
@@ -42,21 +53,45 @@ vi.mock("#/hooks/mutation/use-delete-mcp-server", () => ({
   }),
 }));
 
+vi.mock("#/hooks/query/use-cloud-organization-connections", () => ({
+  useCloudOrganizationConnections: () => ({
+    data: mocks.organizationConnections,
+    isPending: false,
+  }),
+}));
+
+vi.mock("#/hooks/mutation/use-cloud-organization-connection", () => ({
+  useUpsertCloudOrganizationConnection: () => ({
+    mutateAsync: mocks.upsertOrganizationConnection,
+    isPending: false,
+  }),
+  useDeleteCloudOrganizationConnection: () => ({
+    mutate: mocks.deleteOrganizationConnection,
+    isPending: false,
+  }),
+}));
+
 vi.mock("#/components/features/mcp-page", () => ({
   InstallServerModal: ({
     entry,
     mcpOnly,
     serverToReplace,
+    onPersistServer,
+    persistSelectedSecrets,
   }: {
     entry: { id: string };
     mcpOnly?: boolean;
     serverToReplace?: { id: string };
+    onPersistServer?: unknown;
+    persistSelectedSecrets?: boolean;
   }) => (
     <div
       data-testid="install-server-modal"
       data-entry-id={entry.id}
       data-mcp-only={String(mcpOnly)}
       data-server-id={serverToReplace?.id}
+      data-custom-persistence={String(!!onPersistServer)}
+      data-persist-secrets={String(persistSelectedSecrets)}
     />
   ),
 }));
@@ -65,7 +100,51 @@ describe("AtlassianIntegrationSettings", () => {
   beforeEach(() => {
     mocks.canvasIntegrationsEnabled = true;
     mocks.settings = { mcp_config: {} };
+    mocks.orgId = null;
+    mocks.organizationConnections = [];
     mocks.deleteMcpServer.mockReset();
+    mocks.deleteOrganizationConnection.mockReset();
+    mocks.upsertOrganizationConnection.mockReset();
+  });
+
+  it("uses organization-owned persistence and respects read-only membership", async () => {
+    const user = userEvent.setup();
+    mocks.orgId = "org-1";
+    mocks.organizationConnections = [
+      {
+        kind: "atlassian",
+        connected: true,
+        editable: false,
+        scope: "shared",
+        display_name: "shared@example.com",
+      },
+    ];
+
+    const { rerender } = render(<AtlassianIntegrationSettings />);
+
+    expect(screen.getByText("shared@example.com")).toBeInTheDocument();
+    expect(screen.queryByTestId("atlassian-edit")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("atlassian-disconnect"),
+    ).not.toBeInTheDocument();
+
+    mocks.organizationConnections[0]!.editable = true;
+    rerender(<AtlassianIntegrationSettings />);
+    await user.click(screen.getByTestId("atlassian-edit"));
+
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-custom-persistence",
+      "true",
+    );
+    expect(screen.getByTestId("install-server-modal")).toHaveAttribute(
+      "data-persist-secrets",
+      "false",
+    );
+    await user.click(screen.getByTestId("atlassian-disconnect"));
+    expect(mocks.deleteOrganizationConnection).toHaveBeenCalledWith(
+      "atlassian",
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
   });
 
   it("stays hidden when the backend disables Canvas integrations", () => {

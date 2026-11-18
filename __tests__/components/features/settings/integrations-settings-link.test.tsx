@@ -10,6 +10,14 @@ import type { Backend } from "#/api/backend-registry/types";
 import { ActiveBackendProvider } from "#/contexts/active-backend-context";
 import { IntegrationsSettingsLink } from "#/components/features/settings/integrations-settings-link";
 
+const useCloudIntegrationsConfigMock = vi.fn(() => ({
+  data: { isCanvasIntegrationsEnabled: false },
+}));
+
+vi.mock("#/hooks/query/use-cloud-integrations-config", () => ({
+  useCloudIntegrationsConfig: () => useCloudIntegrationsConfigMock(),
+}));
+
 const cloudBackend: Backend = {
   id: "cloud-1",
   name: "OpenHands Cloud",
@@ -34,6 +42,9 @@ function renderWithProviders() {
 beforeEach(() => {
   window.localStorage.clear();
   __resetActiveStoreForTests();
+  useCloudIntegrationsConfigMock.mockReturnValue({
+    data: { isCanvasIntegrationsEnabled: false },
+  });
 });
 
 afterEach(() => {
@@ -90,6 +101,19 @@ describe("IntegrationsSettingsLink", () => {
       "href",
       "https://app.all-hands.dev/settings/integrations",
     );
+  });
+
+  it("hides the external shortcut when hosted Integrations are owned by Canvas", () => {
+    vi.stubEnv("VITE_LOCK_TO_CLOUD", "https://halo.example.com");
+    useCloudIntegrationsConfigMock.mockReturnValue({
+      data: { isCanvasIntegrationsEnabled: true },
+    });
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+
+    renderWithProviders();
+
+    expect(screen.queryByTestId("settings-integrations-link")).toBeNull();
   });
 
   it("renders nothing when locked Canvas owns settings", () => {

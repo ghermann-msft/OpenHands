@@ -86,6 +86,10 @@ interface InstallServerModalProps {
    * offering the instance's native integration. Defaults to false.
    */
   mcpOnly?: boolean;
+  /** Override settings persistence after the server passes validation. */
+  onPersistServer?: (server: MCPServerConfig) => Promise<unknown>;
+  /** Organization-owned credentials are encrypted with the connection itself. */
+  persistSelectedSecrets?: boolean;
 }
 
 interface FieldState {
@@ -212,6 +216,8 @@ export function InstallServerModal({
   onSuccess,
   serverToReplace,
   mcpOnly = false,
+  onPersistServer,
+  persistSelectedSecrets = true,
 }: InstallServerModalProps) {
   const { t } = useTranslation("openhands");
   const { mutate: addMcpServer, isPending: isAdding } = useAddMcpServer();
@@ -265,6 +271,7 @@ export function InstallServerModal({
   const [selectedConnection, setSelectedConnection] = React.useState<
     "native" | "mcp"
   >("native");
+  const [isPersisting, setIsPersisting] = React.useState(false);
   const showConnectionTabs = !!native && !!option;
   const isNativeSelected =
     !!native && (!option || selectedConnection === "native");
@@ -274,6 +281,7 @@ export function InstallServerModal({
     isAuthorizingOAuth ||
     isAdding ||
     isUpdating ||
+    isPersisting ||
     isFinalizingInstall;
 
   const setValue = (key: string, value: string) => {
@@ -360,7 +368,9 @@ export function InstallServerModal({
         setIsFinalizingInstall(true);
         void (async () => {
           try {
-            await saveSelectedSecrets();
+            if (persistSelectedSecrets) {
+              await saveSelectedSecrets();
+            }
           } finally {
             onSuccess?.(entry);
             onClose();
@@ -371,6 +381,15 @@ export function InstallServerModal({
         const message = retrieveAxiosErrorMessage(err as AxiosError);
         setGlobalError(message || t(I18nKey.ERROR$GENERIC));
       };
+
+      if (onPersistServer) {
+        setIsPersisting(true);
+        void onPersistServer(serverToSave)
+          .then(onSaved)
+          .catch(onError)
+          .finally(() => setIsPersisting(false));
+        return;
+      }
 
       if (serverToReplace) {
         updateMcpServer(
