@@ -145,7 +145,6 @@ const ACP_PROVIDER_UI: Record<
   opencode: {
     icon: "opencode",
     description_key: I18nKey.ONBOARDING$AGENT_OPENCODE_DESCRIPTION,
-    local_only: true,
   },
 };
 

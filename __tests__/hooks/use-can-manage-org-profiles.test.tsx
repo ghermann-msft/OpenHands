@@ -66,6 +66,18 @@ describe("useCanManageOrgProfiles", () => {
     await waitFor(() => expect(result.current).toBe(true));
   });
 
+  it("recognizes the hosted organization manage permission", async () => {
+    mockBackend(cloudBackend, "org-1");
+    vi.mocked(orgService.getCloudOrganizationMe).mockResolvedValue({
+      orgId: "org-1",
+      userId: "u",
+      role: "owner",
+      permissions: ["organization:manage"],
+    });
+    const { result } = renderHook(() => useCanManageOrgProfiles(), { wrapper });
+    await waitFor(() => expect(result.current).toBe(true));
+  });
+
   it("uses the server permission and ignores the role (permission denies)", async () => {
     mockBackend(cloudBackend, "org-1");
     // Role says owner, but the permission set lacks edit — permission wins.

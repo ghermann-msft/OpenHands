@@ -87,12 +87,17 @@ describe("surfaced ACP providers", () => {
     ]);
   });
 
-  it("offers Pi and OpenCode on local backends only", () => {
+  it("offers OpenCode on cloud backends while keeping Pi local-only", () => {
     const keys = (kind: "local" | "cloud") =>
       getAcpProvidersForBackend(kind).map(({ key }) => key);
 
     expect(keys("local")).toEqual([...SURFACED_ACP_PROVIDERS]);
-    expect(keys("cloud")).toEqual(["claude-code", "codex", "gemini-cli"]);
+    expect(keys("cloud")).toEqual([
+      "claude-code",
+      "codex",
+      "gemini-cli",
+      "opencode",
+    ]);
   });
 
   it("surfaces nothing the pinned client registry has dropped", () => {

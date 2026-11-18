@@ -7,7 +7,10 @@ import { useActiveBackend } from "#/contexts/active-backend-context";
  * `authorization.Permission.EDIT_ORG_SETTINGS`) that gates org-scoped profile
  * mutations (both LLM profiles and agent profiles).
  */
-const EDIT_ORG_SETTINGS = "edit_org_settings";
+const EDIT_ORG_SETTINGS_PERMISSIONS = [
+  "edit_org_settings",
+  "organization:manage",
+] as const;
 
 /**
  * Whether the current user may MUTATE org-scoped profiles — LLM profiles and
@@ -52,7 +55,9 @@ export function useCanManageOrgProfiles(): boolean {
   // older app-servers whose /me doesn't return `permissions` yet, so this
   // keeps working against either backend version.
   if (data?.permissions) {
-    return data.permissions.includes(EDIT_ORG_SETTINGS);
+    return EDIT_ORG_SETTINGS_PERMISSIONS.some((permission) =>
+      data.permissions?.includes(permission),
+    );
   }
   return data?.role === "owner" || data?.role === "admin";
 }
