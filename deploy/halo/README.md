@@ -22,9 +22,10 @@ Only the BuildKit container is privileged; the Job is ephemeral, and no build
 service remains running between builds. BuildKit also imports and exports cache
 through ACR. The workflow resolves the latest `openhands-halo` branch HEAD from
 the OpenHands, software-agent-sdk, and sandbox-server repositories once per run.
-The Job clones those exact SHAs, builds independent images concurrently, pushes
-SHA-addressed images, and reports their immutable digests through its Kubernetes
-termination message.
+Validation and image building then run in parallel from those same immutable
+SHAs. Deployment requires both jobs to succeed. The build Job clones the exact
+SHAs, builds independent images concurrently, pushes SHA-addressed images, and
+reports their immutable digests through its Kubernetes termination message.
 
 `bootstrap` creates the `Standard_D16ds_v5` build pool when it is absent and
 rejects an existing pool whose VM size, disk configuration, autoscaling limits,

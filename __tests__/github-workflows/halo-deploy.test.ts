@@ -16,8 +16,12 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain("__tests__/scripts/static-server.test.ts");
     expect(workflow).toContain("node scripts/halo-deploy.mjs resolve-sources");
     expect(workflow).toContain(
-      "needs:\n      - resolve-sources\n      - validate",
+      "deploy-candidate:\n    needs:\n      - resolve-sources\n      - validate\n      - build-images",
     );
+    expect(workflow).toContain(
+      "build-images:\n    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'\n    needs: resolve-sources",
+    );
+    expect(workflow).toContain("group: halo-build");
     expect(workflow).toContain(
       "ref: ${{ needs.resolve-sources.outputs.openhands_sha }}",
     );
@@ -25,7 +29,7 @@ describe("Halo deployment workflow", () => {
       'node scripts/halo-deploy.mjs build --openhands-sha "${{ needs.resolve-sources.outputs.openhands_sha }}" --agent-server-sha "${{ needs.resolve-sources.outputs.agent_server_sha }}" --sandbox-server-sha "${{ needs.resolve-sources.outputs.sandbox_server_sha }}"',
     );
     expect(workflow).toContain(
-      'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ steps.image.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"',
+      'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ needs.build-images.outputs.canvas_digest }}" --agent-server-digest "${{ needs.build-images.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.build-images.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.build-images.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"',
     );
     expect(workflow).toContain("HALO_WINDOWS_RUNTIME_DIGEST");
     expect(workflow).toContain("### Halo candidate provenance");
