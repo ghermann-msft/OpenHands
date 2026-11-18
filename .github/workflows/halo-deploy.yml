@@ -21,13 +21,64 @@ permissions:
   contents: read
 
 jobs:
+  resolve-sources:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      openhands_repository: ${{ steps.sources.outputs.openhands_repository }}
+      openhands_branch: ${{ steps.sources.outputs.openhands_branch }}
+      openhands_sha: ${{ steps.sources.outputs.openhands_sha }}
+      agent_server_repository: ${{ steps.sources.outputs.agent_server_repository }}
+      agent_server_branch: ${{ steps.sources.outputs.agent_server_branch }}
+      agent_server_sha: ${{ steps.sources.outputs.agent_server_sha }}
+      sandbox_server_repository: ${{ steps.sources.outputs.sandbox_server_repository }}
+      sandbox_server_branch: ${{ steps.sources.outputs.sandbox_server_branch }}
+      sandbox_server_sha: ${{ steps.sources.outputs.sandbox_server_sha }}
+    steps:
+      - name: Check out workflow source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+
+      - name: Resolve integration branch heads
+        id: sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(node scripts/halo-deploy.mjs resolve-sources)"
+          printf '%s\n' "$output"
+          for name in \
+            OPENHANDS_SOURCE_REPOSITORY OPENHANDS_SOURCE_BRANCH OPENHANDS_SOURCE_SHA \
+            AGENT_SERVER_SOURCE_REPOSITORY AGENT_SERVER_SOURCE_BRANCH AGENT_SERVER_SOURCE_SHA \
+            SANDBOX_SERVER_SOURCE_REPOSITORY SANDBOX_SERVER_SOURCE_BRANCH SANDBOX_SERVER_SOURCE_SHA
+          do
+            value="$(printf '%s\n' "$output" | sed -n "s/^${name}=//p" | tail -1)"
+            test -n "$value"
+            output_name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed 's/_source_/_/')"
+            echo "$output_name=$value" >> "$GITHUB_OUTPUT"
+          done
+          for sha in \
+            "$(printf '%s\n' "$output" | sed -n 's/^OPENHANDS_SOURCE_SHA=//p')" \
+            "$(printf '%s\n' "$output" | sed -n 's/^AGENT_SERVER_SOURCE_SHA=//p')" \
+            "$(printf '%s\n' "$output" | sed -n 's/^SANDBOX_SERVER_SOURCE_SHA=//p')"
+          do
+            [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
+          done
+
   validate:
     if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
+    needs: resolve-sources
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-sources.outputs.openhands_sha }}
 
       - name: Set up Node.js with npm cache
         uses: actions/setup-node@v7
@@ -53,7 +104,9 @@ jobs:
           npm run build
 
   deploy-candidate:
-    needs: validate
+    needs:
+      - resolve-sources
+      - validate
     runs-on: openhands-halo-ci
     timeout-minutes: 120
     environment: halo-ppe
@@ -66,9 +119,20 @@ jobs:
       sandbox_server_digest: ${{ steps.image.outputs.sandbox_server_digest }}
       sandbox_runtime_digest: ${{ steps.image.outputs.sandbox_runtime_digest }}
       windows_runtime_digest: ${{ steps.windows-runtime.outputs.digest }}
+      openhands_repository: ${{ needs.resolve-sources.outputs.openhands_repository }}
+      openhands_branch: ${{ needs.resolve-sources.outputs.openhands_branch }}
+      openhands_sha: ${{ needs.resolve-sources.outputs.openhands_sha }}
+      agent_server_repository: ${{ needs.resolve-sources.outputs.agent_server_repository }}
+      agent_server_branch: ${{ needs.resolve-sources.outputs.agent_server_branch }}
+      agent_server_sha: ${{ needs.resolve-sources.outputs.agent_server_sha }}
+      sandbox_server_repository: ${{ needs.resolve-sources.outputs.sandbox_server_repository }}
+      sandbox_server_branch: ${{ needs.resolve-sources.outputs.sandbox_server_branch }}
+      sandbox_server_sha: ${{ needs.resolve-sources.outputs.sandbox_server_sha }}
     steps:
       - name: Check out exact commit
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-sources.outputs.openhands_sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -102,7 +166,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          output="$(node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA")"
+          output="$(node scripts/halo-deploy.mjs build --openhands-sha "${{ needs.resolve-sources.outputs.openhands_sha }}" --agent-server-sha "${{ needs.resolve-sources.outputs.agent_server_sha }}" --sandbox-server-sha "${{ needs.resolve-sources.outputs.sandbox_server_sha }}")"
           printf '%s\n' "$output"
           canvas_digest="$(printf '%s\n' "$output" | sed -n 's/^CANVAS_IMAGE_DIGEST=//p' | tail -1)"
           agent_server_digest="$(printf '%s\n' "$output" | sed -n 's/^AGENT_SERVER_IMAGE_DIGEST=//p' | tail -1)"
@@ -128,6 +192,16 @@ jobs:
           echo "agent_server_digest=$agent_server_digest" >> "$GITHUB_OUTPUT"
           echo "sandbox_server_digest=$sandbox_server_digest" >> "$GITHUB_OUTPUT"
           echo "sandbox_runtime_digest=$sandbox_runtime_digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Halo candidate provenance"
+            echo
+            echo "| Component | Repository | Branch | SHA | Image digest |"
+            echo "| --- | --- | --- | --- | --- |"
+            echo "| Canvas | \`${{ needs.resolve-sources.outputs.openhands_repository }}\` | \`${{ needs.resolve-sources.outputs.openhands_branch }}\` | \`${{ needs.resolve-sources.outputs.openhands_sha }}\` | \`$canvas_digest\` |"
+            echo "| Agent Server | \`${{ needs.resolve-sources.outputs.agent_server_repository }}\` | \`${{ needs.resolve-sources.outputs.agent_server_branch }}\` | \`${{ needs.resolve-sources.outputs.agent_server_sha }}\` | \`$agent_server_digest\` |"
+            echo "| Sandbox Server | \`${{ needs.resolve-sources.outputs.sandbox_server_repository }}\` | \`${{ needs.resolve-sources.outputs.sandbox_server_branch }}\` | \`${{ needs.resolve-sources.outputs.sandbox_server_sha }}\` | \`$sandbox_server_digest\` |"
+            echo "| Sandbox Runtime | \`${{ needs.resolve-sources.outputs.sandbox_server_repository }}\` + Agent Server | \`${{ needs.resolve-sources.outputs.sandbox_server_branch }}\` | \`${{ needs.resolve-sources.outputs.sandbox_server_sha }}\` + \`${{ needs.resolve-sources.outputs.agent_server_sha }}\` | \`$sandbox_runtime_digest\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resolve immutable Windows runtime
         id: windows-runtime

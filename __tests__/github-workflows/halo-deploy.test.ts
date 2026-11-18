@@ -14,13 +14,23 @@ describe("Halo deployment workflow", () => {
       "__tests__/scripts/workspace-runtime-controller.test.ts",
     );
     expect(workflow).toContain("__tests__/scripts/static-server.test.ts");
+    expect(workflow).toContain("node scripts/halo-deploy.mjs resolve-sources");
     expect(workflow).toContain(
-      'node scripts/halo-deploy.mjs build --ref "$GITHUB_SHA"',
+      "needs:\n      - resolve-sources\n      - validate",
+    );
+    expect(workflow).toContain(
+      "ref: ${{ needs.resolve-sources.outputs.openhands_sha }}",
+    );
+    expect(workflow).toContain(
+      'node scripts/halo-deploy.mjs build --openhands-sha "${{ needs.resolve-sources.outputs.openhands_sha }}" --agent-server-sha "${{ needs.resolve-sources.outputs.agent_server_sha }}" --sandbox-server-sha "${{ needs.resolve-sources.outputs.sandbox_server_sha }}"',
     );
     expect(workflow).toContain(
       'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ steps.image.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"',
     );
     expect(workflow).toContain("HALO_WINDOWS_RUNTIME_DIGEST");
+    expect(workflow).toContain("### Halo candidate provenance");
+    expect(workflow).toContain("agent_server_sha");
+    expect(workflow).toContain("sandbox_server_sha");
     expect(workflow).toContain(
       "node scripts/halo-deploy.mjs preflight-windows",
     );

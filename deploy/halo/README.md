@@ -6,7 +6,8 @@ candidate-to-primary promotion:
 ```powershell
 npm run halo -- bootstrap
 npm run halo -- bootstrap-ci --github-app-id <id> --github-app-installation-id <id> --github-app-private-key <path-to-pem>
-npm run halo -- build --ref HEAD
+npm run halo -- resolve-sources
+npm run halo -- build --openhands-sha <sha> --agent-server-sha <sha> --sandbox-server-sha <sha>
 npm run halo -- deploy-candidate --digest sha256:<digest>
 npm run halo -- promote
 npm run halo -- status
@@ -19,9 +20,11 @@ workloads and keeps one `Standard_D16ds_v5` node warm. The pool places kubelet
 ephemeral storage on a 256 GiB Ephemeral OS disk backed by its temporary SSD.
 Only the BuildKit container is privileged; the Job is ephemeral, and no build
 service remains running between builds. BuildKit also imports and exports cache
-through ACR. The Job clones the exact pushed commit, builds independent images
-concurrently, pushes commit-pinned images, and reports their immutable digests
-through its Kubernetes termination message.
+through ACR. The workflow resolves the latest `openhands-halo` branch HEAD from
+the OpenHands, software-agent-sdk, and sandbox-server repositories once per run.
+The Job clones those exact SHAs, builds independent images concurrently, pushes
+SHA-addressed images, and reports their immutable digests through its Kubernetes
+termination message.
 
 `bootstrap` creates the `Standard_D16ds_v5` build pool when it is absent and
 rejects an existing pool whose VM size, disk configuration, autoscaling limits,
@@ -48,14 +51,14 @@ internal API keys, settings encryption keys, and Automation KV keys.
 
 ## GitHub Actions deployment loop
 
-The `Halo deployment` workflow validates every push to `openhands-halo` on a
-GitHub-hosted runner, then uses an ephemeral in-cluster runner to build the
-image and deploy its digest to PPE. The same run then waits at the protected
-`halo-production` environment. Approving that job promotes the exact digest
-built by the run, without rebuilding it; promotion fails if PPE has moved to a
-newer digest while approval was pending. Pull requests never run on the
-self-hosted scale set. Deployment readiness and authentication smoke checks
-use the in-cluster service because Front Door intentionally permits only the
+The `Halo deployment` workflow resolves and records all three integration branch
+HEADs, validates the resolved OpenHands SHA on a GitHub-hosted runner, then uses
+an ephemeral in-cluster runner to build every component and deploy its digest to
+PPE. The same run then waits at the protected `halo-production` environment.
+Approving that job promotes the exact PPE digests without rebuilding; promotion
+fails if PPE has moved to newer digests while approval was pending. Pull
+requests never run on the self-hosted scale set. Deployment readiness and
+authentication smoke checks use the in-cluster service because Front Door intentionally permits only the
 configured client CIDRs. Sandbox runtime URLs use the canonical Front Door
 origin for both browsers and Sandbox Server; the AKS NAT gateway's fixed egress
 address has a separate explicit service allow rule.
