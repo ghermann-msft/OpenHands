@@ -11,8 +11,9 @@ import { callCloudProxy } from "./proxy";
 
 /**
  * Cloud transport for the Agent Profiles surface. The cloud enterprise
- * app-server exposes the SAME `/api/agent-profiles` contract as the local
- * agent-server (paths + response shapes mirror `agent_profiles_router.py`),
+ * app-server exposes the same Agent Profile contract as the local agent-server
+ * under `/api/v1/agent-profiles` (paths + response shapes mirror
+ * `agent_profiles_router.py`),
  * but cloud calls authenticate with the backend's bearer token + `X-Org-Id`
  * and must go through {@link callCloudProxy} — not the direct
  * `AgentProfilesClient` (which speaks `X-Session-API-Key` to a local host).
@@ -24,7 +25,7 @@ import { callCloudProxy } from "./proxy";
  * `AgentProfilesService` on the cloud path.
  */
 
-const BASE = "/api/agent-profiles";
+const BASE = "/api/v1/agent-profiles";
 
 function activeCloudBackend(): Backend {
   const active = getActiveBackend().backend;

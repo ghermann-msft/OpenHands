@@ -6,10 +6,11 @@
  * Backs the Settings → Agent profiles library + reused agent editor. The
  * `AgentProfilesClient` ships in ts-client (pinned 1.28.0 here); the
  * `/api/agent-profiles` endpoints it targets shipped in agent-server v1.29.0
- * (local) and in the enterprise cloud app-server (OpenHands #15060, epic
- * #3730). Cloud exposes the SAME contract but authenticates with a bearer
- * token + `X-Org-Id`, so cloud calls route through `callCloudProxy` (see
- * `cloud/agent-profiles-service.api.ts`) instead of the direct client.
+ * (local) and in the cloud app-server (OpenHands #15060, epic #3730). Cloud
+ * exposes the same contract under `/api/v1/agent-profiles` and authenticates
+ * with a bearer token + `X-Org-Id`, so cloud calls route through
+ * `callCloudProxy` (see `cloud/agent-profiles-service.api.ts`) instead of the
+ * direct client.
  */
 import {
   AgentProfilesClient,
