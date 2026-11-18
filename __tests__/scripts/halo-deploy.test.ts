@@ -374,7 +374,7 @@ describe("Halo deployment automation", () => {
     expect(runner).toContain("githubConfigSecret: openhands-halo-github-app");
     expect(runner).toContain("runnerScaleSetName: openhands-halo-ci");
     expect(runner).toContain("minRunners: 0");
-    expect(runner).toContain("maxRunners: 1");
+    expect(runner).toContain("maxRunners: 2");
     expect(runner).toContain("image: ghcr.io/actions/actions-runner:2.338.1");
     expect(runner).toContain("runAsUser: 1001");
     expect(runner).toContain("runAsGroup: 1001");
