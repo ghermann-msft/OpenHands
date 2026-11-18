@@ -103,31 +103,19 @@ jobs:
             __tests__/github-workflows/halo-deploy.test.ts
           npm run build
 
-  deploy-candidate:
-    needs:
-      - resolve-sources
-      - validate
+  build-images:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
+    needs: resolve-sources
     runs-on: openhands-halo-ci
     timeout-minutes: 120
-    environment: halo-ppe
     concurrency:
-      group: halo-candidate
+      group: halo-build
       cancel-in-progress: false
     outputs:
       canvas_digest: ${{ steps.image.outputs.canvas_digest }}
       agent_server_digest: ${{ steps.image.outputs.agent_server_digest }}
       sandbox_server_digest: ${{ steps.image.outputs.sandbox_server_digest }}
       sandbox_runtime_digest: ${{ steps.image.outputs.sandbox_runtime_digest }}
-      windows_runtime_digest: ${{ steps.windows-runtime.outputs.digest }}
-      openhands_repository: ${{ needs.resolve-sources.outputs.openhands_repository }}
-      openhands_branch: ${{ needs.resolve-sources.outputs.openhands_branch }}
-      openhands_sha: ${{ needs.resolve-sources.outputs.openhands_sha }}
-      agent_server_repository: ${{ needs.resolve-sources.outputs.agent_server_repository }}
-      agent_server_branch: ${{ needs.resolve-sources.outputs.agent_server_branch }}
-      agent_server_sha: ${{ needs.resolve-sources.outputs.agent_server_sha }}
-      sandbox_server_repository: ${{ needs.resolve-sources.outputs.sandbox_server_repository }}
-      sandbox_server_branch: ${{ needs.resolve-sources.outputs.sandbox_server_branch }}
-      sandbox_server_sha: ${{ needs.resolve-sources.outputs.sandbox_server_sha }}
     steps:
       - name: Check out exact commit
         uses: actions/checkout@v7
@@ -203,6 +191,65 @@ jobs:
             echo "| Sandbox Runtime | \`${{ needs.resolve-sources.outputs.sandbox_server_repository }}\` + Agent Server | \`${{ needs.resolve-sources.outputs.sandbox_server_branch }}\` | \`${{ needs.resolve-sources.outputs.sandbox_server_sha }}\` + \`${{ needs.resolve-sources.outputs.agent_server_sha }}\` | \`$sandbox_runtime_digest\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  deploy-candidate:
+    needs:
+      - resolve-sources
+      - validate
+      - build-images
+    runs-on: openhands-halo-ci
+    timeout-minutes: 120
+    environment: halo-ppe
+    concurrency:
+      group: halo-candidate
+      cancel-in-progress: false
+    outputs:
+      canvas_digest: ${{ needs.build-images.outputs.canvas_digest }}
+      agent_server_digest: ${{ needs.build-images.outputs.agent_server_digest }}
+      sandbox_server_digest: ${{ needs.build-images.outputs.sandbox_server_digest }}
+      sandbox_runtime_digest: ${{ needs.build-images.outputs.sandbox_runtime_digest }}
+      windows_runtime_digest: ${{ steps.windows-runtime.outputs.digest }}
+      openhands_repository: ${{ needs.resolve-sources.outputs.openhands_repository }}
+      openhands_branch: ${{ needs.resolve-sources.outputs.openhands_branch }}
+      openhands_sha: ${{ needs.resolve-sources.outputs.openhands_sha }}
+      agent_server_repository: ${{ needs.resolve-sources.outputs.agent_server_repository }}
+      agent_server_branch: ${{ needs.resolve-sources.outputs.agent_server_branch }}
+      agent_server_sha: ${{ needs.resolve-sources.outputs.agent_server_sha }}
+      sandbox_server_repository: ${{ needs.resolve-sources.outputs.sandbox_server_repository }}
+      sandbox_server_branch: ${{ needs.resolve-sources.outputs.sandbox_server_branch }}
+      sandbox_server_sha: ${{ needs.resolve-sources.outputs.sandbox_server_sha }}
+    steps:
+      - name: Check out exact commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-sources.outputs.openhands_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.1
+
+      - name: Configure in-cluster Kubernetes access
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          ca_file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          test -s "$token_file"
+          test -s "$ca_file"
+          kubectl config set-cluster halo \
+            --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" \
+            --certificate-authority="$ca_file" \
+            --embed-certs=true
+          kubectl config set-credentials halo-ci --token="$(cat "$token_file")"
+          kubectl config set-context halo --cluster=halo --user=halo-ci
+          kubectl config use-context halo
+
       - name: Resolve immutable Windows runtime
         id: windows-runtime
         env:
@@ -220,7 +267,7 @@ jobs:
         run: node scripts/halo-deploy.mjs preflight-windows --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
 
       - name: Deploy candidate digest
-        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ steps.image.outputs.canvas_digest }}" --agent-server-digest "${{ steps.image.outputs.agent_server_digest }}" --sandbox-server-digest "${{ steps.image.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ steps.image.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
+        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ needs.build-images.outputs.canvas_digest }}" --agent-server-digest "${{ needs.build-images.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.build-images.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.build-images.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
 
       - name: Verify candidate access boundary
         shell: bash
