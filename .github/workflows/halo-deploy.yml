@@ -246,19 +246,35 @@ jobs:
         run: |
           set -euo pipefail
           base_url=http://openhands-hindsight.openhands-halo-ppe.svc.cluster.local:8888
-          for attempt in {1..60}; do
-            if curl --fail --silent --show-error "$base_url/health"; then
-              break
-            fi
-            if [ "$attempt" -eq 60 ]; then
-              echo "::error::Private Hindsight service did not become ready"
-              exit 1
-            fi
-            sleep 5
-          done
-          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            "$base_url/v1/default/banks")"
-          test "$status" = "401"
+          kubectl rollout status deployment/openhands-hindsight \
+            --namespace openhands-halo-ppe \
+            --timeout=120s
+          kubectl exec -i \
+            --namespace openhands-halo-ppe \
+            deployment/openhands-sandbox-server \
+            -- python - <<'PY'
+          import urllib.error
+          import urllib.request
+
+          base_url = (
+              "http://openhands-hindsight.openhands-halo-ppe.svc.cluster.local:8888"
+          )
+          with urllib.request.urlopen(f"{base_url}/health", timeout=5) as response:
+              assert response.status == 200
+          try:
+              urllib.request.urlopen(f"{base_url}/v1/default/banks", timeout=5)
+          except urllib.error.HTTPError as error:
+              assert error.code == 401
+          else:
+              raise AssertionError("Hindsight data endpoint accepted no credentials")
+          PY
+          if curl --fail --silent --show-error \
+            --connect-timeout 2 \
+            --max-time 5 \
+            "$base_url/health"; then
+            echo "::error::Private Hindsight service was reachable from the CI runner"
+            exit 1
+          fi
 
   promote-candidate:
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy-and-promote'

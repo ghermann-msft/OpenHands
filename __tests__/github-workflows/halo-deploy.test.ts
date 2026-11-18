@@ -62,9 +62,19 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       "http://openhands-hindsight.openhands-halo-ppe.svc.cluster.local:8888",
     );
-    expect(workflow).toContain('"$base_url/health"');
-    expect(workflow).toContain('"$base_url/v1/default/banks"');
-    expect(workflow).toContain('test "$status" = "401"');
+    expect(workflow).toContain(
+      "kubectl rollout status deployment/openhands-hindsight",
+    );
+    expect(workflow).toContain(
+      "deployment/openhands-sandbox-server",
+    );
+    expect(workflow).toContain('assert response.status == 200');
+    expect(workflow).toContain('assert error.code == 401');
+    expect(workflow).toContain("--connect-timeout 2");
+    expect(workflow).toContain("--max-time 5");
+    expect(workflow).toContain(
+      "Private Hindsight service was reachable from the CI runner",
+    );
     expect(workflow).not.toContain("/api/workspace-runtimes");
     expect(workflow).not.toContain(
       "https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net/ready",
