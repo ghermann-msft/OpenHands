@@ -10,6 +10,7 @@ import {
   hasExternalSettingsShell,
   getLockedCloudAuthMode,
   getLockedCloudHost,
+  getLockedCloudMcpApiMode,
   isAuthRequired,
   isSameCloudHost,
   isAuthRequiredAndMissing,
@@ -33,6 +34,8 @@ afterEach(() => {
     .__AGENT_CANVAS_LOCK_TO_CLOUD__;
   delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__;
+  delete (window as unknown as Record<string, unknown>)
+    .__AGENT_CANVAS_CLOUD_MCP_API_MODE__;
   Object.defineProperty(window, "location", {
     configurable: true,
     value: ORIGINAL_LOCATION,
@@ -138,6 +141,20 @@ describe("hasExternalSettingsShell", () => {
     ).__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__ = false;
 
     expect(hasExternalSettingsShell()).toBe(false);
+  });
+});
+
+describe("getLockedCloudMcpApiMode", () => {
+  it("defaults hosted Cloud to the App API", () => {
+    expect(getLockedCloudMcpApiMode()).toBe("app-api");
+  });
+
+  it("uses the runtime-injected Agent Server API mode", () => {
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_CLOUD_MCP_API_MODE__ = "agent-server";
+
+    expect(getLockedCloudMcpApiMode()).toBe("agent-server");
   });
 });
 

@@ -2174,6 +2174,8 @@ config:
       value: https://${env.frontDoorHost}
     - name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE
       value: required
+    - name: AGENT_CANVAS_CLOUD_MCP_API_MODE
+      value: agent-server
     - name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL
       value: "false"
     - name: AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE

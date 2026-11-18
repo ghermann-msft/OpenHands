@@ -2,6 +2,7 @@ export const DEFAULT_WORKING_DIR = "workspace/project";
 
 export type LockedCloudAuthMode = "api-key" | "cookie";
 export type LockedCloudOrganizationMode = "required" | "none";
+export type LockedCloudMcpApiMode = "app-api" | "agent-server";
 
 export interface AgentServerFormDefaults {
   baseUrl: string;
@@ -15,6 +16,7 @@ export interface AgentServerFormDefaults {
 const LOCK_TO_CLOUD_WINDOW_KEY = "__AGENT_CANVAS_LOCK_TO_CLOUD__";
 const CLOUD_ORGANIZATION_MODE_WINDOW_KEY =
   "__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__";
+const CLOUD_MCP_API_MODE_WINDOW_KEY = "__AGENT_CANVAS_CLOUD_MCP_API_MODE__";
 const EXTERNAL_SETTINGS_SHELL_WINDOW_KEY =
   "__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__";
 const LEGACY_CLOUD_DOMAIN = "all-hands.dev";
@@ -198,6 +200,20 @@ export function getLockedCloudOrganizationMode(): LockedCloudOrganizationMode {
   }
 
   return "required";
+}
+
+export function getLockedCloudMcpApiMode(): LockedCloudMcpApiMode {
+  const envMode = trimToNull(import.meta.env.VITE_CLOUD_MCP_API_MODE);
+  if (envMode === "agent-server") return "agent-server";
+
+  if (typeof window !== "undefined") {
+    const injected = (window as unknown as Record<string, unknown>)[
+      CLOUD_MCP_API_MODE_WINDOW_KEY
+    ];
+    if (injected === "agent-server") return "agent-server";
+  }
+
+  return "app-api";
 }
 
 /**

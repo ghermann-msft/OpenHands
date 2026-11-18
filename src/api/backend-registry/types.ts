@@ -1,6 +1,7 @@
 export type BackendKind = "local" | "cloud";
 export type BackendAuthMode = "api-key" | "cookie";
 export type CloudOrganizationMode = "required" | "none";
+export type CloudMcpApiMode = "app-api" | "agent-server";
 
 export interface Backend {
   id: string;
@@ -14,6 +15,11 @@ export interface Backend {
    * Defaults to `required`; self-hosted Sandbox Server deployments use `none`.
    */
   organizationMode?: CloudOrganizationMode;
+  /**
+   * Which same-origin API owns MCP probes and OAuth for this Cloud backend.
+   * Defaults to `app-api`.
+   */
+  mcpApiMode?: CloudMcpApiMode;
   /** Changes whenever connection credentials change, invalidating keyed data. */
   connectionRevision?: number;
   /**

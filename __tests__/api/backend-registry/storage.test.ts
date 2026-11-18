@@ -26,6 +26,8 @@ afterEach(() => {
   delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__;
   delete (window as unknown as Record<string, unknown>)
+    .__AGENT_CANVAS_CLOUD_MCP_API_MODE__;
+  delete (window as unknown as Record<string, unknown>)
     .__AGENT_CANVAS_ENTRA_BFF__;
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -180,6 +182,20 @@ describe("backend-registry storage", () => {
         organizationMode: "none",
       },
     ]);
+  });
+
+  it("seeds explicit Agent Server MCP ownership when configured", () => {
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_LOCK_TO_CLOUD__ = window.location.origin;
+    (
+      window as unknown as Record<string, unknown>
+    ).__AGENT_CANVAS_CLOUD_MCP_API_MODE__ = "agent-server";
+
+    expect(readStoredBackends()[0]).toMatchObject({
+      id: "locked-cloud",
+      mcpApiMode: "agent-server",
+    });
   });
 
   it("clears a stale organization selection for an organizationless control plane", () => {

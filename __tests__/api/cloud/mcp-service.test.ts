@@ -31,11 +31,17 @@ const selfHostedBackend: Backend = {
   apiKey: "",
   kind: "cloud",
   authMode: "cookie",
-  organizationMode: "none",
+  organizationMode: "required",
+  mcpApiMode: "agent-server",
 };
 
 const originalFetch = global.fetch;
 const fetchMock = vi.fn();
+
+function activateSelfHostedAgentServerMcp() {
+  setRegisteredBackends([selfHostedBackend]);
+  setActiveSelection({ backendId: selfHostedBackend.id });
+}
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -90,9 +96,8 @@ describe("testCloudMcpServer", () => {
     });
   });
 
-  it("uses the Agent Server MCP route for self-hosted cloud backends", async () => {
-    setRegisteredBackends([selfHostedBackend]);
-    setActiveSelection({ backendId: selfHostedBackend.id });
+  it("uses the Agent Server MCP route for organization-enabled self-hosted cloud backends", async () => {
+    activateSelfHostedAgentServerMcp();
     fetchMock.mockResolvedValue(
       mockJsonResponse({
         ok: false,
@@ -154,9 +159,8 @@ describe("startCloudMcpOAuth", () => {
     });
   });
 
-  it("uses the Agent Server OAuth route for self-hosted cloud backends", async () => {
-    setRegisteredBackends([selfHostedBackend]);
-    setActiveSelection({ backendId: selfHostedBackend.id });
+  it("uses the Agent Server OAuth route for organization-enabled self-hosted cloud backends", async () => {
+    activateSelfHostedAgentServerMcp();
     fetchMock.mockResolvedValue(
       mockJsonResponse({
         ok: true,
@@ -207,9 +211,8 @@ describe("getCloudMcpOAuthStatus", () => {
     });
   });
 
-  it("uses the Agent Server status route for self-hosted cloud backends", async () => {
-    setRegisteredBackends([selfHostedBackend]);
-    setActiveSelection({ backendId: selfHostedBackend.id });
+  it("uses the Agent Server status route for organization-enabled self-hosted cloud backends", async () => {
+    activateSelfHostedAgentServerMcp();
     fetchMock.mockResolvedValue(
       mockJsonResponse({
         ok: true,

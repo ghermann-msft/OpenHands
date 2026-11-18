@@ -3,6 +3,7 @@ import {
   getAgentServerSessionApiKey,
   getCookieAuthCloudHost,
   getLockedCloudHost,
+  getLockedCloudMcpApiMode,
   getLockedCloudOrganizationMode,
   isEntraBffEnabled,
 } from "../agent-server-config";
@@ -36,6 +37,9 @@ export function makeLockedCloudBackend(): Backend | null {
     authMode: "cookie",
     ...(getLockedCloudOrganizationMode() === "none"
       ? { organizationMode: "none" as const }
+      : {}),
+    ...(getLockedCloudMcpApiMode() === "agent-server"
+      ? { mcpApiMode: "agent-server" as const }
       : {}),
   };
 }

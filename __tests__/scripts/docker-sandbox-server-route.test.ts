@@ -28,6 +28,12 @@ describe("Docker Sandbox Server routing", () => {
       'STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode "$AGENT_CANVAS_CLOUD_ORGANIZATION_MODE")',
     );
     expect(entrypoint).toContain(
+      'AGENT_CANVAS_CLOUD_MCP_API_MODE="${AGENT_CANVAS_CLOUD_MCP_API_MODE:-agent-server}"',
+    );
+    expect(entrypoint).toContain(
+      'STATIC_SERVER_CLOUD_ARGS+=(--cloud-mcp-api-mode "$AGENT_CANVAS_CLOUD_MCP_API_MODE")',
+    );
+    expect(entrypoint).toContain(
       "STATIC_SERVER_CLOUD_ARGS+=(--no-external-settings-shell)",
     );
     expect(entrypoint).toContain('"${STATIC_SERVER_CLOUD_ARGS[@]}"');

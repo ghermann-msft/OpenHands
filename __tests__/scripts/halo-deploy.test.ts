@@ -953,6 +953,9 @@ describe("Halo deployment automation", () => {
       "name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE\n      value: required",
     );
     expect(values).toContain(
+      "name: AGENT_CANVAS_CLOUD_MCP_API_MODE\n      value: agent-server",
+    );
+    expect(values).toContain(
       'name: AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL\n      value: "false"',
     );
     expect(values).toContain(

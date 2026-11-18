@@ -8,6 +8,7 @@ import type {
   BackendAuthMode,
   BackendKind,
   BackendSelection,
+  CloudMcpApiMode,
   CloudOrganizationMode,
 } from "./types";
 
@@ -28,6 +29,10 @@ function isValidOrganizationMode(
   return value === undefined || value === "required" || value === "none";
 }
 
+function isValidMcpApiMode(value: unknown): value is CloudMcpApiMode {
+  return value === undefined || value === "app-api" || value === "agent-server";
+}
+
 function isValidBackend(value: unknown): value is Backend {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Partial<Backend>;
@@ -40,6 +45,7 @@ function isValidBackend(value: unknown): value is Backend {
     isValidKind(v.kind) &&
     isValidAuthMode(v.authMode) &&
     isValidOrganizationMode(v.organizationMode) &&
+    isValidMcpApiMode(v.mcpApiMode) &&
     (v.connectionRevision === undefined ||
       (typeof v.connectionRevision === "number" &&
         Number.isSafeInteger(v.connectionRevision) &&

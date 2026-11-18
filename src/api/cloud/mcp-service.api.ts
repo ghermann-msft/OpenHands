@@ -22,7 +22,7 @@ function getActiveCloudBackend(): Backend {
 }
 
 function getMcpApiPrefix(backend: Backend): string {
-  return backend.organizationMode === "none" ? "/api/mcp" : "/api/v1/mcp";
+  return backend.mcpApiMode === "agent-server" ? "/api/mcp" : "/api/v1/mcp";
 }
 
 /**
@@ -31,8 +31,8 @@ function getMcpApiPrefix(backend: Backend): string {
  * (HTTP 200 with `ok: false` for connection/timeout failures). The probe
  * lists tools and may then run one read-only tool call, each bounded by
  * `timeout`, so the request deadline covers both plus a margin. Hosted Cloud
- * owns `/api/v1/mcp`; self-hosted Sandbox Server deployments expose the
- * Agent Server's canonical `/api/mcp` routes on the same origin.
+ * owns `/api/v1/mcp`; self-hosted deployments explicitly select the
+ * co-located Agent Server's canonical `/api/mcp` routes on the same origin.
  */
 export async function testCloudMcpServer(
   request: AgentServerMCPTestRequest,

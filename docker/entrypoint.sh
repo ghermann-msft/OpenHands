@@ -73,6 +73,8 @@
 #                          Sandbox Server control plane.
 #   AGENT_CANVAS_CLOUD_ORGANIZATION_MODE – Whether the locked control plane
 #                          requires organization selection (required|none).
+#   AGENT_CANVAS_CLOUD_MCP_API_MODE – MCP route owner for the locked control
+#                          plane (app-api|agent-server).
 #   AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL – Set to false when Canvas owns the
 #                          settings UI instead of a separate same-origin shell.
 #   AGENT_CANVAS_SANDBOX_RUNTIME_NAMESPACE – Kubernetes namespace containing
@@ -639,6 +641,7 @@ fi
 SANDBOX_SERVER_URL="${SANDBOX_SERVER_URL:-}"
 AGENT_CANVAS_CLOUD_URL="${AGENT_CANVAS_CLOUD_URL:-}"
 AGENT_CANVAS_CLOUD_ORGANIZATION_MODE="${AGENT_CANVAS_CLOUD_ORGANIZATION_MODE:-none}"
+AGENT_CANVAS_CLOUD_MCP_API_MODE="${AGENT_CANVAS_CLOUD_MCP_API_MODE:-agent-server}"
 AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL="${AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL:-true}"
 STATIC_SERVER_CLOUD_ARGS=()
 if [ -n "$SANDBOX_SERVER_URL" ]; then
@@ -651,6 +654,7 @@ if [ -n "$SANDBOX_SERVER_URL" ]; then
   STATIC_SERVER_CLOUD_ARGS+=(--route "/oauth=${SANDBOX_SERVER_URL}")
   STATIC_SERVER_CLOUD_ARGS+=(--lock-to-cloud "$AGENT_CANVAS_CLOUD_URL")
   STATIC_SERVER_CLOUD_ARGS+=(--cloud-organization-mode "$AGENT_CANVAS_CLOUD_ORGANIZATION_MODE")
+  STATIC_SERVER_CLOUD_ARGS+=(--cloud-mcp-api-mode "$AGENT_CANVAS_CLOUD_MCP_API_MODE")
   if [ "$AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL" = "false" ]; then
     STATIC_SERVER_CLOUD_ARGS+=(--no-external-settings-shell)
   fi

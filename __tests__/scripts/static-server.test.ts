@@ -335,6 +335,11 @@ describe("static-server.mjs", () => {
       expect(config.cloudOrganizationMode).toBe("required");
     });
 
+    it("defaults cloudMcpApiMode to app-api", () => {
+      const config = parseArgs([]);
+      expect(config.cloudMcpApiMode).toBe("app-api");
+    });
+
     it("defaults externalSettingsShell to true", () => {
       const config = parseArgs([]);
       expect(config.externalSettingsShell).toBe(true);
@@ -361,6 +366,11 @@ describe("static-server.mjs", () => {
     it("parses --cloud-organization-mode", () => {
       const config = parseArgs(["--cloud-organization-mode", "none"]);
       expect(config.cloudOrganizationMode).toBe("none");
+    });
+
+    it("parses --cloud-mcp-api-mode", () => {
+      const config = parseArgs(["--cloud-mcp-api-mode", "agent-server"]);
+      expect(config.cloudMcpApiMode).toBe("agent-server");
     });
 
     it("defaults disableTelemetry to false", () => {
@@ -798,6 +808,36 @@ describe("static-server.mjs", () => {
 
       expect(body).toContain(
         'window.__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__="none"',
+      );
+    });
+
+    it("injects Agent Server MCP ownership for self-hosted control planes", async () => {
+      const buildDir = mkdtempSync(path.join(tmpdir(), "agent-canvas-build-"));
+      tempDirs.push(buildDir);
+      writeFileSync(
+        path.join(buildDir, "index.html"),
+        "<html><head></head><body>app</body></html>",
+      );
+
+      const server = await startStaticServer({
+        port: 0,
+        host: "127.0.0.1",
+        dir: buildDir,
+        routes: {},
+        lockToCloud: "https://cloud.example.com",
+        cloudMcpApiMode: "agent-server",
+      });
+      servers.push(server);
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Static server did not bind to a TCP port");
+      }
+      const body = await (
+        await fetch(`http://127.0.0.1:${address.port}/`)
+      ).text();
+
+      expect(body).toContain(
+        'window.__AGENT_CANVAS_CLOUD_MCP_API_MODE__="agent-server"',
       );
     });
   });

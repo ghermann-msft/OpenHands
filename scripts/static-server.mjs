@@ -145,6 +145,7 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     runtimeServicesInfo: null,
     lockToCloud: null,
     cloudOrganizationMode: "required",
+    cloudMcpApiMode: "app-api",
     externalSettingsShell: true,
     basePath: "/",
     vscodeBasePath: null,
@@ -200,6 +201,16 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
           );
         }
         config.cloudOrganizationMode = mode;
+        break;
+      }
+      case "--cloud-mcp-api-mode": {
+        const mode = argv[++i];
+        if (mode !== "app-api" && mode !== "agent-server") {
+          throw new Error(
+            `Invalid --cloud-mcp-api-mode (expected app-api or agent-server): ${mode ?? "(empty)"}`,
+          );
+        }
+        config.cloudMcpApiMode = mode;
         break;
       }
       case "--no-external-settings-shell":
@@ -352,6 +363,9 @@ OPTIONS:
   --cloud-organization-mode <required|none>
                                Configure whether the locked Cloud control plane
                                implements organization membership APIs.
+  --cloud-mcp-api-mode <app-api|agent-server>
+                               Select whether MCP probes use the hosted App API
+                               or the co-located Agent Server API.
   --no-external-settings-shell
                                Keep settings in Canvas even when the backend is
                                locked to Cloud. Use for self-hosted control
@@ -431,7 +445,10 @@ ROUTING:
  *   backend setup and the custom Cloud URL field at runtime.
  *
  * - `cloudOrganizationMode`: whether the locked Cloud control plane implements
- *   organization membership APIs. `none` is used by self-hosted Sandbox Server.
+ *   organization membership APIs.
+ *
+ * - `cloudMcpApiMode`: whether MCP probes use the hosted App API or the
+ *   co-located Agent Server API.
  *
  * - `externalSettingsShell`: when false, Canvas owns settings even though the
  *   deployment is locked to Cloud.
@@ -467,6 +484,7 @@ function makeConfigInjectionScript(
   runtimeServicesInfo,
   lockToCloud,
   cloudOrganizationMode,
+  cloudMcpApiMode,
   externalSettingsShell,
   basePath,
   vscodeBasePath,
@@ -520,6 +538,10 @@ function makeConfigInjectionScript(
     parts.push(`window.__AGENT_CANVAS_CLOUD_ORGANIZATION_MODE__="none";`);
   }
 
+  if (cloudMcpApiMode === "agent-server") {
+    parts.push(`window.__AGENT_CANVAS_CLOUD_MCP_API_MODE__="agent-server";`);
+  }
+
   if (externalSettingsShell === false) {
     parts.push(`window.__AGENT_CANVAS_EXTERNAL_SETTINGS_SHELL__=false;`);
   }
@@ -565,6 +587,7 @@ async function serveInjectedIndexHtml(
     runtimeServicesInfo,
     lockToCloud,
     cloudOrganizationMode,
+    cloudMcpApiMode,
     externalSettingsShell,
     basePath,
     vscodeBasePath,
@@ -586,6 +609,7 @@ async function serveInjectedIndexHtml(
     runtimeServicesInfo,
     lockToCloud,
     cloudOrganizationMode,
+    cloudMcpApiMode,
     externalSettingsShell,
     basePath,
     vscodeBasePath,
@@ -796,6 +820,7 @@ export function startStaticServer(config) {
     runtimeServicesInfo: config.runtimeServicesInfo || null,
     lockToCloud: config.lockToCloud || null,
     cloudOrganizationMode: config.cloudOrganizationMode || "required",
+    cloudMcpApiMode: config.cloudMcpApiMode || "app-api",
     externalSettingsShell: config.externalSettingsShell !== false,
     basePath: normalizeBasePath(config.basePath),
     vscodeBasePath: config.vscodeBasePath || null,
