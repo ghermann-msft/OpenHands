@@ -119,7 +119,7 @@
     "githubAppSecret": "openhands-halo-github-app",
     "githubAppKeyVaultSecret": "halo-ci-github-app",
     "runnerImage": "ghcr.io/actions/actions-runner:2.338.1",
-    "maxRunners": 1
+    "maxRunners": 2
   },
   "runtime": {
     "nodePool": "services",

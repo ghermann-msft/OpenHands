@@ -74,6 +74,13 @@ jobs:
     needs: resolve-sources
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - lint
+          - test
+          - build
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -93,15 +100,30 @@ jobs:
         run: npm ci
 
       - name: Validate application
+        env:
+          CHECK: ${{ matrix.check }}
+        shell: bash
         run: |
-          npm run lint
-          npm test -- --run \
-            __tests__/scripts/halo-deploy.test.ts \
-            __tests__/scripts/docker-sandbox-server-route.test.ts \
-            __tests__/scripts/workspace-runtime-controller.test.ts \
-            __tests__/scripts/static-server.test.ts \
-            __tests__/github-workflows/halo-deploy.test.ts
-          npm run build
+          case "$CHECK" in
+            lint)
+              npm run lint
+              ;;
+            test)
+              npm test -- --run \
+                __tests__/scripts/halo-deploy.test.ts \
+                __tests__/scripts/docker-sandbox-server-route.test.ts \
+                __tests__/scripts/workspace-runtime-controller.test.ts \
+                __tests__/scripts/static-server.test.ts \
+                __tests__/github-workflows/halo-deploy.test.ts
+              ;;
+            build)
+              npm run build
+              ;;
+            *)
+              echo "::error::Unsupported validation check: $CHECK"
+              exit 1
+              ;;
+          esac
 
   build-images:
     if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
@@ -191,11 +213,69 @@ jobs:
             echo "| Sandbox Runtime | \`${{ needs.resolve-sources.outputs.sandbox_server_repository }}\` + Agent Server | \`${{ needs.resolve-sources.outputs.sandbox_server_branch }}\` | \`${{ needs.resolve-sources.outputs.sandbox_server_sha }}\` + \`${{ needs.resolve-sources.outputs.agent_server_sha }}\` | \`$sandbox_runtime_digest\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  windows-preflight:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
+    needs: resolve-sources
+    runs-on: openhands-halo-ci
+    timeout-minutes: 30
+    environment: halo-ppe
+    concurrency:
+      group: halo-windows-preflight
+      cancel-in-progress: false
+    outputs:
+      windows_runtime_digest: ${{ steps.windows-runtime.outputs.digest }}
+    steps:
+      - name: Check out exact commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-sources.outputs.openhands_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure in-cluster Kubernetes access
+        shell: bash
+        run: |
+          set -euo pipefail
+          token_file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          ca_file=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          test -s "$token_file"
+          test -s "$ca_file"
+          kubectl config set-cluster halo \
+            --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" \
+            --certificate-authority="$ca_file" \
+            --embed-certs=true
+          kubectl config set-credentials halo-ci --token="$(cat "$token_file")"
+          kubectl config set-context halo --cluster=halo --user=halo-ci
+          kubectl config use-context halo
+
+      - name: Resolve immutable Windows runtime
+        id: windows-runtime
+        env:
+          WINDOWS_RUNTIME_DIGEST: ${{ vars.HALO_WINDOWS_RUNTIME_DIGEST }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$WINDOWS_RUNTIME_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Set the halo-ppe HALO_WINDOWS_RUNTIME_DIGEST variable to the validated ghcr.io/ghermann-msft/agent-server Windows Server 2025 image digest"
+            exit 1
+          fi
+          echo "digest=$WINDOWS_RUNTIME_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight Windows runtime image and identity
+        run: node scripts/halo-deploy.mjs preflight-windows --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
+
   deploy-candidate:
     needs:
       - resolve-sources
       - validate
       - build-images
+      - windows-preflight
     runs-on: openhands-halo-ci
     timeout-minutes: 120
     environment: halo-ppe
@@ -207,7 +287,7 @@ jobs:
       agent_server_digest: ${{ needs.build-images.outputs.agent_server_digest }}
       sandbox_server_digest: ${{ needs.build-images.outputs.sandbox_server_digest }}
       sandbox_runtime_digest: ${{ needs.build-images.outputs.sandbox_runtime_digest }}
-      windows_runtime_digest: ${{ steps.windows-runtime.outputs.digest }}
+      windows_runtime_digest: ${{ needs.windows-preflight.outputs.windows_runtime_digest }}
       openhands_repository: ${{ needs.resolve-sources.outputs.openhands_repository }}
       openhands_branch: ${{ needs.resolve-sources.outputs.openhands_branch }}
       openhands_sha: ${{ needs.resolve-sources.outputs.openhands_sha }}
@@ -250,24 +330,8 @@ jobs:
           kubectl config set-context halo --cluster=halo --user=halo-ci
           kubectl config use-context halo
 
-      - name: Resolve immutable Windows runtime
-        id: windows-runtime
-        env:
-          WINDOWS_RUNTIME_DIGEST: ${{ vars.HALO_WINDOWS_RUNTIME_DIGEST }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! "$WINDOWS_RUNTIME_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "::error::Set the halo-ppe HALO_WINDOWS_RUNTIME_DIGEST variable to the validated ghcr.io/ghermann-msft/agent-server Windows Server 2025 image digest"
-            exit 1
-          fi
-          echo "digest=$WINDOWS_RUNTIME_DIGEST" >> "$GITHUB_OUTPUT"
-
-      - name: Preflight Windows runtime image and identity
-        run: node scripts/halo-deploy.mjs preflight-windows --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
-
       - name: Deploy candidate digest
-        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ needs.build-images.outputs.canvas_digest }}" --agent-server-digest "${{ needs.build-images.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.build-images.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.build-images.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ steps.windows-runtime.outputs.digest }}"
+        run: node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ needs.build-images.outputs.canvas_digest }}" --agent-server-digest "${{ needs.build-images.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.build-images.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.build-images.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ needs.windows-preflight.outputs.windows_runtime_digest }}"
 
       - name: Verify candidate access boundary
         shell: bash
