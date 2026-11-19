@@ -3154,6 +3154,8 @@ spec:
             port: ${config.sandboxServer.port}
       - ports:
           - protocol: TCP
+            port: 80
+          - protocol: TCP
             port: 443
 ${privateEgress}  volumeClaimTemplates:
     - metadata:

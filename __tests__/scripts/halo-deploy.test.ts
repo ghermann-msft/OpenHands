@@ -1281,6 +1281,9 @@ describe("Halo deployment automation", () => {
       .split("---")
       .filter((document) => document.includes("kind: SandboxTemplate"));
     for (const template of sandboxTemplates) {
+      expect(template).toContain(
+        "ports:\n          - protocol: TCP\n            port: 80\n          - protocol: TCP\n            port: 443",
+      );
       if (template.includes("openhands.dev/os: linux")) {
         expect(template).toContain("name: workspace-permissions");
         expect(template).toContain(
