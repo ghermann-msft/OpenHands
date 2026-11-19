@@ -213,9 +213,90 @@ jobs:
             echo "| Sandbox Runtime | \`${{ needs.resolve-sources.outputs.sandbox_server_repository }}\` + Agent Server | \`${{ needs.resolve-sources.outputs.sandbox_server_branch }}\` | \`${{ needs.resolve-sources.outputs.sandbox_server_sha }}\` + \`${{ needs.resolve-sources.outputs.agent_server_sha }}\` | \`$sandbox_runtime_digest\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  windows-preflight:
+  build-windows-runtime:
     if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
     needs: resolve-sources
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      windows_runtime_digest: ${{ steps.publish.outputs.digest }}
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/halo-agent-server-windows
+      IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/halo-agent-server-windows:${{ needs.resolve-sources.outputs.agent_server_sha }}-windows-ltsc2025-amd64
+    steps:
+      - name: Check out exact Agent Server commit
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.resolve-sources.outputs.agent_server_repository }}
+          ref: ${{ needs.resolve-sources.outputs.agent_server_sha }}
+
+      - name: Start Windows Docker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $service = Get-Service docker -ErrorAction Stop
+          if ($service.Status -ne 'Running') {
+            Start-Service docker
+          }
+          if ((docker info --format '{{.OSType}}').Trim() -ne 'windows') {
+            throw 'The Windows runtime build requires a Windows container daemon.'
+          }
+
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Windows Server 2025 image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          docker build `
+            --isolation process `
+            --file openhands-agent-server\openhands\agent_server\docker\Dockerfile.windows `
+            --build-arg OPENHANDS_BUILD_GIT_SHA=${{ needs.resolve-sources.outputs.agent_server_sha }} `
+            --build-arg OPENHANDS_BUILD_GIT_REF=${{ needs.resolve-sources.outputs.agent_server_branch }} `
+            --tag $env:IMAGE_TAG `
+            .
+
+      - name: Push immutable Windows image
+        id: publish
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          docker push $env:IMAGE_TAG
+          $repoDigest = docker image inspect `
+            --format '{{index .RepoDigests 0}}' `
+            $env:IMAGE_TAG
+          if ([string]::IsNullOrWhiteSpace($repoDigest)) {
+            throw 'The pushed Windows image did not report a repository digest.'
+          }
+          $digest = $repoDigest.Split('@')[-1]
+          if ($digest -notmatch '^sha256:[a-f0-9]{64}$') {
+            throw "Invalid Windows image digest: $digest"
+          }
+          "digest=$digest" >> $env:GITHUB_OUTPUT
+
+      - name: Publish Windows image visibility
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api `
+            --method PATCH `
+            /user/packages/container/halo-agent-server-windows `
+            -f visibility=public | Out-Null
+
+  windows-preflight:
+    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
+    needs:
+      - resolve-sources
+      - build-windows-runtime
     runs-on: openhands-halo-ci
     timeout-minutes: 30
     environment: halo-ppe
@@ -257,12 +338,12 @@ jobs:
       - name: Resolve immutable Windows runtime
         id: windows-runtime
         env:
-          WINDOWS_RUNTIME_DIGEST: ${{ vars.HALO_WINDOWS_RUNTIME_DIGEST }}
+          WINDOWS_RUNTIME_DIGEST: ${{ needs.build-windows-runtime.outputs.windows_runtime_digest }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! "$WINDOWS_RUNTIME_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "::error::Set the halo-ppe HALO_WINDOWS_RUNTIME_DIGEST variable to the validated ghcr.io/ghermann-msft/agent-server Windows Server 2025 image digest"
+            echo "::error::The Windows runtime build did not return an immutable digest"
             exit 1
           fi
           echo "digest=$WINDOWS_RUNTIME_DIGEST" >> "$GITHUB_OUTPUT"

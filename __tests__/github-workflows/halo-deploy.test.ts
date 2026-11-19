@@ -22,7 +22,10 @@ describe("Halo deployment workflow", () => {
       "build-images:\n    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'\n    needs: resolve-sources",
     );
     expect(workflow).toContain(
-      "windows-preflight:\n    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'\n    needs: resolve-sources",
+      "build-windows-runtime:\n    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'\n    needs: resolve-sources",
+    );
+    expect(workflow).toContain(
+      "windows-preflight:\n    if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'\n    needs:\n      - resolve-sources\n      - build-windows-runtime",
     );
     expect(workflow).toContain(
       "check:\n          - lint\n          - test\n          - build",
@@ -42,7 +45,10 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ needs.build-images.outputs.canvas_digest }}" --agent-server-digest "${{ needs.build-images.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.build-images.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.build-images.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ needs.windows-preflight.outputs.windows_runtime_digest }}"',
     );
-    expect(workflow).toContain("HALO_WINDOWS_RUNTIME_DIGEST");
+    expect(workflow).not.toContain("HALO_WINDOWS_RUNTIME_DIGEST");
+    expect(workflow).toContain(
+      "WINDOWS_RUNTIME_DIGEST: ${{ needs.build-windows-runtime.outputs.windows_runtime_digest }}",
+    );
     expect(workflow).toContain("### Halo candidate provenance");
     expect(workflow).toContain("agent_server_sha");
     expect(workflow).toContain("sandbox_server_sha");
@@ -58,7 +64,9 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       "patch sandboxwarmpool windows-server-2025-amd64",
     );
-    expect(workflow).toContain("ghcr.io/ghermann-msft/agent-server");
+    expect(workflow).toContain(
+      "ghcr.io/${{ github.repository_owner }}/halo-agent-server-windows",
+    );
     expect(workflow).toContain(
       "/var/run/secrets/kubernetes.io/serviceaccount/token",
     );

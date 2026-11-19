@@ -129,7 +129,7 @@
     "nodeTaintValue": "services"
   },
   "windowsRuntime": {
-    "sourceImageRepository": "ghcr.io/ghermann-msft/agent-server",
+    "sourceImageRepository": "ghcr.io/ghermann-msft/halo-agent-server-windows",
     "repository": "openhands-agent-server-windows",
     "imageRepository": "uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows",
     "runtimeIdentity": "windows-server-2025-amd64",

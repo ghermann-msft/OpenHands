@@ -645,7 +645,7 @@ describe("Halo deployment automation", () => {
 
     expect(windowsRuntimeImportTag(digest)).toBe(`sha256-${"a".repeat(64)}`);
     expect(job).toContain(
-      `--source ghcr.io/ghermann-msft/agent-server@${digest}`,
+      `--source ghcr.io/ghermann-msft/halo-agent-server-windows@${digest}`,
     );
     expect(job).toContain(
       `--image openhands-agent-server-windows:sha256-${"a".repeat(64)}`,
