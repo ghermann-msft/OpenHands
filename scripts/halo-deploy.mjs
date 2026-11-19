@@ -3041,8 +3041,24 @@ function renderSandboxProfileTemplate(
         runAsGroup: 10001
         fsGroup: 10001
 `;
-  const linuxWorkspaceInit = isWindows
-    ? ""
+  const workspaceInit = isWindows
+    ? `      initContainers:
+        - name: workspace-permissions
+          image: ${image}
+          command: ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]
+          args:
+            - |
+              $ErrorActionPreference = 'Stop'
+              New-Item -ItemType Directory -Force C:\\workspace\\project, C:\\workspace\\worktrees | Out-Null
+              icacls C:\\workspace /grant '*S-1-5-93-2-1:(OI)(CI)M' /T /C | Out-Null
+          workingDir: 'C:\\'
+          securityContext:
+            windowsOptions:
+              runAsUserName: "ContainerAdministrator"
+          volumeMounts:
+            - name: workspace
+              mountPath: 'C:\\workspace'
+`
     : `      initContainers:
         - name: workspace-permissions
           image: ${image}
@@ -3177,7 +3193,7 @@ ${
           operator: Equal
           value: ${profile.nodeTaintValue}
           effect: NoSchedule
-${linuxSecurityContext}${linuxWorkspaceInit}      containers:
+${linuxSecurityContext}${workspaceInit}      containers:
         - name: agent-server
           image: ${image}
           args: ["--host", "0.0.0.0", "--port", "8000"]

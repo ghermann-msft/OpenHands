@@ -1296,7 +1296,14 @@ describe("Halo deployment automation", () => {
           "chmod 0700 /workspace/.openhands/npm-cache /workspace/.openhands/cache /workspace/.openhands/cache/skills",
         );
       } else {
-        expect(template).not.toContain("name: workspace-permissions");
+        expect(template).toContain("name: workspace-permissions");
+        expect(template).toContain(
+          "New-Item -ItemType Directory -Force C:\\workspace\\project, C:\\workspace\\worktrees | Out-Null",
+        );
+        expect(template).toContain(
+          "icacls C:\\workspace /grant '*S-1-5-93-2-1:(OI)(CI)M' /T /C | Out-Null",
+        );
+        expect(template).toContain('runAsUserName: "ContainerAdministrator"');
       }
     }
     expect(resources).toContain(
