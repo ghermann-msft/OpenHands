@@ -288,15 +288,24 @@ jobs:
           }
           "digest=$digest" >> $env:GITHUB_OUTPUT
 
-      - name: Publish Windows image visibility
+      - name: Verify anonymous Windows image pull
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api `
-            --method PATCH `
-            /user/packages/container/halo-agent-server-windows `
-            -f visibility=public | Out-Null
+          $ErrorActionPreference = 'Stop'
+          $token = (
+            Invoke-RestMethod `
+              -Uri "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/halo-agent-server-windows:pull"
+          ).token
+          $response = Invoke-WebRequest `
+            -Method Head `
+            -Uri "https://ghcr.io/v2/${{ github.repository_owner }}/halo-agent-server-windows/manifests/${{ steps.publish.outputs.digest }}" `
+            -Headers @{
+              Authorization = "Bearer $token"
+              Accept = "application/vnd.oci.image.manifest.v1+json"
+            }
+          if ($response.Headers['Docker-Content-Digest'] -ne '${{ steps.publish.outputs.digest }}') {
+            throw "Anonymous Windows image digest mismatch: $($response.Headers['Docker-Content-Digest'])"
+          }
 
   windows-preflight:
     if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'

@@ -73,6 +73,16 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       "ghcr.io/${{ github.repository_owner }}/halo-agent-server-windows",
     );
+    expect(workflow).toContain("Verify anonymous Windows image pull");
+    expect(workflow).toContain(
+      "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/halo-agent-server-windows:pull",
+    );
+    expect(workflow).toContain(
+      "https://ghcr.io/v2/${{ github.repository_owner }}/halo-agent-server-windows/manifests/${{ steps.publish.outputs.digest }}",
+    );
+    expect(workflow).not.toContain(
+      "/user/packages/container/halo-agent-server-windows",
+    );
     expect(workflow).toContain(
       "/var/run/secrets/kubernetes.io/serviceaccount/token",
     );
