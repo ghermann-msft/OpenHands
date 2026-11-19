@@ -359,7 +359,8 @@ export function ChatInterface({
   React.useLayoutEffect(() => {
     if (
       session?.phase === "connecting" &&
-      conversationWebSocket?.connectionState === "OPEN" &&
+      (conversationWebSocket?.connectionState === "OPEN" ||
+        conversationWebSocket?.hasConnectedOnce) &&
       !hasSendingMessages
     ) {
       useSessionActivityStore.getState().complete(sessionKey, session.id);
@@ -369,6 +370,7 @@ export function ChatInterface({
     session?.id,
     session?.phase,
     conversationWebSocket?.connectionState,
+    conversationWebSocket?.hasConnectedOnce,
     hasSendingMessages,
   ]);
 

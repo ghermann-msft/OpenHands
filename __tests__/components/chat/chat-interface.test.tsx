@@ -2048,8 +2048,8 @@ describe("ChatInterface - session connection handoff", () => {
         text: "Please continue",
       });
       const socket = {
-        connectionState: "CONNECTING" as "CONNECTING" | "OPEN",
-        mainConnectionState: "CONNECTING" as "CONNECTING" | "OPEN",
+        connectionState: "CONNECTING" as "CONNECTING" | "OPEN" | "CLOSED",
+        mainConnectionState: "CONNECTING" as "CONNECTING" | "OPEN" | "CLOSED",
         recoveryState: "idle" as const,
         isLoadingHistory: false,
         isHistoryReady: false,
@@ -2096,6 +2096,7 @@ describe("ChatInterface - session connection handoff", () => {
 
       socket.connectionState = socket.mainConnectionState = "OPEN";
       socket.isHistoryReady = true;
+      socket.hasConnectedOnce = true;
       page.rerender(view());
       expect(
         screen.queryByTestId("chat-message-sending"),
@@ -2117,6 +2118,8 @@ describe("ChatInterface - session connection handoff", () => {
         hasMore: false,
         loadOlder: vi.fn().mockResolvedValue(undefined),
       });
+      socket.connectionState = socket.mainConnectionState = "CLOSED";
+      page.rerender(view());
       act(() => {
         pending.consumeMatchingPendingMessage(
           conversationId,
@@ -2129,6 +2132,9 @@ describe("ChatInterface - session connection handoff", () => {
           eventIds: new Set([...history, echo].map((e) => e.id)),
         });
       });
+      expect(
+        useSessionActivityStore.getState().entries[key].at(-1)?.phase,
+      ).toBe("complete");
       expect(screen.getByTestId("event-group-toggle")).toBe(header);
       expect(header).toHaveAttribute("aria-expanded", "true");
       expect(header).toHaveTextContent(I18nKey.ACTION_MESSAGE$THINK);
@@ -2137,6 +2143,8 @@ describe("ChatInterface - session connection handoff", () => {
         screen.getByTestId("user-message").compareDocumentPosition(header) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+      socket.connectionState = socket.mainConnectionState = "OPEN";
+      page.rerender(view());
       act(() => {
         pending.enqueuePendingMessage({
           conversationId,
