@@ -30,6 +30,7 @@ jobs:
       openhands_branch: ${{ steps.sources.outputs.openhands_branch }}
       openhands_sha: ${{ steps.sources.outputs.openhands_sha }}
       agent_server_repository: ${{ steps.sources.outputs.agent_server_repository }}
+      agent_server_checkout_repository: ${{ steps.sources.outputs.agent_server_checkout_repository }}
       agent_server_branch: ${{ steps.sources.outputs.agent_server_branch }}
       agent_server_sha: ${{ steps.sources.outputs.agent_server_sha }}
       sandbox_server_repository: ${{ steps.sources.outputs.sandbox_server_repository }}
@@ -68,6 +69,11 @@ jobs:
           do
             [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
           done
+          agent_server_repository="$(printf '%s\n' "$output" | sed -n 's/^AGENT_SERVER_SOURCE_REPOSITORY=//p' | tail -1)"
+          agent_server_checkout_repository="${agent_server_repository#https://github.com/}"
+          agent_server_checkout_repository="${agent_server_checkout_repository%.git}"
+          [[ "$agent_server_checkout_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          echo "agent_server_checkout_repository=$agent_server_checkout_repository" >> "$GITHUB_OUTPUT"
 
   validate:
     if: github.event_name != 'workflow_dispatch' || inputs.operation == 'deploy' || inputs.operation == 'deploy-and-promote'
@@ -230,7 +236,7 @@ jobs:
       - name: Check out exact Agent Server commit
         uses: actions/checkout@v7
         with:
-          repository: ${{ needs.resolve-sources.outputs.agent_server_repository }}
+          repository: ${{ needs.resolve-sources.outputs.agent_server_checkout_repository }}
           ref: ${{ needs.resolve-sources.outputs.agent_server_sha }}
 
       - name: Start Windows Docker

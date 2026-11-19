@@ -43,6 +43,12 @@ describe("Halo deployment workflow", () => {
       'node scripts/halo-deploy.mjs build --openhands-sha "${{ needs.resolve-sources.outputs.openhands_sha }}" --agent-server-sha "${{ needs.resolve-sources.outputs.agent_server_sha }}" --sandbox-server-sha "${{ needs.resolve-sources.outputs.sandbox_server_sha }}"',
     );
     expect(workflow).toContain(
+      'agent_server_checkout_repository="${agent_server_repository#https://github.com/}"',
+    );
+    expect(workflow).toContain(
+      "repository: ${{ needs.resolve-sources.outputs.agent_server_checkout_repository }}",
+    );
+    expect(workflow).toContain(
       'node scripts/halo-deploy.mjs deploy-candidate --canvas-digest "${{ needs.build-images.outputs.canvas_digest }}" --agent-server-digest "${{ needs.build-images.outputs.agent_server_digest }}" --sandbox-server-digest "${{ needs.build-images.outputs.sandbox_server_digest }}" --sandbox-runtime-digest "${{ needs.build-images.outputs.sandbox_runtime_digest }}" --windows-runtime-digest "${{ needs.windows-preflight.outputs.windows_runtime_digest }}"',
     );
     expect(workflow).not.toContain("HALO_WINDOWS_RUNTIME_DIGEST");
@@ -88,11 +94,9 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       "kubectl rollout status deployment/openhands-hindsight",
     );
-    expect(workflow).toContain(
-      "deployment/openhands-sandbox-server",
-    );
-    expect(workflow).toContain('assert response.status == 200');
-    expect(workflow).toContain('assert error.code == 401');
+    expect(workflow).toContain("deployment/openhands-sandbox-server");
+    expect(workflow).toContain("assert response.status == 200");
+    expect(workflow).toContain("assert error.code == 401");
     expect(workflow).toContain("--connect-timeout 2");
     expect(workflow).toContain("--max-time 5");
     expect(workflow).toContain(
