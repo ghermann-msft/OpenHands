@@ -1153,6 +1153,9 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       "name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER\n              value: openhands-halo-bff",
     );
+    expect(resources).toContain(
+      "name: OH_SECRET_KEY\n              valueFrom:\n                secretKeyRef:\n                  name: openhands-halo-secrets\n                  key: ohSecretKey",
+    );
     expect(resources).toContain("name: JWT_SECRET");
     expect(resources).toContain("name: GITHUB_APP_CLIENT_ID");
     expect(resources).toContain("name: GITHUB_APP_CLIENT_SECRET");

@@ -2734,6 +2734,11 @@ ${sandboxStartupTimeoutEnv}            - name: SERVE_FRONTEND
                 secretKeyRef:
                   name: openhands-halo-secrets
                   key: trustedIdentityAssertion
+            - name: OH_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-halo-secrets
+                  key: ohSecretKey
             - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
               value: ${sandbox.trustedIdentityIssuer}
             - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
