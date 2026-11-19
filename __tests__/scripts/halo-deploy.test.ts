@@ -950,6 +950,9 @@ describe("Halo deployment automation", () => {
       "name: AGENT_CANVAS_CLOUD_URL\n      value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
     );
     expect(values).toContain(
+      "name: OH_WEB_URL\n      value: https://openhands-ppe-gsbxe2cef0d4gefc.b01.azurefd.net",
+    );
+    expect(values).toContain(
       "name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE\n      value: required",
     );
     expect(values).toContain(

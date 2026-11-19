@@ -2172,6 +2172,8 @@ config:
       value: http://${config.sandboxServer.serviceName}:${config.sandboxServer.port}
     - name: AGENT_CANVAS_CLOUD_URL
       value: https://${env.frontDoorHost}
+    - name: OH_WEB_URL
+      value: https://${env.frontDoorHost}
     - name: AGENT_CANVAS_CLOUD_ORGANIZATION_MODE
       value: required
     - name: AGENT_CANVAS_CLOUD_MCP_API_MODE
