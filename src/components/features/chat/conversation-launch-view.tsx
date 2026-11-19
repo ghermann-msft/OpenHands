@@ -16,6 +16,9 @@ import { useNavigation } from "#/context/navigation-context";
 import { useConversationStore } from "#/stores/conversation-store";
 import { I18nKey } from "#/i18n/declaration";
 import { ConversationStartupProgress } from "./conversation-startup-progress";
+import { useUserConversation } from "#/hooks/query/use-user-conversation";
+
+const LAUNCH_TARGET_DISCOVERY_INTERVAL_MS = 500;
 
 export function ConversationLaunchView({ launchId }: { launchId: string }) {
   const { t } = useTranslation("openhands");
@@ -24,6 +27,15 @@ export function ConversationLaunchView({ launchId }: { launchId: string }) {
   const entry = useConversationLaunchStore((state) => state.launches[launchId]);
   const launch =
     entry?.backendId === backend.id && entry.orgId === orgId ? entry : null;
+  const targetConversationId =
+    launch?.targetId && !launch.targetId.startsWith("task-")
+      ? launch.targetId
+      : null;
+  const { data: targetConversation } = useUserConversation(
+    targetConversationId,
+    (query) =>
+      query.state.data ? 30_000 : LAUNCH_TARGET_DISCOVERY_INTERVAL_MS,
+  );
   const editing = useRef(false);
   useEffect(
     () => () => {
@@ -33,10 +45,14 @@ export function ConversationLaunchView({ launchId }: { launchId: string }) {
     [launchId],
   );
   useEffect(() => {
-    if (launch?.targetId) {
+    if (
+      launch?.targetId &&
+      (launch.targetId.startsWith("task-") ||
+        targetConversation?.id === launch.targetId)
+    ) {
       navigate(`/conversations/${launch.targetId}`, { replace: true });
     }
-  }, [launch?.targetId, navigate]);
+  }, [launch?.targetId, navigate, targetConversation?.id]);
 
   return (
     <ConversationOverviewDrawerProvider>
