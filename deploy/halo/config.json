@@ -154,7 +154,7 @@
   },
   "conversationStorage": {
     "storageClass": "openhands-halo-azurefile",
-    "size": "5Gi",
+    "size": "50Gi",
     "skuName": "Standard_LRS"
   },
   "workspaceStorage": {
