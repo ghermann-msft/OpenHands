@@ -741,6 +741,9 @@ describe("Halo deployment automation", () => {
     expect(configMap).toContain(
       '"OPENHANDS_ACP_NPM_CACHE_DIR": "/workspace/.openhands/npm-cache"',
     );
+    expect(configMap).toContain(
+      '"OPENHANDS_SKILLS_CACHE_DIR": "/workspace/.openhands/cache/skills"',
+    );
     expect(configMap).toContain('"working_dir": "C:\\\\workspace\\\\project"');
     expect(configMap).toContain(
       '"workspace_mount_path": "C:\\\\workspace"',
@@ -777,6 +780,9 @@ describe("Halo deployment automation", () => {
     );
     expect(configMap).toContain(
       '"OPENHANDS_ACP_NPM_CACHE_DIR": "C:\\\\workspace\\\\.openhands\\\\npm-cache"',
+    );
+    expect(configMap).toContain(
+      '"OPENHANDS_SKILLS_CACHE_DIR": "C:\\\\workspace\\\\.openhands\\\\cache\\\\skills"',
     );
     expect(configMap).toContain(
       '"workspace_storage_class": "openhands-halo-windows-workspace-disk"',
@@ -1275,16 +1281,16 @@ describe("Halo deployment automation", () => {
       if (template.includes("openhands.dev/os: linux")) {
         expect(template).toContain("name: workspace-permissions");
         expect(template).toContain(
-          "mkdir -p /workspace/project /workspace/worktrees /workspace/.openhands/npm-cache",
+          "mkdir -p /workspace/project /workspace/worktrees /workspace/.openhands/npm-cache /workspace/.openhands/cache/skills",
         );
         expect(template).toContain(
-          "chown 10001:10001 /workspace/project /workspace/worktrees /workspace/.openhands /workspace/.openhands/npm-cache",
+          "chown 10001:10001 /workspace/project /workspace/worktrees /workspace/.openhands /workspace/.openhands/npm-cache /workspace/.openhands/cache /workspace/.openhands/cache/skills",
         );
         expect(template).toContain(
           "chmod 2775 /workspace/project /workspace/worktrees /workspace/.openhands",
         );
         expect(template).toContain(
-          "chmod 0700 /workspace/.openhands/npm-cache",
+          "chmod 0700 /workspace/.openhands/npm-cache /workspace/.openhands/cache /workspace/.openhands/cache/skills",
         );
       } else {
         expect(template).not.toContain("name: workspace-permissions");

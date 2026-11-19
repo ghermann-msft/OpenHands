@@ -2337,6 +2337,8 @@ function sandboxSpecBootstrapProfiles(
             OH_PERSISTENCE_DIR: config.windowsRuntime.persistencePath,
             OH_CONVERSATION_WORKTREE_ROOT: config.windowsRuntime.worktreeRoot,
             OPENHANDS_ACP_NPM_CACHE_DIR: "C:\\workspace\\.openhands\\npm-cache",
+            OPENHANDS_SKILLS_CACHE_DIR:
+              "C:\\workspace\\.openhands\\cache\\skills",
             PYTHONUNBUFFERED: "1",
             OH_SANDBOX_OPERATING_SYSTEM: "windows",
           }
@@ -2350,6 +2352,7 @@ function sandboxSpecBootstrapProfiles(
             OH_PERSISTENCE_DIR: "/openhands/persistence",
             OH_CONVERSATION_WORKTREE_ROOT: "/workspace/worktrees",
             OPENHANDS_ACP_NPM_CACHE_DIR: "/workspace/.openhands/npm-cache",
+            OPENHANDS_SKILLS_CACHE_DIR: "/workspace/.openhands/cache/skills",
             PYTHONUNBUFFERED: "1",
           },
       working_dir: isWindows
@@ -3041,10 +3044,10 @@ function renderSandboxProfileTemplate(
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              mkdir -p /workspace/project /workspace/worktrees /workspace/.openhands/npm-cache
-              chown 10001:10001 /workspace/project /workspace/worktrees /workspace/.openhands /workspace/.openhands/npm-cache
+              mkdir -p /workspace/project /workspace/worktrees /workspace/.openhands/npm-cache /workspace/.openhands/cache/skills
+              chown 10001:10001 /workspace/project /workspace/worktrees /workspace/.openhands /workspace/.openhands/npm-cache /workspace/.openhands/cache /workspace/.openhands/cache/skills
               chmod 2775 /workspace/project /workspace/worktrees /workspace/.openhands
-              chmod 0700 /workspace/.openhands/npm-cache
+              chmod 0700 /workspace/.openhands/npm-cache /workspace/.openhands/cache /workspace/.openhands/cache/skills
           securityContext:
             runAsUser: 0
             runAsGroup: 0
