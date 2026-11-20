@@ -9,6 +9,7 @@ import {
   aksApiServerAuthorizedIpUpdateArgs,
   aksNatGatewaySubnets,
   aksNatGatewayUpdateArgs,
+  blobPrivateDnsLinkUpdateArgs,
   buildDigestsFromPodList,
   buildNodePoolCreateArgs,
   entraIdentifierUri,
@@ -45,6 +46,7 @@ import {
   renderSecretProviderClass,
   renderSandboxSpecBootstrapConfigMap,
   renderWorkspaceStorageClass,
+  renderWindowsPagefileDaemonSet,
   renderWindowsRuntimeImport,
   renderWindowsRuntimePreflight,
   runtimeNodePoolAutoscalerArgs,
@@ -219,15 +221,9 @@ describe("Halo deployment automation", () => {
     const configMap = renderCoreDnsCustomConfigMap();
 
     expect(configMap).toContain("name: coredns-custom");
-    expect(configMap).toContain(
-      "10.1.0.7 p4d-wus2-02.halostudios.dev",
-    );
-    expect(configMap).toContain(
-      "10.0.0.4 p4d-01.343i.xboxgamestudios.com",
-    );
-    expect(configMap).toContain(
-      "10.2.0.4 p4d-00.343i.xboxgamestudios.com",
-    );
+    expect(configMap).toContain("10.1.0.7 p4d-wus2-02.halostudios.dev");
+    expect(configMap).toContain("10.0.0.4 p4d-01.343i.xboxgamestudios.com");
+    expect(configMap).toContain("10.2.0.4 p4d-00.343i.xboxgamestudios.com");
     expect(configMap).toContain("fallthrough");
     expect(configMap).not.toContain("52.156.139.9");
     expect(configMap).not.toContain("20.9.144.39");
@@ -476,13 +472,16 @@ describe("Halo deployment automation", () => {
   it("defines and validates the native Windows Server 2025 runtime pool", () => {
     const args = windowsRuntimeNodePoolCreateArgs();
 
-    expect(args).toContain("halo25");
+    expect(args).toContain("halow2");
     expect(args).toContain("Windows");
     expect(args).toContain("Windows2025");
-    expect(args).toContain("Standard_D8s_v5");
-    expect(args).toContain("0");
+    expect(args).toContain("Standard_D8ds_v5");
+    expect(args).toContain("Managed");
+    expect(args).toContain("256");
+    expect(args).toContain("1");
     expect(args).toContain("10");
-    expect(args).toContain("unrealhands.io/pool=halo-windows:NoSchedule");
+    expect(args).toContain("unrealhands.io/pool=halo-windows64:NoSchedule");
+    expect(args).toContain("openhands.dev/pagefile-gib=64");
     expect(args).toContain("disabled");
     expect(args).toContain(
       "/subscriptions/3956877a-1e3c-4990-aba7-7481b5d99a60/resourceGroups/rg-unrealhands-dev/providers/Microsoft.Network/virtualNetworks/uh-unrealhands-dev-acukmd-vnet/subnets/aks-windows",
@@ -493,14 +492,17 @@ describe("Halo deployment automation", () => {
         mode: "User",
         osType: "Windows",
         osSku: "Windows2025",
-        vmSize: "Standard_D8s_v5",
+        vmSize: "Standard_D8ds_v5",
+        osDiskType: "Managed",
+        osDiskSizeGb: 256,
         enableAutoScaling: true,
-        minCount: 0,
+        minCount: 1,
         maxCount: 10,
         nodeLabels: {
-          "unrealhands.io/pool": "halo-windows",
+          "unrealhands.io/pool": "halo-windows64",
+          "openhands.dev/pagefile-gib": "64",
         },
-        nodeTaints: ["unrealhands.io/pool=halo-windows:NoSchedule"],
+        nodeTaints: ["unrealhands.io/pool=halo-windows64:NoSchedule"],
         securityProfile: { sshAccess: "Disabled" },
       }),
     ).not.toThrow();
@@ -509,21 +511,24 @@ describe("Halo deployment automation", () => {
         mode: "User",
         osType: "Linux",
         osSku: "Ubuntu",
-        vmSize: "Standard_D8s_v5",
+        vmSize: "Standard_D8ds_v5",
+        osDiskType: "Managed",
+        osDiskSizeGb: 256,
         enableAutoScaling: true,
-        minCount: 0,
+        minCount: 1,
         maxCount: 10,
         nodeLabels: {
-          "unrealhands.io/pool": "halo-windows",
+          "unrealhands.io/pool": "halo-windows64",
+          "openhands.dev/pagefile-gib": "64",
         },
-        nodeTaints: ["unrealhands.io/pool=halo-windows:NoSchedule"],
+        nodeTaints: ["unrealhands.io/pool=halo-windows64:NoSchedule"],
         securityProfile: { sshAccess: "Disabled" },
       }),
     ).toThrow(/osType=Windows/);
   });
 
   it("rejects Windows node pool names that AKS cannot create", () => {
-    expect(validateWindowsNodePoolName("halo25")).toBe("halo25");
+    expect(validateWindowsNodePoolName("halow2")).toBe("halow2");
     expect(() => validateWindowsNodePoolName("halowindows")).toThrow(
       /at most 6 characters/,
     );
@@ -535,14 +540,71 @@ describe("Halo deployment automation", () => {
   it("reconciles Windows runtime pool autoscaling capacity", () => {
     const args = windowsRuntimeNodePoolAutoscalerArgs();
 
-    expect(args).toContain("halo25");
+    expect(args).toContain("halow2");
     expect(args).toContain("--update-cluster-autoscaler");
     expect(
       args.slice(args.indexOf("--min-count"), args.indexOf("--min-count") + 2),
-    ).toEqual(["--min-count", "0"]);
+    ).toEqual(["--min-count", "1"]);
     expect(
       args.slice(args.indexOf("--max-count"), args.indexOf("--max-count") + 2),
     ).toEqual(["--max-count", "10"]);
+  });
+
+  it("configures a fixed 64 GiB pagefile on the Windows resource disk", () => {
+    const daemonSet = renderWindowsPagefileDaemonSet("candidate");
+
+    expect(daemonSet).toContain("name: openhands-windows-pagefile");
+    expect(daemonSet).toContain(
+      "image: mcr.microsoft.com/oss/kubernetes/windows-host-process-containers-base-image@sha256:b4c9637e032f667c52d1eccfa31ad8c63f1b035e8639f3f48a510536bf34032b",
+    );
+    expect(daemonSet).not.toContain(
+      "uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows",
+    );
+    expect(daemonSet).toContain('resources: ["nodes"]');
+    expect(daemonSet).toContain('verbs: ["get", "patch"]');
+    expect(daemonSet).toContain(
+      "serviceAccountName: openhands-windows-pagefile",
+    );
+    expect(daemonSet).toContain("agentpool: halow2");
+    expect(daemonSet).toContain(
+      "key: unrealhands.io/pool\n          operator: Equal\n          value: halo-windows64",
+    );
+    expect(daemonSet).toContain("hostProcess: true");
+    expect(daemonSet).toContain('runAsUserName: "NT AUTHORITY\\\\SYSTEM"');
+    expect(daemonSet).toContain("checksum/pagefile-script:");
+    expect(daemonSet).toContain("C:\\pagefile-bootstrap\\pagefile.ps1");
+    expect(daemonSet).toContain("D:\\pagefile.sys 65536 65536");
+    expect(daemonSet).toContain("AllocatedBaseSize -eq 65536");
+    expect(daemonSet).toContain(
+      "schtasks.exe /Run /TN OpenHandsPagefileReboot",
+    );
+    expect(daemonSet).toContain("shutdown.exe /r /t 0 /f /d p:4:1");
+    expect(daemonSet).toContain("openhands.dev/pagefile-ready");
+    expect(daemonSet).toContain(
+      '"https://$env:KUBERNETES_SERVICE_HOST`:$env:KUBERNETES_SERVICE_PORT"',
+    );
+  });
+
+  it("falls back to public DNS for missing Blob private-link records", () => {
+    expect(blobPrivateDnsLinkUpdateArgs()).toEqual([
+      "network",
+      "private-dns",
+      "link",
+      "vnet",
+      "update",
+      "--subscription",
+      "3956877a-1e3c-4990-aba7-7481b5d99a60",
+      "--resource-group",
+      "rg-unrealhands-dev",
+      "--zone-name",
+      "privatelink.blob.core.windows.net",
+      "--name",
+      "uh-unrealhands-dev-acukmd-blob-link",
+      "--resolution-policy",
+      "NxDomainRedirect",
+      "--output",
+      "none",
+    ]);
   });
 
   it("requires the immutable Windows runtime digest in rollback metadata", () => {
@@ -608,7 +670,8 @@ describe("Halo deployment automation", () => {
       `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows@${windowsDigest}`,
     );
     expect(resources).toContain("kubernetes.io/os: windows");
-    expect(resources).toContain("agentpool: halo25");
+    expect(resources).toContain("agentpool: halow2");
+    expect(resources).toContain('openhands.dev/pagefile-ready: "64"');
     expect(resources).toContain("workingDir: 'C:\\workspace\\project'");
     expect(resources).toContain("mountPath: 'C:\\workspace'");
     expect(resources).not.toContain("name: OH_SESSION_API_KEYS_0");
@@ -634,6 +697,15 @@ describe("Halo deployment automation", () => {
     expect(windowsTemplate).not.toContain("name: PATH");
     expect(resources).toContain('cpu: "8"');
     expect(resources).toContain("memory: 32Gi");
+    const windowsBuildTemplate = resources
+      .split("name: openhands-agent-server-windows-build", 2)[1]
+      .split("---", 1)[0];
+    expect(windowsBuildTemplate).toContain(
+      'requests:\n              cpu: "4"\n              memory: 16Gi',
+    );
+    expect(windowsBuildTemplate).toContain(
+      'limits:\n              cpu: "8"\n              memory: 32Gi',
+    );
     const windowsTemplates = resources.split(
       "name: openhands-agent-server-windows-2025",
     )[1];
@@ -664,7 +736,8 @@ describe("Halo deployment automation", () => {
       `image: uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows@${digest}`,
     );
     expect(job).toContain("activeDeadlineSeconds: 1800");
-    expect(job).toContain("agentpool: halo25");
+    expect(job).toContain("agentpool: halow2");
+    expect(job).toContain('openhands.dev/pagefile-ready: "64"');
     expect(job).toContain(
       "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     );
@@ -678,9 +751,7 @@ describe("Halo deployment automation", () => {
     expect(job).toContain(
       "Get-Command copilot.exe -ErrorAction SilentlyContinue",
     );
-    expect(job).toContain(
-      "& copilot.exe --no-auto-update help acp | Out-Null",
-    );
+    expect(job).toContain("& copilot.exe --no-auto-update help acp | Out-Null");
     expect(job).not.toContain("name: PATH");
     expect(job).toContain('node.kubernetes.io/windows-build: "10.0.26100"');
     expect(job).toContain('azure.workload.identity/use: "true"');
@@ -708,8 +779,7 @@ describe("Halo deployment automation", () => {
       }),
     ).toEqual({
       status: "failed",
-      detail:
-        "DeadlineExceeded: Job was active longer than specified deadline",
+      detail: "DeadlineExceeded: Job was active longer than specified deadline",
     });
   });
 
@@ -745,18 +815,14 @@ describe("Halo deployment automation", () => {
       '"OPENHANDS_SKILLS_CACHE_DIR": "/workspace/.openhands/cache/skills"',
     );
     expect(configMap).toContain('"working_dir": "C:\\\\workspace\\\\project"');
-    expect(configMap).toContain(
-      '"workspace_mount_path": "C:\\\\workspace"',
-    );
+    expect(configMap).toContain('"workspace_mount_path": "C:\\\\workspace"');
     expect(configMap).toContain(
       '"durable_state_dir": "C:\\\\OpenHands\\\\{sandbox_id}"',
     );
-    expect(configMap).toContain(
-      '"durable_mount_path": "C:\\\\OpenHands"',
-    );
+    expect(configMap).toContain('"durable_mount_path": "C:\\\\OpenHands"');
     expect(configMap).toContain('"operating_system": "windows"');
     expect(configMap).toContain('"availability": "available"');
-    expect(configMap).toContain('"startup_timeout_seconds": 600');
+    expect(configMap).toContain('"startup_timeout_seconds": 1800');
     expect(configMap).toContain(
       '"shell": [\n          "powershell.exe",\n          "-NoLogo",\n          "-NoProfile"\n        ]',
     );
@@ -997,9 +1063,7 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain(
       'HINDSIGHT_API_DATABASE_URL="postgresql://openhands_hindsight_ppe:',
     );
-    expect(resources).toContain(
-      "/openhands_hindsight_ppe?sslmode=require",
-    );
+    expect(resources).toContain("/openhands_hindsight_ppe?sslmode=require");
     expect(resources).toContain(
       "name: PGSSLMODE\n              value: require",
     );
@@ -1205,9 +1269,7 @@ describe("Halo deployment automation", () => {
     expect(resources).not.toContain(
       "name: OH_HINDSIGHT_TRUSTED_PRINCIPALS_JSON_FILE\n",
     );
-    expect(resources).not.toContain(
-      "name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON\n",
-    );
+    expect(resources).not.toContain("name: OH_HINDSIGHT_SCOPE_BINDINGS_JSON\n");
     expect(resources).toContain(
       'name: OH_HINDSIGHT_FAIL_OPEN\n              value: "true"',
     );
@@ -1283,6 +1345,9 @@ describe("Halo deployment automation", () => {
     for (const template of sandboxTemplates) {
       expect(template).toContain(
         "ports:\n          - protocol: TCP\n            port: 80\n          - protocol: TCP\n            port: 443",
+      );
+      expect(template).toContain(
+        "      - ports:\n          - protocol: UDP\n            port: 31264",
       );
       if (template.includes("openhands.dev/os: linux")) {
         expect(template).toContain("name: workspace-permissions");

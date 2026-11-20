@@ -23,6 +23,12 @@
     "publicIp": "uh-unrealhands-dev-egress-pip",
     "publicIpCidr": "4.148.149.254/32",
     "apiServerAuthorizedCidrs": ["207.68.149.128/28", "4.148.149.254/32"],
+    "blobPrivateDnsLink": {
+      "resourceGroup": "rg-unrealhands-dev",
+      "zoneName": "privatelink.blob.core.windows.net",
+      "linkName": "uh-unrealhands-dev-acukmd-blob-link",
+      "resolutionPolicy": "NxDomainRedirect"
+    },
     "privateDnsOverrides": [
       {
         "hostname": "p4d-wus2-02.halostudios.dev",
@@ -52,6 +58,12 @@
         "cidr": "10.2.0.4/32",
         "protocol": "TCP",
         "port": 1666
+      }
+    ],
+    "sandboxAnyDestinationEgress": [
+      {
+        "protocol": "UDP",
+        "port": 31264
       }
     ],
     "idleTimeoutMinutes": 10
@@ -142,15 +154,24 @@
     "bashEventsPath": "C:\\OpenHands\\{sandbox_id}\\bash_events",
     "persistencePath": "C:\\OpenHands\\{sandbox_id}\\persistence",
     "worktreeRoot": "C:\\workspace\\worktrees",
-    "nodePool": "halo25",
-    "nodePoolVmSize": "Standard_D8s_v5",
-    "nodePoolMinCount": 0,
+    "startupTimeoutSeconds": 1800,
+    "nodePool": "halow2",
+    "nodePoolVmSize": "Standard_D8ds_v5",
+    "nodePoolOsDiskType": "Managed",
+    "nodePoolOsDiskSizeGb": 256,
+    "nodePoolMinCount": 1,
     "nodePoolMaxCount": 10,
     "nodeSubnet": "aks-windows",
     "osSku": "Windows2025",
     "windowsBuild": "10.0.26100",
+    "pagefileDrive": "D:",
+    "pagefileSizeGiB": 64,
+    "pagefileImageRepository": "mcr.microsoft.com/oss/kubernetes/windows-host-process-containers-base-image",
+    "pagefileImageDigest": "sha256:b4c9637e032f667c52d1eccfa31ad8c63f1b035e8639f3f48a510536bf34032b",
+    "pagefileReadyLabelKey": "openhands.dev/pagefile-ready",
+    "pagefileReadyLabelValue": "64",
     "nodeTaintKey": "unrealhands.io/pool",
-    "nodeTaintValue": "halo-windows"
+    "nodeTaintValue": "halo-windows64"
   },
   "conversationStorage": {
     "storageClass": "openhands-halo-azurefile",
@@ -329,9 +350,9 @@
         "memoryLimit": "8Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
         "storageSize": "2Ti",
-        "nodePool": "halo25",
+        "nodePool": "halow2",
         "nodeTaintKey": "unrealhands.io/pool",
-        "nodeTaintValue": "halo-windows",
+        "nodeTaintValue": "halo-windows64",
         "warmPoolReplicas": 0,
         "maxConcurrency": 3,
         "capabilities": [
@@ -357,9 +378,9 @@
         "memoryLimit": "32Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
         "storageSize": "2Ti",
-        "nodePool": "halo25",
+        "nodePool": "halow2",
         "nodeTaintKey": "unrealhands.io/pool",
-        "nodeTaintValue": "halo-windows",
+        "nodeTaintValue": "halo-windows64",
         "warmPoolReplicas": 0,
         "maxConcurrency": 1,
         "capabilities": [
@@ -382,13 +403,13 @@
         "warmPool": "openhands-pool-windows-build",
         "cpuRequest": "4",
         "cpuLimit": "8",
-        "memoryRequest": "8Gi",
-        "memoryLimit": "16Gi",
+        "memoryRequest": "16Gi",
+        "memoryLimit": "32Gi",
         "storageClass": "openhands-halo-windows-workspace-disk",
         "storageSize": "2Ti",
-        "nodePool": "halo25",
+        "nodePool": "halow2",
         "nodeTaintKey": "unrealhands.io/pool",
-        "nodeTaintValue": "halo-windows",
+        "nodeTaintValue": "halo-windows64",
         "warmPoolReplicas": 0,
         "maxConcurrency": 10,
         "capabilities": [

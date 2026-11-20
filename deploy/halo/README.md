@@ -63,6 +63,40 @@ retained the same digest, and then pre-pulls that immutable ACR reference on
 the Windows pool. Runtime templates never pull the Windows image from GHCR and
 do not use registry credentials or image pull secrets.
 
+Windows sandboxes run on the dedicated `halow2` `Standard_D8ds_v5` pool. The
+pool keeps one node warm, uses a managed 256 GiB OS disk, and uses its local
+`D:` resource disk for a fixed 64 GiB pagefile. A privileged Windows
+HostProcess DaemonSet owns that host invariant: it disables automatic pagefile
+management, writes `D:\pagefile.sys 65536 65536`, reboots a node only when its
+configuration differs, and becomes ready only after Windows reports the full
+64 GiB allocation. The DaemonSet uses the immutable, minimal Microsoft
+HostProcess base image already included in the AKS Windows node image rather
+than pulling the Windows Agent Server image. It then labels the node
+`openhands.dev/pagefile-ready=64`; Windows runtime preflight jobs and sandbox
+templates require that label. New, autoscaled, and reimaged nodes therefore
+cannot serve Windows sandboxes before the pagefile bootstrap and controlled
+reboot complete. `preflight-windows` waits for the DaemonSet before testing the
+runtime image. Windows profile templates select only `halow2`, its
+`halo-windows64` taint, and the readiness label. The prior `halo25` pool can be
+drained and deleted only after this preflight and a fresh sandbox succeed; the
+cutover is blue/green and does not reuse its nodes.
+
+Windows profiles allow up to 30 minutes for the complete startup path, including
+AKS scale-up, pagefile bootstrap and reboot, disk attachment, image pull, and
+Agent Server readiness. The separate 10-minute inactivity watchdog still fails
+a startup that makes no verifiable progress, so active autoscaling is not
+mistaken for a hung sandbox.
+
+The `Windows Build` profile requests 4 CPU and 16 GiB of memory and is limited
+to 8 CPU and 32 GiB. Its higher memory ceiling lets compiler and ACP processes
+use host commit backed by the fixed pagefile without constraining ordinary
+Windows profiles to build-sized reservations.
+
+Sandbox NetworkPolicy permits DNS, Sandbox Server, outbound HTTP/HTTPS, the
+configured private Perforce endpoints, and UDP 31264 to any destination for
+FastBuild discovery. The FastBuild rule is port-specific rather than a blanket
+UDP allowance.
+
 `deploy-candidate` installs that digest into the isolated PPE namespace,
 mounting Key Vault secrets through the Azure Secrets Store CSI driver, and
 waits for the StatefulSet and PPE endpoint to become ready.

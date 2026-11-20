@@ -413,6 +413,29 @@ export function aksNatGatewayUpdateArgs() {
   ];
 }
 
+export function blobPrivateDnsLinkUpdateArgs() {
+  const link = config.network.blobPrivateDnsLink;
+  return [
+    "network",
+    "private-dns",
+    "link",
+    "vnet",
+    "update",
+    "--subscription",
+    config.azure.subscriptionId,
+    "--resource-group",
+    link.resourceGroup,
+    "--zone-name",
+    link.zoneName,
+    "--name",
+    link.linkName,
+    "--resolution-policy",
+    link.resolutionPolicy,
+    "--output",
+    "none",
+  ];
+}
+
 export function acrTrustedServicesUpdateArgs() {
   return [
     "acr",
@@ -689,6 +712,10 @@ export function windowsRuntimeNodePoolCreateArgs() {
     runtime.osSku,
     "--node-vm-size",
     runtime.nodePoolVmSize,
+    "--node-osdisk-type",
+    runtime.nodePoolOsDiskType,
+    "--node-osdisk-size",
+    String(runtime.nodePoolOsDiskSizeGb),
     "--node-count",
     String(runtime.nodePoolMinCount),
     "--enable-cluster-autoscaler",
@@ -700,6 +727,7 @@ export function windowsRuntimeNodePoolCreateArgs() {
     subnetResourceId(runtime.nodeSubnet),
     "--labels",
     `${runtime.nodeTaintKey}=${runtime.nodeTaintValue}`,
+    `openhands.dev/pagefile-gib=${runtime.pagefileSizeGiB}`,
     "--node-taints",
     `${runtime.nodeTaintKey}=${runtime.nodeTaintValue}:NoSchedule`,
     "--ssh-access",
@@ -862,6 +890,12 @@ export function validateWindowsRuntimeNodePool(nodePool) {
   if (nodePool.vmSize !== runtime.nodePoolVmSize) {
     mismatches.push(`vmSize=${runtime.nodePoolVmSize}`);
   }
+  if (nodePool.osDiskType !== runtime.nodePoolOsDiskType) {
+    mismatches.push(`osDiskType=${runtime.nodePoolOsDiskType}`);
+  }
+  if (nodePool.osDiskSizeGb !== runtime.nodePoolOsDiskSizeGb) {
+    mismatches.push(`osDiskSizeGb=${runtime.nodePoolOsDiskSizeGb}`);
+  }
   if (!nodePool.enableAutoScaling) mismatches.push("autoscaling enabled");
   if (nodePool.minCount !== runtime.nodePoolMinCount) {
     mismatches.push(`minCount=${runtime.nodePoolMinCount}`);
@@ -872,8 +906,19 @@ export function validateWindowsRuntimeNodePool(nodePool) {
   if (nodePool.nodeLabels?.[runtime.nodeTaintKey] !== runtime.nodeTaintValue) {
     mismatches.push(`label ${runtime.nodeTaintKey}=${runtime.nodeTaintValue}`);
   }
+  if (
+    nodePool.nodeLabels?.["openhands.dev/pagefile-gib"] !==
+    String(runtime.pagefileSizeGiB)
+  ) {
+    mismatches.push(
+      `label openhands.dev/pagefile-gib=${runtime.pagefileSizeGiB}`,
+    );
+  }
   if (!nodePool.nodeTaints?.includes(expectedTaint)) {
     mismatches.push(`taint ${expectedTaint}`);
+  }
+  if (nodePool.securityProfile?.sshAccess !== "Disabled") {
+    mismatches.push("SSH access disabled");
   }
   if (mismatches.length > 0) {
     throw new Error(
@@ -1463,7 +1508,9 @@ export function postgresExtensionsParameterValue(currentValue) {
     .map((extension) => extension.trim().toUpperCase())
     .filter(Boolean);
   for (const requiredExtension of ["VECTOR", "PG_TRGM"]) {
-    if (!extensions.includes(requiredExtension)) extensions.push(requiredExtension);
+    if (!extensions.includes(requiredExtension)) {
+      extensions.push(requiredExtension);
+    }
   }
   return extensions.join(",");
 }
@@ -2302,6 +2349,8 @@ function sandboxSpecBootstrapProfiles(
           ? {
               "node.kubernetes.io/windows-build":
                 config.windowsRuntime.windowsBuild,
+              [config.windowsRuntime.pagefileReadyLabelKey]:
+                config.windowsRuntime.pagefileReadyLabelValue,
             }
           : {}),
       },
@@ -2326,7 +2375,9 @@ function sandboxSpecBootstrapProfiles(
       capabilities: profile.capabilities,
       max_concurrent_sandboxes: profile.maxConcurrency,
       max_concurrent_per_user: null,
-      startup_timeout_seconds: isWindows ? 600 : 300,
+      startup_timeout_seconds: isWindows
+        ? config.windowsRuntime.startupTimeoutSeconds
+        : 300,
       initial_env: isWindows
         ? {
             OH_ENABLE_VNC: "0",
@@ -2367,6 +2418,203 @@ function sandboxSpecBootstrapProfiles(
         .digest("hex")}`,
     };
   });
+}
+
+export function renderWindowsPagefileDaemonSet(environment) {
+  const env = config.environments[environment];
+  const runtime = config.windowsRuntime;
+  const image = externalImageReference(
+    runtime.pagefileImageRepository,
+    runtime.pagefileImageDigest,
+  );
+  const sizeMiB = runtime.pagefileSizeGiB * 1024;
+  const pagefile = `${runtime.pagefileDrive}\\pagefile.sys`;
+  const pagefileScript = `$ErrorActionPreference = "Stop"
+$readyPath = "C:\\openhands-pagefile-ready"
+$desired = "${pagefile} ${sizeMiB} ${sizeMiB}"
+Remove-Item -LiteralPath $readyPath -Force -ErrorAction SilentlyContinue
+
+function Set-PagefileReadyLabel([AllowNull()][string]$value) {
+  $tokenPath = "C:\\var\\run\\secrets\\kubernetes.io\\serviceaccount\\token"
+  $caPath = "C:\\var\\run\\secrets\\kubernetes.io\\serviceaccount\\ca.crt"
+  $token = (Get-Content -LiteralPath $tokenPath -Raw).Trim()
+  $jsonValue = if ($null -eq $value) { "null" } else { '"' + $value + '"' }
+  $body = '{"metadata":{"labels":{"${runtime.pagefileReadyLabelKey}":' + $jsonValue + '}}}'
+  $patchPath = "C:\\openhands-pagefile-node-patch.json"
+  Set-Content -LiteralPath $patchPath -Value $body -Encoding Ascii -NoNewline
+  $apiServer = "https://$env:KUBERNETES_SERVICE_HOST\`:$env:KUBERNETES_SERVICE_PORT"
+  & curl.exe --fail --silent --show-error --ssl-no-revoke --cacert $caPath --header "Authorization: Bearer $token" --header "Content-Type: application/merge-patch+json" --request PATCH --data-binary "@$patchPath" "$apiServer/api/v1/nodes/$env:NODE_NAME" | Out-Null
+  Remove-Item -LiteralPath $patchPath -Force -ErrorAction SilentlyContinue
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to update the pagefile readiness label on node $env:NODE_NAME"
+  }
+}
+
+function Test-PagefileReady {
+  $pagingFiles = @((Get-ItemProperty -LiteralPath "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management" -Name PagingFiles).PagingFiles)
+  $usage = Get-CimInstance -ClassName Win32_PageFileUsage | Where-Object Name -eq "${pagefile}"
+  return $pagingFiles.Count -eq 1 -and $pagingFiles[0] -eq $desired -and $null -ne $usage -and $usage.AllocatedBaseSize -eq ${sizeMiB}
+}
+
+Set-PagefileReadyLabel $null
+if (-not (Test-PagefileReady)) {
+  if (-not (Test-Path -LiteralPath "${runtime.pagefileDrive}\\" -PathType Container)) {
+    throw "Windows resource disk ${runtime.pagefileDrive}\\ is unavailable"
+  }
+  $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem
+  Set-CimInstance -InputObject $computerSystem -Property @{ AutomaticManagedPagefile = $false } | Out-Null
+  New-ItemProperty -LiteralPath "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management" -Name PagingFiles -PropertyType MultiString -Value @($desired) -Force | Out-Null
+  Write-Output "Configured $desired; rebooting the Windows node"
+  & C:\\Windows\\System32\\schtasks.exe /Create /TN OpenHandsPagefileReboot /SC ONCE /ST 00:00 /TR "C:\\Windows\\System32\\shutdown.exe /r /t 0 /f /d p:4:1" /RU SYSTEM /F
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to create the host pagefile reboot task"
+  }
+  & C:\\Windows\\System32\\schtasks.exe /Run /TN OpenHandsPagefileReboot
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to start the host pagefile reboot task"
+  }
+  Start-Sleep -Seconds 300
+  throw "Windows did not reboot after the pagefile configuration changed"
+}
+
+& C:\\Windows\\System32\\cmd.exe /d /c "schtasks.exe /Delete /TN OpenHandsPagefileReboot /F >nul 2>&1"
+Set-PagefileReadyLabel "${runtime.pagefileReadyLabelValue}"
+New-Item -ItemType File -Path $readyPath -Force | Out-Null
+while ($true) {
+  Start-Sleep -Seconds 60
+  if (-not (Test-PagefileReady)) {
+    Remove-Item -LiteralPath $readyPath -Force -ErrorAction SilentlyContinue
+    Set-PagefileReadyLabel $null
+    throw "The fixed ${runtime.pagefileSizeGiB} GiB pagefile invariant no longer holds"
+  }
+}`;
+  const renderedPagefileScript = pagefileScript
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
+  const pagefileScriptHash = createHash("sha256")
+    .update(pagefileScript)
+    .digest("hex");
+  return `apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openhands-windows-pagefile
+  namespace: ${env.namespace}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openhands-windows-pagefile
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openhands-windows-pagefile
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openhands-windows-pagefile
+subjects:
+  - kind: ServiceAccount
+    name: openhands-windows-pagefile
+    namespace: ${env.namespace}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openhands-windows-pagefile
+  namespace: ${env.namespace}
+data:
+  pagefile.ps1: |
+${renderedPagefileScript}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: openhands-windows-pagefile
+  namespace: ${env.namespace}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openhands-windows-pagefile
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openhands-windows-pagefile
+      annotations:
+        checksum/pagefile-script: "${pagefileScriptHash}"
+    spec:
+      hostNetwork: true
+      serviceAccountName: openhands-windows-pagefile
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 0
+      nodeSelector:
+        kubernetes.io/os: windows
+        kubernetes.io/arch: amd64
+        agentpool: ${runtime.nodePool}
+        node.kubernetes.io/windows-build: "${runtime.windowsBuild}"
+      tolerations:
+        - key: os
+          operator: Equal
+          value: windows
+          effect: NoSchedule
+        - key: ${runtime.nodeTaintKey}
+          operator: Equal
+          value: ${runtime.nodeTaintValue}
+          effect: NoSchedule
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\\\SYSTEM"
+      volumes:
+        - name: pagefile-script
+          configMap:
+            name: openhands-windows-pagefile
+      containers:
+        - name: pagefile
+          image: ${image}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          command:
+            - powershell.exe
+            - -NoLogo
+            - -NoProfile
+            - -NonInteractive
+            - -File
+            - C:\\pagefile-bootstrap\\pagefile.ps1
+          volumeMounts:
+            - name: pagefile-script
+              mountPath: C:\\pagefile-bootstrap
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - powershell.exe
+                - -NoLogo
+                - -NoProfile
+                - -NonInteractive
+                - -Command
+                - if (Test-Path -LiteralPath "C:\\openhands-pagefile-ready" -PathType Leaf) { exit 0 } else { exit 1 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          securityContext:
+            windowsOptions:
+              hostProcess: true
+              runAsUserName: "NT AUTHORITY\\\\SYSTEM"
+`;
 }
 
 export function renderSandboxSpecBootstrapConfigMap(
@@ -2442,6 +2690,7 @@ spec:
         kubernetes.io/arch: amd64
         agentpool: ${runtime.nodePool}
         node.kubernetes.io/windows-build: "${runtime.windowsBuild}"
+        ${runtime.pagefileReadyLabelKey}: "${runtime.pagefileReadyLabelValue}"
       tolerations:
         - key: os
           operator: Equal
@@ -2980,6 +3229,17 @@ async function waitForWindowsRuntimePreflight(environment) {
 async function preflightWindowsRuntime(environment, windowsRuntimeDigest) {
   const namespace = config.environments[environment].namespace;
   await importWindowsRuntime(windowsRuntimeDigest);
+  kubectl(["apply", "-f", "-"], {
+    input: renderWindowsPagefileDaemonSet(environment),
+  });
+  kubectl([
+    "-n",
+    namespace,
+    "rollout",
+    "status",
+    "daemonset/openhands-windows-pagefile",
+    "--timeout=30m",
+  ]);
   kubectl([
     "-n",
     namespace,
@@ -3110,6 +3370,28 @@ function renderSandboxProfileTemplate(
 `;
     })
     .join("");
+  const anyDestinationEgress = (
+    config.network.sandboxAnyDestinationEgress ?? []
+  )
+    .map((rule) => {
+      const protocol = String(rule.protocol ?? "").toUpperCase();
+      const port = Number(rule.port);
+      if (!["TCP", "UDP"].includes(protocol)) {
+        throw new Error(
+          `Invalid sandbox any-destination egress protocol: ${rule.protocol}`,
+        );
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error(
+          `Invalid sandbox any-destination egress port: ${rule.port}`,
+        );
+      }
+      return `      - ports:
+          - protocol: ${protocol}
+            port: ${port}
+`;
+    })
+    .join("");
   return `apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
@@ -3157,7 +3439,7 @@ spec:
             port: 80
           - protocol: TCP
             port: 443
-${privateEgress}  volumeClaimTemplates:
+${anyDestinationEgress}${privateEgress}  volumeClaimTemplates:
     - metadata:
         name: workspace
       spec:
@@ -3181,7 +3463,7 @@ ${privateEgress}  volumeClaimTemplates:
         kubernetes.io/os: ${profile.os}
         kubernetes.io/arch: amd64
         agentpool: ${profile.nodePool}
-${isWindows ? `        node.kubernetes.io/windows-build: "${config.windowsRuntime.windowsBuild}"\n` : ""}      tolerations:
+${isWindows ? `        node.kubernetes.io/windows-build: "${config.windowsRuntime.windowsBuild}"\n        ${config.windowsRuntime.pagefileReadyLabelKey}: "${config.windowsRuntime.pagefileReadyLabelValue}"\n` : ""}      tolerations:
 ${
   isWindows
     ? `        - key: os
@@ -4070,6 +4352,7 @@ function ensureAksNatGateway() {
   if (outboundType !== "userAssignedNATGateway") {
     az(aksNatGatewayUpdateArgs());
   }
+  az(blobPrivateDnsLinkUpdateArgs());
   ensurePrivateDnsOverrides();
 }
 
