@@ -47,6 +47,7 @@ import {
   renderSandboxSpecBootstrapConfigMap,
   renderWorkspaceStorageClass,
   renderWindowsPagefileDaemonSet,
+  renderWindowsPagefileRbac,
   renderWindowsRuntimeImport,
   renderWindowsRuntimePreflight,
   runtimeNodePoolAutoscalerArgs,
@@ -552,6 +553,8 @@ describe("Halo deployment automation", () => {
 
   it("configures a fixed 64 GiB pagefile on the Windows resource disk", () => {
     const daemonSet = renderWindowsPagefileDaemonSet("candidate");
+    const rbac = renderWindowsPagefileRbac("candidate");
+    const primaryRbac = renderWindowsPagefileRbac("primary");
 
     expect(daemonSet).toContain("name: openhands-windows-pagefile");
     expect(daemonSet).toContain(
@@ -560,8 +563,15 @@ describe("Halo deployment automation", () => {
     expect(daemonSet).not.toContain(
       "uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server-windows",
     );
-    expect(daemonSet).toContain('resources: ["nodes"]');
-    expect(daemonSet).toContain('verbs: ["get", "patch"]');
+    expect(daemonSet).not.toContain("kind: ClusterRole");
+    expect(daemonSet).not.toContain("kind: ClusterRoleBinding");
+    expect(rbac).toContain("kind: ClusterRole");
+    expect(rbac).toContain('resources: ["nodes"]');
+    expect(rbac).toContain('verbs: ["get", "patch"]');
+    expect(rbac).toContain("name: openhands-windows-pagefile-candidate");
+    expect(rbac).toContain("namespace: openhands-halo-ppe");
+    expect(primaryRbac).toContain("name: openhands-windows-pagefile-primary");
+    expect(primaryRbac).toContain("namespace: openhands-halo-primary");
     expect(daemonSet).toContain(
       "serviceAccountName: openhands-windows-pagefile",
     );

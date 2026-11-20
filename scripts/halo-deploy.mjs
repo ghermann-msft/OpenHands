@@ -2501,28 +2501,6 @@ metadata:
   name: openhands-windows-pagefile
   namespace: ${env.namespace}
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: openhands-windows-pagefile
-rules:
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: openhands-windows-pagefile
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: openhands-windows-pagefile
-subjects:
-  - kind: ServiceAccount
-    name: openhands-windows-pagefile
-    namespace: ${env.namespace}
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -2740,6 +2718,32 @@ spec:
 
 export function windowsRuntimeImportTag(windowsRuntimeDigest) {
   return `sha256-${normalizeDigest(windowsRuntimeDigest).slice("sha256:".length)}`;
+}
+
+export function renderWindowsPagefileRbac(environment) {
+  const env = config.environments[environment];
+  return `apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openhands-windows-pagefile
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openhands-windows-pagefile-${environment}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openhands-windows-pagefile
+subjects:
+  - kind: ServiceAccount
+    name: openhands-windows-pagefile
+    namespace: ${env.namespace}
+`;
 }
 
 export function renderWindowsRuntimeImport(windowsRuntimeDigest) {
@@ -4193,6 +4197,9 @@ function bootstrapEnvironment(environment) {
     env.serviceAccount,
     runtime.clientId,
   );
+  kubectl(["apply", "-f", "-"], {
+    input: renderWindowsPagefileRbac(environment),
+  });
   kubectl(["apply", "-f", "-"], {
     input: renderSecretProviderClass(environment, runtime.clientId),
   });
