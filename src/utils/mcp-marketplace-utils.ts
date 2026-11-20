@@ -10,6 +10,7 @@ import type {
   IntegrationOAuthConfig,
   IntegrationTransport,
 } from "@openhands/extensions/integrations";
+import { normalizeMcpCommand } from "#/utils/mcp-command-migrations";
 
 export type { MarketplaceEntry };
 
@@ -251,7 +252,8 @@ function transportMatchesServer(
   const serverArgs = server.args ?? [];
   return (
     server.type === "stdio" &&
-    server.command === transport.command &&
+    normalizeMcpCommand(server.command ?? "") ===
+      normalizeMcpCommand(transport.command) &&
     transport.args.length <= serverArgs.length &&
     transport.args.every((arg, index) => serverArgs[index] === arg)
   );

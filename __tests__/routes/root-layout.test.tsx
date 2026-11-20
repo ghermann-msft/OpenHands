@@ -12,6 +12,7 @@ const useSettingsMock = vi.fn();
 const changeLanguageMock = vi.fn();
 const ensureActiveProfileMock = vi.fn();
 const migrateEnabledSkillsMock = vi.fn();
+const migrateMcpCommandsMock = vi.fn();
 const migrateDefaultAgentProfileMock = vi.fn();
 const syncTelemetryConsentMock = vi.fn();
 const syncAutomationTelemetryConsentMock = vi.fn();
@@ -28,6 +29,10 @@ vi.mock("#/hooks/query/use-settings", () => ({
 
 vi.mock("#/hooks/use-migrate-enabled-skills", () => ({
   useMigrateEnabledSkills: () => migrateEnabledSkillsMock(),
+}));
+
+vi.mock("#/hooks/use-migrate-mcp-commands", () => ({
+  useMigrateMcpCommands: () => migrateMcpCommandsMock(),
 }));
 
 vi.mock("#/hooks/use-migrate-default-agent-profile", () => ({

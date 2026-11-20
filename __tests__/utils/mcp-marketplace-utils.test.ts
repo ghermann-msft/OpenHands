@@ -46,6 +46,28 @@ describe("findInstalledMatch", () => {
     expect(result).toEqual(expect.objectContaining({ id: "stdio-0" }));
   });
 
+  it("matches a saved legacy Perforce command to the portable catalog command", () => {
+    const result = findInstalledMatch(
+      {
+        kind: "stdio",
+        serverName: "perforce",
+        command: "p4-mcp-server",
+        args: ["--readonly"],
+      },
+      [
+        {
+          id: "mcc",
+          type: "stdio",
+          name: "MCC",
+          command: "/usr/local/bin/p4-mcp-server",
+          args: ["--readonly"],
+        },
+      ],
+    );
+
+    expect(result).toEqual(expect.objectContaining({ id: "mcc" }));
+  });
+
   it("does not match a stdio server running a different package", () => {
     const result = findInstalledMatch(optionTransport(slackEntry), [
       {
