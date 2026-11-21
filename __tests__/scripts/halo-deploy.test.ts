@@ -887,11 +887,7 @@ describe("Halo deployment automation", () => {
     ) as Array<Record<string, unknown>>;
     for (const profile of profiles) {
       const initialEnv = profile.initial_env as Record<string, string>;
-      if (profile.operating_system === "linux") {
-        expect(initialEnv.OH_DEFERRED_INIT).toBe("true");
-      } else {
-        expect(initialEnv).not.toHaveProperty("OH_DEFERRED_INIT");
-      }
+      expect(initialEnv.OH_DEFERRED_INIT).toBe("true");
       const { bootstrap_revision: revision, ...contract } = profile;
       expect(revision).toBe(
         `sha256:${createHash("sha256")
@@ -899,6 +895,15 @@ describe("Halo deployment automation", () => {
           .digest("hex")}`,
       );
     }
+    expect(
+      profiles
+        .filter((profile) => profile.operating_system === "windows")
+        .map((profile) => profile.initial_env),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ OH_DEFERRED_INIT: "true" }),
+      ]),
+    );
 
     expect(
       renderSandboxSpecBootstrapConfigMap("primary", digest, windowsDigest),

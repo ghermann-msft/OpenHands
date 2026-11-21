@@ -2300,7 +2300,7 @@ function sandboxSpecBootstrapProfiles(
   return config.agentSandbox.profileSeeds.map((profile) => {
     const isWindows = profile.os === "windows";
     const enableDeferredInit =
-      !isWindows && config.environments[environment].hindsight?.enabled;
+      config.environments[environment].hindsight?.enabled;
     const bootstrapProfile = {
       id: profile.id,
       display_name: profile.name,
@@ -2380,6 +2380,7 @@ function sandboxSpecBootstrapProfiles(
         : 300,
       initial_env: isWindows
         ? {
+            ...(enableDeferredInit ? { OH_DEFERRED_INIT: "true" } : {}),
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: config.windowsRuntime.workingDir,
