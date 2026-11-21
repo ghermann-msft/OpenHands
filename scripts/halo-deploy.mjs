@@ -1792,6 +1792,11 @@ spec:
       type: Opaque
       data:
 ${entries.map(([alias]) => `        - objectName: ${alias}\n          key: ${alias}`).join("\n")}
+    - secretName: openhands-agent-server-bootstrap
+      type: Opaque
+      data:
+        - objectName: ohSecretKey
+          key: secret-key
   parameters:
     usePodIdentity: "false"
     clientID: ${quote(runtimeClientId)}
@@ -2299,8 +2304,6 @@ function sandboxSpecBootstrapProfiles(
   );
   return config.agentSandbox.profileSeeds.map((profile) => {
     const isWindows = profile.os === "windows";
-    const enableDeferredInit =
-      config.environments[environment].hindsight?.enabled;
     const bootstrapProfile = {
       id: profile.id,
       display_name: profile.name,
@@ -2318,11 +2321,11 @@ function sandboxSpecBootstrapProfiles(
         ? config.windowsRuntime.workspacePath
         : "/workspace",
       durable_state_dir: isWindows
-        ? config.windowsRuntime.statePath
-        : "/openhands",
+        ? "C:\\workspace\\.openhands"
+        : "/workspace/.openhands",
       durable_mount_path: isWindows
-        ? config.windowsRuntime.durableMountPath
-        : "/openhands",
+        ? config.windowsRuntime.workspacePath
+        : "/workspace",
       template_name: profile.template,
       warm_pool_name: profile.warmPool,
       warm_pool_replicas: profile.warmPoolReplicas,
@@ -2336,11 +2339,10 @@ function sandboxSpecBootstrapProfiles(
       workspace_storage_size: profile.storageSize,
       storage_class: profile.storageClass,
       storage_size: profile.storageSize,
-      durable_storage_class: config.conversationStorage.storageClass,
+      durable_storage_class: null,
       durable_storage_size: null,
-      durable_volume_claim_name:
-        config.environments[environment].conversationPvc,
-      durable_sub_path_template: "{sandbox_id}",
+      durable_volume_claim_name: null,
+      durable_sub_path_template: null,
       node_selector: {
         "kubernetes.io/os": profile.os,
         "kubernetes.io/arch": "amd64",
@@ -2380,13 +2382,13 @@ function sandboxSpecBootstrapProfiles(
         : 300,
       initial_env: isWindows
         ? {
-            ...(enableDeferredInit ? { OH_DEFERRED_INIT: "true" } : {}),
+            OH_DEFERRED_INIT: "true",
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: config.windowsRuntime.workingDir,
-            OH_CONVERSATIONS_PATH: config.windowsRuntime.conversationsPath,
-            OH_BASH_EVENTS_DIR: config.windowsRuntime.bashEventsPath,
-            OH_PERSISTENCE_DIR: config.windowsRuntime.persistencePath,
+            OH_CONVERSATIONS_PATH: "C:\\workspace\\.openhands\\conversations",
+            OH_BASH_EVENTS_DIR: "C:\\workspace\\.openhands\\bash_events",
+            OH_PERSISTENCE_DIR: "C:\\workspace\\.openhands\\persistence",
             OH_CONVERSATION_WORKTREE_ROOT: config.windowsRuntime.worktreeRoot,
             OPENHANDS_ACP_NPM_CACHE_DIR: "C:\\workspace\\.openhands\\npm-cache",
             OPENHANDS_SKILLS_CACHE_DIR:
@@ -2395,13 +2397,13 @@ function sandboxSpecBootstrapProfiles(
             OH_SANDBOX_OPERATING_SYSTEM: "windows",
           }
         : {
-            ...(enableDeferredInit ? { OH_DEFERRED_INIT: "true" } : {}),
+            OH_DEFERRED_INIT: "true",
             OH_ENABLE_VNC: "0",
             LOG_JSON: "true",
             OH_WORKSPACE_PATH: "/workspace/project",
-            OH_CONVERSATIONS_PATH: "/openhands/conversations",
-            OH_BASH_EVENTS_DIR: "/openhands/bash_events",
-            OH_PERSISTENCE_DIR: "/openhands/persistence",
+            OH_CONVERSATIONS_PATH: "/workspace/.openhands/conversations",
+            OH_BASH_EVENTS_DIR: "/workspace/.openhands/bash_events",
+            OH_PERSISTENCE_DIR: "/workspace/.openhands/persistence",
             OH_CONVERSATION_WORKTREE_ROOT: "/workspace/worktrees",
             OPENHANDS_ACP_NPM_CACHE_DIR: "/workspace/.openhands/npm-cache",
             OPENHANDS_SKILLS_CACHE_DIR: "/workspace/.openhands/cache/skills",
@@ -2991,8 +2993,8 @@ ${sandboxStartupTimeoutEnv}            - name: SERVE_FRONTEND
             - name: OH_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: openhands-halo-secrets
-                  key: ohSecretKey
+                  name: openhands-agent-server-bootstrap
+                  key: secret-key
             - name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER
               value: ${sandbox.trustedIdentityIssuer}
             - name: OH_TRUSTED_IDENTITY_ASSERTION_AUDIENCE
@@ -3460,10 +3462,6 @@ ${anyDestinationEgress}${privateEgress}  volumeClaimTemplates:
         openhands.dev/execution-profile: ${profile.id}
     spec:
       serviceAccountName: ${env.serviceAccount}
-      volumes:
-        - name: openhands-state
-          persistentVolumeClaim:
-            claimName: ${env.conversationPvc}
       nodeSelector:
         kubernetes.io/os: ${profile.os}
         kubernetes.io/arch: amd64
@@ -3487,6 +3485,14 @@ ${linuxSecurityContext}${workspaceInit}      containers:
           image: ${image}
           args: ["--host", "0.0.0.0", "--port", "8000"]
           workingDir: ${renderedWorkingDir}
+          env:
+            - name: OH_DEFERRED_INIT
+              value: "true"
+            - name: OH_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-agent-server-bootstrap
+                  key: secret-key
           ports:
             - containerPort: 8000
               name: agent-server
@@ -3507,13 +3513,6 @@ ${vscodePort}          readinessProbe:
           volumeMounts:
             - name: workspace
               mountPath: ${renderedWorkspacePath}
-            - name: openhands-state
-              mountPath: ${
-                isWindows
-                  ? yamlSingleQuoted(config.windowsRuntime.durableMountPath)
-                  : "/openhands"
-              }
-${isWindows ? "" : "              subPathExpr: $(OH_SANDBOX_ID)\n"}
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
@@ -3527,28 +3526,12 @@ spec:
 `;
 }
 
-export function validateAgentSandboxWarmPoolConfig(
-  profiles = config.agentSandbox.profileSeeds,
-) {
-  const incompatibleProfiles = profiles.filter(
-    (profile) => Number(profile.warmPoolReplicas) > 0,
-  );
-  if (incompatibleProfiles.length > 0) {
-    throw new Error(
-      `SandboxWarmPool replicas are unsupported while Halo requires SandboxClaim environment injection: ${incompatibleProfiles
-        .map((profile) => profile.id)
-        .join(", ")}`,
-    );
-  }
-}
-
 export function renderAgentSandboxResources(
   environment,
   sandboxRuntimeDigest,
   windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
-  validateAgentSandboxWarmPoolConfig();
   const linuxAgentServerImage = imageReference(
     config.azure.acrLoginServer,
     config.build.sandboxRuntimeRepository,

@@ -55,7 +55,6 @@ import {
   validateNatGatewayPublicIp,
   validateBuildNodePool,
   validateHindsightPostgresConfig,
-  validateAgentSandboxWarmPoolConfig,
   validateWindowsNodePoolName,
   windowsRuntimeTemplateName,
   windowsRuntimeNodePoolAutoscalerArgs,
@@ -660,17 +659,6 @@ describe("Halo deployment automation", () => {
     ).toThrow(/Forbidden/);
   });
 
-  it("rejects warm pools while claims require per-sandbox environment injection", () => {
-    expect(() =>
-      validateAgentSandboxWarmPoolConfig([
-        {
-          id: "incompatible-warm-profile",
-          warmPoolReplicas: 1,
-        },
-      ]),
-    ).toThrow(/SandboxClaim environment injection/);
-  });
-
   it("renders Linux and native Windows curated sandbox profiles", () => {
     const windowsDigest = `sha256:${"e".repeat(64)}`;
     const resources = renderAgentSandboxResources(
@@ -697,7 +685,6 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("workingDir: 'C:\\workspace\\project'");
     expect(resources).toContain("mountPath: 'C:\\workspace'");
     expect(resources).not.toContain("name: OH_SESSION_API_KEYS_0");
-    expect(resources).not.toContain("name: OH_SECRET_KEY");
     expect(resources).toContain(
       'node.kubernetes.io/windows-build: "10.0.26100"',
     );
@@ -706,12 +693,11 @@ describe("Halo deployment automation", () => {
       "storageClassName: openhands-halo-windows-workspace-disk",
     );
     expect(resources).toContain("storage: 2Ti");
+    expect(resources).toContain("name: OH_DEFERRED_INIT");
     expect(resources).toContain(
-      "name: openhands-state\n          persistentVolumeClaim:\n            claimName: openhands-halo-conversations",
+      "name: OH_SECRET_KEY\n              valueFrom:\n                secretKeyRef:\n                  name: openhands-agent-server-bootstrap\n                  key: secret-key",
     );
-    expect(resources).toContain(
-      "name: openhands-state\n              mountPath: 'C:\\OpenHands'",
-    );
+    expect(resources).not.toContain("name: openhands-state");
     const windowsTemplate = resources
       .split("name: openhands-agent-server-windows-2025", 2)[1]
       .split("---", 1)[0];
@@ -821,11 +807,11 @@ describe("Halo deployment automation", () => {
       `\"image\": \"uhunrealhaacukmdbkacr.azurecr.io/openhands-agent-server@${digest}\"`,
     );
     expect(configMap).toContain('"workspace_mount_path": "/workspace"');
-    expect(configMap).toContain('"durable_state_dir": "/openhands"');
-    expect(configMap).toContain('"durable_mount_path": "/openhands"');
+    expect(configMap).toContain('"durable_state_dir": "/workspace/.openhands"');
+    expect(configMap).toContain('"durable_mount_path": "/workspace"');
     expect(configMap).toContain('"startup_timeout_seconds": 300');
     expect(configMap).toContain(
-      '"OH_CONVERSATIONS_PATH": "/openhands/conversations"',
+      '"OH_CONVERSATIONS_PATH": "/workspace/.openhands/conversations"',
     );
     expect(configMap).toContain(
       '"OH_CONVERSATION_WORKTREE_ROOT": "/workspace/worktrees"',
@@ -839,9 +825,9 @@ describe("Halo deployment automation", () => {
     expect(configMap).toContain('"working_dir": "C:\\\\workspace\\\\project"');
     expect(configMap).toContain('"workspace_mount_path": "C:\\\\workspace"');
     expect(configMap).toContain(
-      '"durable_state_dir": "C:\\\\OpenHands\\\\{sandbox_id}"',
+      '"durable_state_dir": "C:\\\\workspace\\\\.openhands"',
     );
-    expect(configMap).toContain('"durable_mount_path": "C:\\\\OpenHands"');
+    expect(configMap).toContain('"durable_mount_path": "C:\\\\workspace"');
     expect(configMap).toContain('"operating_system": "windows"');
     expect(configMap).toContain('"availability": "available"');
     expect(configMap).toContain('"startup_timeout_seconds": 1800');
@@ -876,18 +862,14 @@ describe("Halo deployment automation", () => {
       '"workspace_storage_class": "openhands-halo-windows-workspace-disk"',
     );
     expect(configMap).toContain('"workspace_storage_size": "2Ti"');
-    expect(configMap).toContain(
-      '"durable_storage_class": "openhands-halo-azurefile"',
-    );
+    expect(configMap).toContain('"durable_storage_class": null');
     expect(configMap).toContain('"durable_storage_size": null');
-    expect(configMap).toContain(
-      '"durable_volume_claim_name": "openhands-halo-conversations"',
-    );
-    expect(configMap).toContain('"durable_sub_path_template": "{sandbox_id}"');
+    expect(configMap).toContain('"durable_volume_claim_name": null');
+    expect(configMap).toContain('"durable_sub_path_template": null');
     expect(configMap).not.toContain('"created_at"');
     expect(configMap).not.toContain('"updated_at"');
     expect(configMap).toContain(
-      '"OH_CONVERSATIONS_PATH": "C:\\\\OpenHands\\\\{sandbox_id}\\\\conversations"',
+      '"OH_CONVERSATIONS_PATH": "C:\\\\workspace\\\\.openhands\\\\conversations"',
     );
 
     const profiles = JSON.parse(
@@ -919,7 +901,7 @@ describe("Halo deployment automation", () => {
 
     expect(
       renderSandboxSpecBootstrapConfigMap("primary", digest, windowsDigest),
-    ).not.toContain("OH_DEFERRED_INIT");
+    ).toContain("OH_DEFERRED_INIT");
   });
 
   it("renders an NTFS workspace storage class for Windows sandboxes", () => {
@@ -1007,6 +989,8 @@ describe("Halo deployment automation", () => {
 
     expect(spc).toContain("halo-ppe-entra-client-secret");
     expect(spc).toContain("halo-ppe-session-api-key");
+    expect(spc).toContain("secretName: openhands-agent-server-bootstrap");
+    expect(spc).toContain("objectName: ohSecretKey\n          key: secret-key");
     expect(spc).toContain("halo-ppe-trusted-identity-assertion");
     expect(spc).toContain("halo-ppe-sandbox-jwt-secret");
     expect(spc).not.toContain("halo-ppe-rbac-bootstrap-json");
@@ -1245,7 +1229,7 @@ describe("Halo deployment automation", () => {
       "name: OH_TRUSTED_IDENTITY_ASSERTION_ISSUER\n              value: openhands-halo-bff",
     );
     expect(resources).toContain(
-      "name: OH_SECRET_KEY\n              valueFrom:\n                secretKeyRef:\n                  name: openhands-halo-secrets\n                  key: ohSecretKey",
+      "name: OH_SECRET_KEY\n              valueFrom:\n                secretKeyRef:\n                  name: openhands-agent-server-bootstrap\n                  key: secret-key",
     );
     expect(resources).toContain("name: JWT_SECRET");
     expect(resources).toContain("name: GITHUB_APP_CLIENT_ID");
@@ -1370,6 +1354,12 @@ describe("Halo deployment automation", () => {
       .split("---")
       .filter((document) => document.includes("kind: SandboxTemplate"));
     for (const template of sandboxTemplates) {
+      expect(template).toContain("name: OH_DEFERRED_INIT");
+      expect(template).toContain(
+        "name: OH_SECRET_KEY\n              valueFrom:\n                secretKeyRef:\n                  name: openhands-agent-server-bootstrap\n                  key: secret-key",
+      );
+      expect(template).not.toContain("name: openhands-state");
+      expect(template).not.toContain("subPath");
       expect(template).toContain(
         "ports:\n          - protocol: TCP\n            port: 80\n          - protocol: TCP\n            port: 443",
       );
@@ -1401,22 +1391,21 @@ describe("Halo deployment automation", () => {
         expect(template).toContain('runAsUserName: "ContainerAdministrator"');
       }
     }
-    expect(resources).toContain(
-      "name: openhands-state\n              mountPath: /openhands\n              subPathExpr: $(OH_SANDBOX_ID)",
-    );
+    expect(resources).not.toContain("name: openhands-state");
+    expect(resources).not.toContain("subPathExpr: $(OH_SANDBOX_ID)");
     expect(resources).toContain(
       "storageClassName: openhands-halo-workspace-disk",
     );
     expect(resources).toContain("storage: 50Gi");
     expect(resources).toContain("kind: SandboxWarmPool");
     expect(resources).toMatch(
-      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
+      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 4/,
     );
     expect(resources).toMatch(
       /kind: SandboxWarmPool\s+metadata:\s+name: windows-server-2025-amd64\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
     );
     expect(resources).toMatch(
-      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool-windows-build\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
+      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool-windows-build\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 4/,
     );
     expect(resources).toContain(
       "app.kubernetes.io/name: openhands-sandbox-server",
