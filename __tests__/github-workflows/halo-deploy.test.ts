@@ -73,6 +73,13 @@ describe("Halo deployment workflow", () => {
     expect(workflow).toContain(
       "ghcr.io/${{ github.repository_owner }}/halo-agent-server-windows",
     );
+    expect(workflow).toContain(
+      "$workspaceRoot = [System.IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE)",
+    );
+    expect(workflow).toContain("$config['data-root'] = $dockerRoot");
+    expect(workflow).toContain(
+      "Docker data-root mismatch: expected $dockerRoot, got $actualDockerRoot",
+    );
     expect(workflow).toContain("Verify anonymous Windows image pull");
     expect(workflow).toContain(
       "https://ghcr.io/token?scope=repository:${{ github.repository_owner }}/halo-agent-server-windows:pull",

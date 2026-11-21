@@ -244,8 +244,31 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $service = Get-Service docker -ErrorAction Stop
-          if ($service.Status -ne 'Running') {
-            Start-Service docker
+          if ($service.Status -eq 'Running') {
+            Stop-Service docker
+            $service.WaitForStatus('Stopped', '00:01:00')
+          }
+          $workspaceRoot = [System.IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE)
+          $dockerRoot = Join-Path $workspaceRoot 'docker-data'
+          New-Item -ItemType Directory -Force $dockerRoot | Out-Null
+          $configPath = 'C:\ProgramData\docker\config\daemon.json'
+          $config = if (Test-Path $configPath) {
+            Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+          } else {
+            @{}
+          }
+          $config['data-root'] = $dockerRoot
+          $config | ConvertTo-Json -Depth 20 | Set-Content $configPath -Encoding utf8NoBOM
+          Start-Service docker
+          $service.WaitForStatus('Running', '00:01:00')
+          $actualDockerRoot = (docker info --format '{{.DockerRootDir}}').Trim()
+          if (
+            -not [System.IO.Path]::GetFullPath($actualDockerRoot).TrimEnd('\').Equals(
+              [System.IO.Path]::GetFullPath($dockerRoot).TrimEnd('\'),
+              [System.StringComparison]::OrdinalIgnoreCase
+            )
+          ) {
+            throw "Docker data-root mismatch: expected $dockerRoot, got $actualDockerRoot"
           }
           if ((docker info --format '{{.OSType}}').Trim() -ne 'windows') {
             throw 'The Windows runtime build requires a Windows container daemon.'
