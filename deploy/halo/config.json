@@ -305,7 +305,7 @@
         "nodePool": "services",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "services",
-        "warmPoolReplicas": 0,
+        "warmPoolReplicas": 4,
         "maxConcurrency": 12,
         "capabilities": ["linux", "power_shell", "perforce", "halo"]
       },
@@ -365,35 +365,6 @@
         ]
       },
       {
-        "id": "windows-high-memory",
-        "name": "Windows High Memory",
-        "enabled": true,
-        "os": "windows",
-        "resourceClass": "high-memory",
-        "template": "openhands-agent-server-windows-high-memory",
-        "warmPool": "openhands-pool-windows-high-memory",
-        "cpuRequest": "4",
-        "cpuLimit": "8",
-        "memoryRequest": "16Gi",
-        "memoryLimit": "32Gi",
-        "storageClass": "openhands-halo-windows-workspace-disk",
-        "storageSize": "2Ti",
-        "nodePool": "halow2",
-        "nodeTaintKey": "unrealhands.io/pool",
-        "nodeTaintValue": "halo-windows64",
-        "warmPoolReplicas": 0,
-        "maxConcurrency": 1,
-        "capabilities": [
-          "windows",
-          "high_memory",
-          "power_shell",
-          "perforce",
-          "halo",
-          "runtime_image_contract_v1",
-          "native_windows_runtime_v1"
-        ]
-      },
-      {
         "id": "windows-build",
         "name": "Windows Build",
         "enabled": true,
@@ -410,7 +381,7 @@
         "nodePool": "halow2",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows64",
-        "warmPoolReplicas": 0,
+        "warmPoolReplicas": 4,
         "maxConcurrency": 10,
         "capabilities": [
           "windows",

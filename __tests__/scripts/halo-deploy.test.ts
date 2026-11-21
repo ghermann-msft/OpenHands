@@ -672,7 +672,7 @@ describe("Halo deployment automation", () => {
       "name: openhands-agent-server-linux-high-memory",
     );
     expect(resources).toContain("name: openhands-agent-server-windows-2025");
-    expect(resources).toContain(
+    expect(resources).not.toContain(
       "name: openhands-agent-server-windows-high-memory",
     );
     expect(resources).toContain("name: openhands-agent-server-windows-build");
@@ -1397,16 +1397,23 @@ describe("Halo deployment automation", () => {
     );
     expect(resources).toContain("storage: 50Gi");
     expect(resources).toContain("kind: SandboxWarmPool");
-    expect(resources).toContain("replicas: 0");
-    expect(resources).toContain("name: openhands-pool");
+    expect(resources).toMatch(
+      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 4/,
+    );
+    expect(resources).toMatch(
+      /kind: SandboxWarmPool\s+metadata:\s+name: windows-server-2025-amd64\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
+    );
+    expect(resources).toMatch(
+      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool-windows-build\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 4/,
+    );
     expect(resources).toContain(
       "app.kubernetes.io/name: openhands-sandbox-server",
     );
     expect(resources).toContain("app.kubernetes.io/name: agent-canvas");
-    expect(resources.match(/cidr: 10\.1\.0\.7\/32/g)).toHaveLength(5);
-    expect(resources.match(/cidr: 10\.0\.0\.4\/32/g)).toHaveLength(5);
-    expect(resources.match(/cidr: 10\.2\.0\.4\/32/g)).toHaveLength(5);
-    expect(resources.match(/protocol: TCP\s+port: 1666/g)).toHaveLength(15);
+    expect(resources.match(/cidr: 10\.1\.0\.7\/32/g)).toHaveLength(4);
+    expect(resources.match(/cidr: 10\.0\.0\.4\/32/g)).toHaveLength(4);
+    expect(resources.match(/cidr: 10\.2\.0\.4\/32/g)).toHaveLength(4);
+    expect(resources.match(/protocol: TCP\s+port: 1666/g)).toHaveLength(12);
     expect(resources).not.toContain("port: 1667");
     expect(resources).toContain('resources: ["sandboxclaims"]');
     expect(resources).toContain(
