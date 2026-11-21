@@ -305,7 +305,7 @@
         "nodePool": "services",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "services",
-        "warmPoolReplicas": 4,
+        "warmPoolReplicas": 0,
         "maxConcurrency": 12,
         "capabilities": ["linux", "power_shell", "perforce", "halo"]
       },
@@ -381,7 +381,7 @@
         "nodePool": "halow2",
         "nodeTaintKey": "unrealhands.io/pool",
         "nodeTaintValue": "halo-windows64",
-        "warmPoolReplicas": 4,
+        "warmPoolReplicas": 0,
         "maxConcurrency": 10,
         "capabilities": [
           "windows",

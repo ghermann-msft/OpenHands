@@ -55,6 +55,7 @@ import {
   validateNatGatewayPublicIp,
   validateBuildNodePool,
   validateHindsightPostgresConfig,
+  validateAgentSandboxWarmPoolConfig,
   validateWindowsNodePoolName,
   windowsRuntimeTemplateName,
   windowsRuntimeNodePoolAutoscalerArgs,
@@ -657,6 +658,17 @@ describe("Halo deployment automation", () => {
         digest,
       ),
     ).toThrow(/Forbidden/);
+  });
+
+  it("rejects warm pools while claims require per-sandbox environment injection", () => {
+    expect(() =>
+      validateAgentSandboxWarmPoolConfig([
+        {
+          id: "incompatible-warm-profile",
+          warmPoolReplicas: 1,
+        },
+      ]),
+    ).toThrow(/SandboxClaim environment injection/);
   });
 
   it("renders Linux and native Windows curated sandbox profiles", () => {
@@ -1398,13 +1410,13 @@ describe("Halo deployment automation", () => {
     expect(resources).toContain("storage: 50Gi");
     expect(resources).toContain("kind: SandboxWarmPool");
     expect(resources).toMatch(
-      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 4/,
+      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
     );
     expect(resources).toMatch(
       /kind: SandboxWarmPool\s+metadata:\s+name: windows-server-2025-amd64\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
     );
     expect(resources).toMatch(
-      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool-windows-build\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 4/,
+      /kind: SandboxWarmPool\s+metadata:\s+name: openhands-pool-windows-build\s+namespace: openhands-halo-ppe\s+spec:\s+replicas: 0/,
     );
     expect(resources).toContain(
       "app.kubernetes.io/name: openhands-sandbox-server",

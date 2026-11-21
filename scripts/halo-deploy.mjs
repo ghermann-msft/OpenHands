@@ -3527,12 +3527,28 @@ spec:
 `;
 }
 
+export function validateAgentSandboxWarmPoolConfig(
+  profiles = config.agentSandbox.profileSeeds,
+) {
+  const incompatibleProfiles = profiles.filter(
+    (profile) => Number(profile.warmPoolReplicas) > 0,
+  );
+  if (incompatibleProfiles.length > 0) {
+    throw new Error(
+      `SandboxWarmPool replicas are unsupported while Halo requires SandboxClaim environment injection: ${incompatibleProfiles
+        .map((profile) => profile.id)
+        .join(", ")}`,
+    );
+  }
+}
+
 export function renderAgentSandboxResources(
   environment,
   sandboxRuntimeDigest,
   windowsRuntimeDigest,
 ) {
   const env = config.environments[environment];
+  validateAgentSandboxWarmPoolConfig();
   const linuxAgentServerImage = imageReference(
     config.azure.acrLoginServer,
     config.build.sandboxRuntimeRepository,
